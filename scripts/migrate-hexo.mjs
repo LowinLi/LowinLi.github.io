@@ -29,8 +29,8 @@ function fixFrontMatter(text, file) {
     const kv = line.match(/^(tags|categories):\s*(.*)$/);
     if (kv && kv[2].trim() && !kv[2].trim().startsWith('[')) { out.push(`${kv[1]}: ${toList(kv[2])}`); continue; }
     // Hexo 的 categories 允许嵌套数组 `- [a, b]`，拍平
-    if (/^\s+-\s*\[.*\]\s*$/.test(line)) {
-      for (const x of line.replace(/^\s+-\s*\[|\]\s*$/g, '').split(',')) out.push(`  - ${JSON.stringify(x.trim())}`);
+    if (/^\s*-\s*\[.*\]\s*$/.test(line)) {
+      for (const x of line.replace(/^\s*-\s*\[|\]\s*$/g, '').split(',')) out.push(`  - ${JSON.stringify(x.trim())}`);
       continue;
     }
     out.push(line);
@@ -39,7 +39,7 @@ function fixFrontMatter(text, file) {
   if (!/^title:/m.test(fm)) fm = `title: ${JSON.stringify(path.parse(file).name)}\n${fm}`;
   if (!/^date:/m.test(fm)) fm += `\ndate: ${fs.statSync(file).mtime.toISOString()}`;
   // Hexo 的 `tags:` 后面跟空值会被 YAML 解析成 null，补成空数组
-  fm = fm.replace(/^(tags|categories):\s*$(?!\n\s+-)/gm, '$1: []');
+  fm = fm.replace(/^(tags|categories):\s*$(?!\n\s*-)/gm, '$1: []');
   return { text: `---\n${fm}\n---\n` + text.slice(m[0].length) };
 }
 
