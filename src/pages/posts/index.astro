@@ -1,0 +1,24 @@
+---
+import { getCollection } from 'astro:content';
+import Base from '../../layouts/Base.astro';
+const posts = (await getCollection('posts', ({ data }) => !data.draft))
+  .sort((a, b) => b.data.date.valueOf() - a.data.date.valueOf());
+---
+<Base title="文章">
+  <main class="list">
+    <h1>文章</h1>
+    <ul class="posts">
+      {posts.map((p) => (
+        <li>
+          <time datetime={p.data.date.toISOString()}>{p.data.date.toISOString().slice(0, 10)}</time>
+          <a href={`/posts/${p.id}/`}>{p.data.title}</a>
+        </li>
+      ))}
+    </ul>
+  </main>
+</Base>
+<style>
+  .posts { list-style: none; padding: 0; }
+  .posts li { display: flex; gap: 16px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+  time { color: var(--muted); font-variant-numeric: tabular-nums; flex: none; }
+</style>

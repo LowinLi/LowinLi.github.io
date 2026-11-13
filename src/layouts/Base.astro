@@ -1,0 +1,46 @@
+---
+interface Props { title: string; description?: string }
+const { title, description = '个人主页与博客' } = Astro.props;
+---
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content={description} />
+    <title>{title}</title>
+  </head>
+  <body>
+    <header class="site-header">
+      <a href="/" class="brand">Home</a>
+      <nav><a href="/posts/">文章</a></nav>
+    </header>
+    <slot />
+    <footer class="site-footer">© {new Date().getFullYear()}</footer>
+  </body>
+</html>
+
+<style is:global>
+  :root {
+    --bg: #f7f5f0; --fg: #1d1b18; --muted: #6b665e; --accent: #c2410c; --line: #e2ddd3;
+    color-scheme: light dark;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #121110; --fg: #ece8e1; --muted: #9a948a; --accent: #fb923c; --line: #2a2724; }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 16px/1.7 system-ui, -apple-system, "PingFang SC", "Noto Sans CJK SC", sans-serif;
+  }
+  a { color: var(--accent); }
+  .site-header, .site-footer, main.prose, main.list {
+    max-width: 720px; margin: 0 auto; padding: 16px;
+  }
+  .site-header { display: flex; justify-content: space-between; align-items: center; }
+  .site-header a { text-decoration: none; }
+  .brand { font-weight: 700; color: var(--fg); }
+  .site-footer { color: var(--muted); font-size: 14px; border-top: 1px solid var(--line); margin-top: 64px; }
+  main.prose img { max-width: 100%; height: auto; }
+  main.prose pre { overflow-x: auto; padding: 12px; border-radius: 6px; }
+</style>

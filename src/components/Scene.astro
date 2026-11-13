@@ -1,0 +1,37 @@
+---
+// 首页唯一的 3D island。low 档只显示静态回退，不加载 three.js。
+---
+<div class="scene" data-tier="pending">
+  <div class="fallback" aria-hidden="true"></div>
+  <canvas aria-hidden="true"></canvas>
+</div>
+
+<script>
+  import { detectTier } from '../scene/tier';
+
+  const root = document.querySelector<HTMLDivElement>('.scene')!;
+  const tier = detectTier();
+  root.dataset.tier = tier;
+  if (tier !== 'low') {
+    const canvas = root.querySelector('canvas')!;
+    import('../scene/runtime').then(({ start }) => {
+      start(canvas, tier);
+      root.dataset.ready = 'true';
+    }).catch((err) => {
+      console.error('[scene] 初始化失败，退回静态版', err);
+      root.dataset.tier = 'low';
+    });
+  }
+</script>
+
+<style>
+  .scene { position: relative; width: 100%; height: min(70vh, 640px); }
+  canvas, .fallback { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .fallback {
+    background: radial-gradient(circle at 50% 45%, var(--accent) 0 18%, transparent 19%),
+      radial-gradient(circle at 50% 50%, color-mix(in srgb, var(--accent) 15%, transparent), transparent 60%);
+    transition: opacity .4s;
+  }
+  .scene[data-ready='true'] .fallback { opacity: 0; }
+  .scene[data-tier='low'] canvas { display: none; }
+</style>
