@@ -25,9 +25,9 @@ for (const w of widths) {
     const url = new URL(base); url.searchParams.set('tier', tier);
     await page.goto(url.href, { waitUntil: 'networkidle' });
     if (tier !== 'low') await page.waitForSelector('.scene[data-ready="true"]', { timeout: 10000 }).catch(() => errors.push('scene not ready in 10s'));
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(1500);
     const file = `${out}/${w}-${tier}.png`;
-    await page.screenshot({ path: file, fullPage: true });
+    await page.screenshot({ path: file });
     const info = await page.evaluate(() => {
       const s = window.__scene;
       return {
@@ -37,6 +37,13 @@ for (const w of widths) {
       };
     });
     report.push({ file, ...info, errors });
+    // 高档再拍一张插入磁带后的画面
+    if (tier === 'high') {
+      await page.evaluate(() => window.__scene.emit('tape:insert', { id: 'posts' }));
+      await page.waitForTimeout(6000); // 无 GPU 环境只有 ~5fps，动画要多等
+      await page.screenshot({ path: `${out}/${w}-${tier}-playing.png` });
+      await page.keyboard.press('Escape');
+    }
     await page.close();
   }
 }

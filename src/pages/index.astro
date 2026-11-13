@@ -2,19 +2,33 @@
 import { getCollection } from 'astro:content';
 import Base from '../layouts/Base.astro';
 import Scene from '../components/Scene.astro';
-const latest = (await getCollection('posts', ({ data }) => !data.draft))
-  .sort((a, b) => b.data.date.valueOf() - a.data.date.valueOf())
-  .slice(0, 5);
+import { SITE } from '../site';
+const posts = (await getCollection('posts', ({ data }) => !data.draft))
+  .sort((a, b) => b.data.date.valueOf() - a.data.date.valueOf());
+const data = {
+  ...SITE,
+  posts: posts.slice(0, 12).map((p) => ({ title: p.data.title, url: `/posts/${p.id}/`, date: p.data.date.toISOString().slice(0, 10) })),
+};
 ---
-<Base title="Home">
-  <Scene />
+<Base title={SITE.name} description={SITE.tagline} bare>
+  <Scene data={data} />
   <main class="list">
-    <h1>你好，我是 ___</h1>
-    <p>一句话介绍。TODO</p>
-    <h2>最近文章</h2>
-    <ul>
-      {latest.map((p) => <li><a href={`/posts/${p.id}/`}>{p.data.title}</a></li>)}
-    </ul>
-    <p><a href="/posts/">全部文章 →</a></p>
+    <section id="about">
+      <h2>关于我</h2>
+      {SITE.bio.map((l) => <p>{l}</p>)}
+      <p>{SITE.links.map((l, i) => <>{i > 0 && ' · '}<a href={`https://${l.url.replace(/^https?:\/\//, '')}`}>{l.label}</a></>)}</p>
+    </section>
+    <section id="posts">
+      <h2>最近文章</h2>
+      <ul class="posts">
+        {data.posts.slice(0, 6).map((p) => <li><time>{p.date}</time><a href={p.url}>{p.title}</a></li>)}
+      </ul>
+      <p><a href="/posts/">全部文章 →</a></p>
+    </section>
   </main>
 </Base>
+<style>
+  .posts { list-style: none; padding: 0; }
+  .posts li { display: flex; gap: 16px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+  time { color: var(--muted); font-variant-numeric: tabular-nums; flex: none; }
+</style>

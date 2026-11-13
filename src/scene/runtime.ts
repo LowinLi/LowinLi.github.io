@@ -1,51 +1,102 @@
 import * as THREE from 'three';
 import { BUDGETS } from './budgets';
-import type { Mounted, SceneInput, SceneObject } from './types';
+import { emit, on, type MountContext, type Mounted, type PickHandlers, type SceneInput, type SceneObject, type SiteData } from './types';
 import type { Tier } from './tier';
-import { orb } from './objects/orb';
+import { room } from './objects/room';
+import { crt } from './objects/crt';
+import { shelf } from './objects/shelf';
+import { cameraRig } from './objects/cameraRig';
 
-/** 场景里挂载的物件清单。新物件：在 objects/ 下建文件，然后加到这里。 */
-const OBJECTS: SceneObject[] = [orb];
+/** 场景里挂载的物件清单。新物件：在 objects/ 下建文件，然后加到这里。cameraRig 放最后。 */
+const OBJECTS: SceneObject[] = [room, crt, shelf, cameraRig];
 
-export function start(canvas: HTMLCanvasElement, tier: Exclude<Tier, 'low'>) {
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: tier === 'high', alpha: true, powerPreference: 'high-performance' });
+export function start(canvas: HTMLCanvasElement, tier: Exclude<Tier, 'low'>, data: SiteData) {
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: tier === 'high', powerPreference: 'high-performance' });
   renderer.setPixelRatio(Math.min(devicePixelRatio, BUDGETS.maxPixelRatio[tier]));
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.15;
+  if (tier === 'high') {
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  }
 
   const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 100);
-  camera.position.set(0, 0, 5);
-  scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 1.2));
-  const key = new THREE.DirectionalLight(0xffffff, 2);
-  key.position.set(3, 4, 5);
-  scene.add(key);
+  const camera = new THREE.PerspectiveCamera(38, 1, 0.05, 30);
+  const bus = new EventTarget();
 
   const size = () => {
     const { clientWidth: w, clientHeight: h } = canvas;
     renderer.setSize(w, h, false);
     camera.aspect = w / Math.max(1, h);
-    // 竖屏时拉远相机，让物件的横向占比和横屏一致
-    camera.position.z = 5 / Math.min(1, Math.max(camera.aspect, 0.5));
     camera.updateProjectionMatrix();
     return { width: w, height: h };
   };
   const { width, height } = size();
 
-  const ctx = { scene, camera, renderer, tier, width, height, audio: null as AudioContext | null };
+  // ---- 射线拾取 ----
+  const pickables = new Map<THREE.Object3D, PickHandlers>();
+  const raycaster = new THREE.Raycaster();
+  const ndc = new THREE.Vector2();
+  let hovered: THREE.Object3D | null = null;
+  const findOwner = (o: THREE.Object3D | null) => { while (o && !pickables.has(o)) o = o.parent; return o; };
+  const cast = (e: PointerEvent) => {
+    const r = canvas.getBoundingClientRect();
+    ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+    raycaster.setFromCamera(ndc, camera);
+    const hit = raycaster.intersectObjects([...pickables.keys()], true).find((h) => h.object.visible);
+    return hit ? { hit, owner: findOwner(hit.object)! } : null;
+  };
+
+  let audioCtx: AudioContext | null = null;
+  const ctx: MountContext = {
+    scene, camera, renderer, tier, width, height, data, bus,
+    audio: () => audioCtx,
+    pick: (obj, h) => { pickables.set(obj, h); },
+  };
   const mounted: Mounted[] = OBJECTS.map((o) => o(ctx));
   const send = (e: SceneInput) => mounted.forEach((m) => m.input?.(e));
+  send({ type: 'resize', width, height });
+
+  let playing: string | null = null;
+  const offState = on<{ playing: string | null }>(bus, 'tape:state', ({ playing: p }) => { playing = p; });
 
   const onResize = () => send({ type: 'resize', ...size() });
-  const onPointer = (e: PointerEvent) =>
-    send({ type: 'pointer', x: (e.clientX / innerWidth) * 2 - 1, y: -((e.clientY / innerHeight) * 2 - 1) });
-  const onScroll = () => {
-    const max = document.documentElement.scrollHeight - innerHeight;
-    send({ type: 'scroll', progress: max > 0 ? scrollY / max : 0 });
+  let downAt: { x: number; y: number } | null = null;
+  const onMove = (e: PointerEvent) => {
+    const r = canvas.getBoundingClientRect();
+    send({ type: 'pointer', x: ((e.clientX - r.left) / r.width) * 2 - 1, y: -(((e.clientY - r.top) / r.height) * 2 - 1) });
+    const res = cast(e);
+    const owner = res?.owner ?? null;
+    if (owner !== hovered) {
+      if (hovered) pickables.get(hovered)?.hover?.(false);
+      if (owner) pickables.get(owner)?.hover?.(true);
+      hovered = owner;
+    }
+    canvas.style.cursor = owner && (pickables.get(owner)!.click) ? 'pointer' : '';
+    if (res) pickables.get(res.owner)?.move?.(res.hit);
   };
-  const onFirstGesture = () => { ctx.audio ??= new AudioContext(); };
+  const onDown = (e: PointerEvent) => {
+    downAt = { x: e.clientX, y: e.clientY };
+    audioCtx ??= new AudioContext();
+    onMove(e);
+  };
+  const onUp = (e: PointerEvent) => {
+    if (!downAt || Math.hypot(e.clientX - downAt.x, e.clientY - downAt.y) > 8) { downAt = null; return; }
+    downAt = null;
+    const res = cast(e);
+    if (res) pickables.get(res.owner)?.click?.(res.hit);
+    else if (playing) emit(bus, 'tape:eject'); // 点屏幕外面退出
+  };
+  const onKey = (e: KeyboardEvent) => {
+    if (!visible || !playing) return;
+    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' ', 'Enter', 'Escape'].includes(e.key)) e.preventDefault();
+    send({ type: 'key', key: e.key });
+  };
   addEventListener('resize', onResize);
-  addEventListener('pointermove', onPointer, { passive: true });
-  addEventListener('scroll', onScroll, { passive: true });
-  addEventListener('pointerdown', onFirstGesture, { once: true });
+  canvas.addEventListener('pointermove', onMove);
+  canvas.addEventListener('pointerdown', onDown);
+  canvas.addEventListener('pointerup', onUp);
+  addEventListener('keydown', onKey);
 
   // 不在视口内或标签页隐藏时停止渲染
   let visible = true;
@@ -62,15 +113,19 @@ export function start(canvas: HTMLCanvasElement, tier: Exclude<Tier, 'low'>) {
   });
 
   // 暴露给 QA / 截图脚本读取的诊断信息
-  (window as any).__scene = { tier, info: renderer.info };
+  (window as any).__scene = { tier, info: renderer.info, bus, emit: (type: string, d?: unknown) => emit(bus, type, d) };
 
-  return () => {
+  const stop = () => {
     renderer.setAnimationLoop(null);
     mounted.forEach((m) => m.stop());
+    offState();
     io.disconnect();
     removeEventListener('resize', onResize);
-    removeEventListener('pointermove', onPointer);
-    removeEventListener('scroll', onScroll);
+    canvas.removeEventListener('pointermove', onMove);
+    canvas.removeEventListener('pointerdown', onDown);
+    canvas.removeEventListener('pointerup', onUp);
+    removeEventListener('keydown', onKey);
     renderer.dispose();
   };
+  return { bus, stop };
 }

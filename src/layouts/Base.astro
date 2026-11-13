@@ -1,6 +1,6 @@
 ---
-interface Props { title: string; description?: string }
-const { title, description = '个人主页与博客' } = Astro.props;
+interface Props { title: string; description?: string; bare?: boolean }
+const { title, description = '个人主页与博客', bare = false } = Astro.props;
 ---
 <!doctype html>
 <html lang="zh-CN">
@@ -11,10 +11,12 @@ const { title, description = '个人主页与博客' } = Astro.props;
     <title>{title}</title>
   </head>
   <body>
-    <header class="site-header">
-      <a href="/" class="brand">Home</a>
-      <nav><a href="/posts/">文章</a></nav>
-    </header>
+    {!bare && (
+      <header class="site-header">
+        <a href="/" class="brand">Home</a>
+        <nav><a href="/posts/">文章</a></nav>
+      </header>
+    )}
     <slot />
     <footer class="site-footer">© {new Date().getFullYear()}</footer>
   </body>
@@ -35,6 +37,7 @@ const { title, description = '个人主页与博客' } = Astro.props;
   }
   a { color: var(--accent); }
   .site-header, .site-footer, main.prose, main.list {
+    width: 100%;
     max-width: 720px; margin: 0 auto; padding: 16px;
   }
   .site-header { display: flex; justify-content: space-between; align-items: center; }
