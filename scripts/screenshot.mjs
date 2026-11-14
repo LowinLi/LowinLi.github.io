@@ -25,7 +25,7 @@ for (const w of widths) {
     const url = new URL(base); url.searchParams.set('tier', tier);
     await page.goto(url.href, { waitUntil: 'networkidle' });
     if (tier !== 'low') await page.waitForSelector('.scene[data-ready="true"]', { timeout: 10000 }).catch(() => errors.push('scene not ready in 10s'));
-    await page.waitForTimeout(1500);
+    await page.waitForTimeout(4000);
     const file = `${out}/${w}-${tier}.png`;
     await page.screenshot({ path: file });
     const info = await page.evaluate(() => {
@@ -39,9 +39,14 @@ for (const w of widths) {
     report.push({ file, ...info, errors });
     // 高档再拍一张插入磁带后的画面
     if (tier === 'high') {
-      await page.evaluate(() => window.__scene.emit('tape:insert', { id: 'posts' }));
-      await page.waitForTimeout(6000); // 无 GPU 环境只有 ~5fps，动画要多等
-      await page.screenshot({ path: `${out}/${w}-${tier}-playing.png` });
+      // 无 GPU 环境帧率很低，动画要多等几秒
+      await page.evaluate(() => window.__scene.emit('book:open', { id: 'lunyu' }));
+      await page.waitForTimeout(3000);
+      await page.screenshot({ path: `${out}/${w}-${tier}-book.png` });
+      await page.keyboard.press('Escape');
+      await page.evaluate(() => window.__scene.emit('monitor:focus'));
+      await page.waitForTimeout(7000);
+      await page.screenshot({ path: `${out}/${w}-${tier}-monitor.png` });
       await page.keyboard.press('Escape');
     }
     await page.close();

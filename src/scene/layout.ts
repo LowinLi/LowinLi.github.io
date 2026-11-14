@@ -1,16 +1,20 @@
-/** 场景里的关键坐标，物件之间共享。单位：米，桌面 y = 0。 */
-export const LAYOUT = {
-  tv: { x: -0.2, z: 0, w: 0.9, h: 0.72, d: 0.75 },
-  vcr: { h: 0.12 },
-  screen: { w: 0.66, h: 0.5 },
-  tapes: { x: 0.68, z: 0.2 },
-  camHome: { pos: [0.02, 0.92, 2.5], look: [-0.06, 0.32, 0] },
+import * as THREE from 'three';
+
+/** 场景里的关键坐标，物件之间共享。单位：米，桌面 y = 0，相机朝 -z 看向窗外。 */
+export const L = {
+  floorY: -0.75,
+  desk: { w: 2.3, d: 1.0, t: 0.04 },
+  wallZ: -1.15,
+  win: { x0: -1.55, x1: 1.55, y0: 0.14, y1: 1.8 },
+  monitor: { x: 0, z: -0.2, w: 0.64, h: 0.37, cy: 0.37 },
+  books: { x0: -0.9, z: -0.27 },
+  gramophone: { x: 0.8, z: -0.2 },
+  discs: { x: 0.6, z: 0.27 },
+  cam: { pos: [0, 0.86, 2.5], look: [0, 0.55, -0.2] },
+  seaY: -7,
 } as const;
 
-export const tvScreenCenter = () => ({
-  x: LAYOUT.tv.x,
-  y: LAYOUT.vcr.h + LAYOUT.tv.h / 2 + 0.02,
-  z: LAYOUT.tv.z + LAYOUT.tv.d / 2 + 0.006,
-});
-
-export const vcrSlot = () => ({ x: LAYOUT.tv.x, y: LAYOUT.vcr.h * 0.55, z: LAYOUT.tv.z + LAYOUT.tv.d / 2 - 0.05 });
+/** 太阳方向：正好在海平线上（露出一半），略偏左，避免被显示器挡住 */
+export const SUN_DIR = new THREE.Vector3(-0.2, 0.0, -1).normalize();
+/** 照进房间的光稍微抬高一点，让阳光能铺在桌面上 */
+export const SUN_LIGHT_DIR = new THREE.Vector3(-0.2, 0.24, -1).normalize();

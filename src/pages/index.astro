@@ -4,13 +4,13 @@ import Base from '../layouts/Base.astro';
 import Scene from '../components/Scene.astro';
 import { SITE } from '../site';
 import { url } from '../lib/url';
+import { buildBooks } from '../books';
+import { TRACKS } from '../tracks';
 const posts = (await getCollection('posts', ({ data }) => !data.draft))
   .sort((a, b) => b.data.date.valueOf() - a.data.date.valueOf());
-const data = {
-  ...SITE,
-  postsIndex: url('/posts/'),
-  posts: posts.slice(0, 12).map((p) => ({ title: p.data.title, url: url(`/posts/${p.id}/`), date: p.data.date.toISOString().slice(0, 10) })),
-};
+const postRefs = posts.slice(0, 18).map((p) => ({ title: p.data.title, url: url(`/posts/${p.id}/`), date: p.data.date.toISOString().slice(0, 10) }));
+const postsIndex = url('/posts/');
+const data = { ...SITE, postsIndex, posts: postRefs, books: buildBooks(SITE, postRefs, postsIndex), tracks: TRACKS };
 ---
 <Base title={SITE.name} description={SITE.tagline} bare>
   <Scene data={data} />

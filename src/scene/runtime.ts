@@ -2,27 +2,30 @@ import * as THREE from 'three';
 import { BUDGETS } from './budgets';
 import { emit, on, type MountContext, type Mounted, type PickHandlers, type SceneInput, type SceneObject, type SiteData } from './types';
 import type { Tier } from './tier';
+import { seaSky } from './objects/seaSky';
 import { room } from './objects/room';
-import { crt } from './objects/crt';
-import { shelf } from './objects/shelf';
+import { monitor } from './objects/monitor';
+import { bookshelf } from './objects/bookshelf';
+import { gramophone } from './objects/gramophone';
+import { plants } from './objects/plants';
+import { gulls } from './objects/gulls';
 import { cameraRig } from './objects/cameraRig';
 
 /** 场景里挂载的物件清单。新物件：在 objects/ 下建文件，然后加到这里。cameraRig 放最后。 */
-const OBJECTS: SceneObject[] = [room, crt, shelf, cameraRig];
+const OBJECTS: SceneObject[] = [seaSky, room, monitor, bookshelf, gramophone, plants, gulls, cameraRig];
 
-export function start(canvas: HTMLCanvasElement, tier: Exclude<Tier, 'low'>, data: SiteData) {
+export function start(canvas: HTMLCanvasElement, tier: Exclude<Tier, 'low'>, data: SiteData, bus: EventTarget) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: tier === 'high', powerPreference: 'high-performance' });
   renderer.setPixelRatio(Math.min(devicePixelRatio, BUDGETS.maxPixelRatio[tier]));
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.15;
+  renderer.toneMappingExposure = 1.05;
   if (tier === 'high') {
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   }
 
   const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(38, 1, 0.05, 30);
-  const bus = new EventTarget();
+  const camera = new THREE.PerspectiveCamera(38, 1, 0.05, 200);
 
   const size = () => {
     const { clientWidth: w, clientHeight: h } = canvas;
@@ -50,21 +53,26 @@ export function start(canvas: HTMLCanvasElement, tier: Exclude<Tier, 'low'>, dat
   let audioCtx: AudioContext | null = null;
   const ctx: MountContext = {
     scene, camera, renderer, tier, width, height, data, bus,
-    audio: () => audioCtx,
+    audio: () => { audioCtx ??= new AudioContext(); if (audioCtx.state === 'suspended') void audioCtx.resume(); return audioCtx; },
     pick: (obj, h) => { pickables.set(obj, h); },
   };
   const mounted: Mounted[] = OBJECTS.map((o) => o(ctx));
   const send = (e: SceneInput) => mounted.forEach((m) => m.input?.(e));
   send({ type: 'resize', width, height });
 
-  let playing: string | null = null;
-  const offState = on<{ playing: string | null }>(bus, 'tape:state', ({ playing: p }) => { playing = p; });
+  let monitorFocused = false;
+  const offs = [
+    on(bus, 'monitor:focus', () => { monitorFocused = true; }),
+    on(bus, 'monitor:blur', () => { monitorFocused = false; }),
+  ];
 
   const onResize = () => send({ type: 'resize', ...size() });
   let downAt: { x: number; y: number } | null = null;
+  let lastX = 0;
   const onMove = (e: PointerEvent) => {
     const r = canvas.getBoundingClientRect();
     send({ type: 'pointer', x: ((e.clientX - r.left) / r.width) * 2 - 1, y: -(((e.clientY - r.top) / r.height) * 2 - 1) });
+    if (downAt) { send({ type: 'drag', dx: (e.clientX - lastX) / r.width }); lastX = e.clientX; }
     const res = cast(e);
     const owner = res?.owner ?? null;
     if (owner !== hovered) {
@@ -72,31 +80,23 @@ export function start(canvas: HTMLCanvasElement, tier: Exclude<Tier, 'low'>, dat
       if (owner) pickables.get(owner)?.hover?.(true);
       hovered = owner;
     }
-    canvas.style.cursor = owner && (pickables.get(owner)!.click) ? 'pointer' : '';
+    canvas.style.cursor = owner && pickables.get(owner)!.click ? 'pointer' : '';
     if (res) pickables.get(res.owner)?.move?.(res.hit);
   };
-  const onDown = (e: PointerEvent) => {
-    downAt = { x: e.clientX, y: e.clientY };
-    audioCtx ??= new AudioContext();
-    onMove(e);
-  };
+  const onDown = (e: PointerEvent) => { downAt = { x: e.clientX, y: e.clientY }; lastX = e.clientX; };
   const onUp = (e: PointerEvent) => {
-    if (!downAt || Math.hypot(e.clientX - downAt.x, e.clientY - downAt.y) > 8) { downAt = null; return; }
-    downAt = null;
+    const start = downAt; downAt = null;
+    if (!start || Math.hypot(e.clientX - start.x, e.clientY - start.y) > 8) return;
     const res = cast(e);
     if (res) pickables.get(res.owner)?.click?.(res.hit);
-    else if (playing) emit(bus, 'tape:eject'); // 点屏幕外面退出
+    else if (monitorFocused) emit(bus, 'monitor:blur'); // 点显示器外面退出
   };
-  const onKey = (e: KeyboardEvent) => {
-    if (!visible || !playing) return;
-    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' ', 'Enter', 'Escape'].includes(e.key)) e.preventDefault();
-    send({ type: 'key', key: e.key });
-  };
+  const onCancel = () => { downAt = null; };
   addEventListener('resize', onResize);
   canvas.addEventListener('pointermove', onMove);
   canvas.addEventListener('pointerdown', onDown);
   canvas.addEventListener('pointerup', onUp);
-  addEventListener('keydown', onKey);
+  canvas.addEventListener('pointercancel', onCancel);
 
   // 不在视口内或标签页隐藏时停止渲染
   let visible = true;
@@ -115,17 +115,17 @@ export function start(canvas: HTMLCanvasElement, tier: Exclude<Tier, 'low'>, dat
   // 暴露给 QA / 截图脚本读取的诊断信息
   (window as any).__scene = { tier, info: renderer.info, bus, emit: (type: string, d?: unknown) => emit(bus, type, d) };
 
-  const stop = () => {
+  return () => {
     renderer.setAnimationLoop(null);
     mounted.forEach((m) => m.stop());
-    offState();
+    offs.forEach((f) => f());
     io.disconnect();
     removeEventListener('resize', onResize);
     canvas.removeEventListener('pointermove', onMove);
     canvas.removeEventListener('pointerdown', onDown);
     canvas.removeEventListener('pointerup', onUp);
-    removeEventListener('keydown', onKey);
+    canvas.removeEventListener('pointercancel', onCancel);
+    void audioCtx?.close();
     renderer.dispose();
   };
-  return { bus, stop };
 }

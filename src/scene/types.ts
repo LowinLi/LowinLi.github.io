@@ -1,5 +1,7 @@
 import type * as THREE from 'three';
 import type { Tier } from './tier';
+import type { Book } from '../books';
+import type { Track } from '../tracks';
 
 export interface SiteData {
   name: string;
@@ -8,6 +10,8 @@ export interface SiteData {
   posts: { title: string; url: string; date: string }[];
   postsIndex: string;
   links: { label: string; url: string }[];
+  books: Book[];
+  tracks: Track[];
 }
 
 export interface PickHandlers {
@@ -24,7 +28,8 @@ export interface MountContext {
   tier: Exclude<Tier, 'low'>; // low 档不会初始化 WebGL
   width: number;
   height: number;
-  audio: () => AudioContext | null; // 用户首次交互后才有，之前返回 null
+  /** 只能在用户手势（点击）的回调里调用，首次调用时创建 AudioContext */
+  audio: () => AudioContext;
   data: SiteData;
   /** 物件之间只通过 bus 通信，不互相 import。事件名见 CLAUDE.md。 */
   bus: EventTarget;
@@ -34,9 +39,8 @@ export interface MountContext {
 
 export type SceneInput =
   | { type: 'pointer'; x: number; y: number } // 归一化到 [-1, 1]
-  | { type: 'scroll'; progress: number } // 0..1
-  | { type: 'resize'; width: number; height: number }
-  | { type: 'key'; key: string };
+  | { type: 'drag'; dx: number } // 按住拖动，dx 为相对画布宽度的比例
+  | { type: 'resize'; width: number; height: number };
 
 export interface Mounted {
   frame(dt: number, elapsed: number): void;
@@ -53,3 +57,10 @@ export const on = <T = unknown>(bus: EventTarget, type: string, fn: (d: T) => vo
   bus.addEventListener(type, h);
   return () => bus.removeEventListener(type, h);
 };
+
+/** 物件内部的资源回收小工具 */
+export class Bin {
+  private items: { dispose(): void }[] = [];
+  add<T extends { dispose(): void }>(x: T): T { this.items.push(x); return x; }
+  dispose() { this.items.forEach((x) => x.dispose()); this.items = []; }
+}

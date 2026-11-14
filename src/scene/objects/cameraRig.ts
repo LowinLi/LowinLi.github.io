@@ -1,48 +1,54 @@
 import * as THREE from 'three';
 import { on, type SceneObject } from '../types';
-import { LAYOUT, tvScreenCenter } from '../layout';
+import { L } from '../layout';
 import { damp } from '../tween';
 
-/** 相机：默认俯看书桌，指针带一点视差；播放磁带时推近到屏幕。 */
+/**
+ * 相机。home：坐在桌前看向窗外，指针带视差；monitor：推近到显示器；book：稍微靠向书架。
+ * 竖屏放不下整张桌子，改成左右拖动平移。
+ */
 export const cameraRig: SceneObject = ({ camera, bus }) => {
-  const look = new THREE.Vector3(...LAYOUT.camHome.look);
-  const pos = new THREE.Vector3(...LAYOUT.camHome.pos);
-  let px = 0, py = 0, focus = 0, focusTarget = 0, aspect = camera.aspect;
-  const sc = tvScreenCenter();
-  const off = on<{ playing: string | null }>(bus, 'tape:state', ({ playing }) => { focusTarget = playing ? 1 : 0; });
-
-  const homePos = new THREE.Vector3(), homeLook = new THREE.Vector3();
-  const tvLook = new THREE.Vector3(sc.x - 0.07, sc.y, sc.z);
-  const tvPos = new THREE.Vector3();
+  let mode: 'home' | 'monitor' | 'book' = 'home';
+  let px = 0, py = 0, pan = -0.22, aspect = camera.aspect, first = true;
+  const pos = new THREE.Vector3(), look = new THREE.Vector3();
+  const tp = new THREE.Vector3(), tl = new THREE.Vector3();
+  const off = [
+    on(bus, 'monitor:focus', () => { mode = 'monitor'; }),
+    on(bus, 'monitor:blur', () => { if (mode === 'monitor') mode = 'home'; }),
+    on(bus, 'book:open', () => { mode = 'book'; }),
+    on(bus, 'book:close', () => { if (mode === 'book') mode = 'home'; }),
+  ];
   return {
     frame(dt) {
-      focus = damp(focus, focusTarget, 4, dt);
-      const vfov = THREE.MathUtils.degToRad(camera.fov);
-      if (aspect >= 1.1) {
-        // 偏窄的横屏（如 1024）往后退，保证台灯到磁带都在画面里
-        const z = Math.max(pos.z, 1.3 / (Math.tan(vfov / 2) * aspect));
-        homePos.set(pos.x + px * 0.25, pos.y + py * 0.12 + (z - pos.z) * 0.2, z);
-        homeLook.copy(look);
+      const tan = Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2);
+      const m = L.monitor;
+      if (mode === 'monitor') {
+        const dist = Math.max(m.h / 0.78, m.w / 0.92 / aspect) / 2 / tan;
+        tl.set(m.x, m.cy, m.z);
+        tp.set(m.x + px * 0.02, m.cy + py * 0.015, m.z + 0.02 + dist);
+      } else if (aspect >= 1.1) {
+        // 横屏：保证整张桌子都在画面里
+        const z = Math.max(L.cam.pos[2], m.z + 1.22 / (tan * aspect));
+        tp.set(L.cam.pos[0] + px * 0.22, L.cam.pos[1] + py * 0.08 + (z - L.cam.pos[2]) * 0.1, z);
+        tl.set(L.cam.look[0] + px * 0.04, L.cam.look[1], L.cam.look[2]);
       } else {
-        // 竖屏：从更高处往下看，让桌面填满纵向空间；横向只保证电视 + 磁带在画面内
-        // 注视点放在桌子后上方，桌子前沿落在画面下部、窗户在上部
-        const tan = Math.tan(vfov / 2);
-        const dist = Math.max(0.82 / (tan * aspect), 1.5 / tan);
-        const tilt = THREE.MathUtils.degToRad(30);
-        homeLook.set(-0.02, 0.75, -0.3);
-        homePos.set(homeLook.x + px * 0.1, homeLook.y + Math.sin(tilt) * dist, homeLook.z + Math.cos(tilt) * dist);
+        const dist = Math.min(0.64 / (tan * aspect), 4.6);
+        tp.set(pan, 1.02, m.z + dist);
+        tl.set(pan, 0.62, m.z);
       }
-      // 屏幕填满约 85% 的较短边
-      const fitH = 0.5 / 0.85, fitW = 0.66 / 0.85 / aspect;
-      const dist = Math.max(fitH, fitW) / 2 / Math.tan(vfov / 2);
-      tvPos.set(tvLook.x + px * 0.03, tvLook.y + py * 0.02, tvLook.z + dist);
-      camera.position.lerpVectors(homePos, tvPos, focus);
-      camera.lookAt(new THREE.Vector3().lerpVectors(homeLook, tvLook, focus));
+      if (mode === 'book') { tp.lerp(new THREE.Vector3(-0.7, 0.5, 1.5), 0.3); tl.lerp(new THREE.Vector3(-0.7, 0.15, L.books.z), 0.3); }
+      if (first) { pos.copy(tp); look.copy(tl); first = false; }
+      const k = mode === 'monitor' ? 4 : 3.2;
+      pos.set(damp(pos.x, tp.x, k, dt), damp(pos.y, tp.y, k, dt), damp(pos.z, tp.z, k, dt));
+      look.set(damp(look.x, tl.x, k, dt), damp(look.y, tl.y, k, dt), damp(look.z, tl.z, k, dt));
+      camera.position.copy(pos);
+      camera.lookAt(look);
     },
     input(e) {
-      if (e.type === 'pointer') { px = damp(px, e.x, 1, 1); py = damp(py, e.y, 1, 1); }
+      if (e.type === 'pointer') { px = e.x; py = e.y; }
+      if (e.type === 'drag') pan = THREE.MathUtils.clamp(pan - e.dx * 1.4, -0.8, 0.8);
       if (e.type === 'resize') aspect = e.width / Math.max(1, e.height);
     },
-    stop() { off(); },
+    stop() { off.forEach((f) => f()); },
   };
 };

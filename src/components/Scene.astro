@@ -1,34 +1,70 @@
 ---
-// 首页唯一的 3D island。low 档只显示静态回退，不加载 three.js。
+// 首页唯一的 3D island。low 档只显示静态回退，不加载 three.js；书本阅读器是纯 HTML，三档都能用。
 import type { SiteData } from '../scene/types';
-import { TAPES } from '../tapes';
+import { SEARCH } from '../scene/search';
 interface Props { data: SiteData }
 const { data } = Astro.props;
-// low 档时磁带按钮退化成页内锚点
-const anchors: Record<string, string> = { about: '#about', posts: '#posts' };
+const pct = (n: number) => `${(n * 100).toFixed(2)}%`;
 ---
-<section class="scene" data-tier="pending" aria-label="交互式书桌">
+<section class="scene" data-tier="pending" data-mode="" aria-label="海边的办公室">
   <div class="fallback" aria-hidden="true">
-    <div class="tv"><div class="glass"><span>NO SIGNAL</span></div></div>
+    <div class="sun"></div>
+    <div class="sea"></div>
+    <div class="mullion" style="left:33%"></div>
+    <div class="mullion" style="left:66%"></div>
   </div>
   <canvas aria-hidden="true"></canvas>
+
   <div class="overlay">
     <div class="intro">
       <h1>{data.name}</h1>
       <p>{data.tagline}</p>
     </div>
-    <nav class="tapes" aria-label="磁带">
-      {TAPES.map((t) => (
-        <a
-          href={anchors[t.id] ?? '#'}
-          data-tape={t.id}
-          data-webgl-only={anchors[t.id] ? undefined : ''}
-          style={`--c:${t.color}`}
-        >{t.label}</a>
-      ))}
+    <div class="top-right">
+      <button class="playing" type="button" hidden>♪ <span></span> · 停止</button>
+      <button class="back" type="button" hidden>← 返回 <kbd>ESC</kbd></button>
+    </div>
+    <nav class="chips" aria-label="快捷入口">
+      <a href="#about" data-book="about">关于我</a>
+      <a href="#posts" data-book="posts">文章</a>
+      <a href="#" data-action="search" data-webgl-only>搜索</a>
+      <a href="#" data-action="music" data-webgl-only>音乐</a>
     </nav>
-    <button class="eject" type="button" hidden>⏏ 退出 <kbd>ESC</kbd></button>
-    <p class="hint">点一盘磁带塞进电视</p>
+    <p class="hint"><span class="wide">点书翻开看 · 点唱片放音乐 · 点盆栽 · 点显示器搜索</span><span class="narrow">左右拖动看看桌面 · 点一点桌上的东西</span></p>
+  </div>
+
+  <!-- 镜头推到显示器时，真正的输入框叠在屏幕上画的搜索框上 -->
+  <form class="screen-ui" action="https://www.baidu.com/s" method="get" target="_blank" rel="noopener" hidden>
+    <input name="wd" type="search" autocomplete="off" placeholder="输入后回车，在新标签页打开百度" aria-label="百度搜索"
+      style={`left:${pct(SEARCH.x)};top:${pct(SEARCH.y)};width:${pct(SEARCH.w)};height:${pct(SEARCH.h)}`} />
+    <button type="submit" aria-label="百度一下"
+      style={`left:${pct(SEARCH.x + SEARCH.w)};top:${pct(SEARCH.y)};width:${pct(SEARCH.btn)};height:${pct(SEARCH.h)}`}></button>
+  </form>
+
+  <div class="reader" hidden role="dialog" aria-modal="true" aria-label="书">
+    <button class="close" type="button" aria-label="合上书">×</button>
+    {data.books.map((b) => (
+      <article class={`book ${b.kind}`} data-book={b.id} hidden>
+        <div class="pages" tabindex="0">
+          <section class="page title-page">
+            <h2>{b.title}</h2>
+            {b.author && <p class="author">{b.author}</p>}
+          </section>
+          {b.pages.map((p) => (
+            <section class="page">
+              {p.heading && <h3>{p.heading}</h3>}
+              {p.lines.map((l) => typeof l === 'string'
+                ? <p>{l}</p>
+                : <p class="link"><a href={l.href}>{l.text}</a>{l.meta && <small>{l.meta}</small>}</p>)}
+            </section>
+          ))}
+        </div>
+      </article>
+    ))}
+    <div class="turn">
+      <button type="button" data-turn="-1" aria-label="上一页">‹</button>
+      <button type="button" data-turn="1" aria-label="下一页">›</button>
+    </div>
   </div>
   <script type="application/json" id="site-data" set:html={JSON.stringify(data)} />
 </section>
@@ -37,25 +73,87 @@ const anchors: Record<string, string> = { about: '#about', posts: '#posts' };
   import { detectTier } from '../scene/tier';
 
   const root = document.querySelector<HTMLElement>('.scene')!;
+  const $ = <T extends HTMLElement>(s: string) => root.querySelector<T>(s)!;
+  const data = JSON.parse(document.getElementById('site-data')!.textContent!);
+  const bus = new EventTarget();
+  const emit = (type: string, detail?: unknown) => bus.dispatchEvent(new CustomEvent(type, { detail }));
+  const on = <T,>(type: string, fn: (d: T) => void) => bus.addEventListener(type, (e) => fn((e as CustomEvent<T>).detail));
+
+  // ---- 书本阅读器（不依赖 WebGL）----
+  const reader = $<HTMLElement>('.reader');
+  const books = [...reader.querySelectorAll<HTMLElement>('.book')];
+  let open: HTMLElement | null = null;
+  on<{ id: string }>('book:open', ({ id }) => {
+    open = books.find((b) => b.dataset.book === id) ?? null;
+    if (!open) return;
+    books.forEach((b) => { b.hidden = b !== open; });
+    reader.hidden = false;
+    root.dataset.mode = 'book';
+    open.querySelector<HTMLElement>('.pages')!.scrollLeft = 0;
+    $<HTMLButtonElement>('.reader .close').focus();
+  });
+  on('book:close', () => {
+    if (!open) return;
+    open = null; reader.hidden = true;
+    if (root.dataset.mode === 'book') root.dataset.mode = '';
+  });
+  const turn = (dir: number) => {
+    const pages = open?.querySelector<HTMLElement>('.pages'); if (!pages) return;
+    const rtl = open!.classList.contains('classic'); // 古籍从右往左翻
+    pages.scrollBy({ left: dir * (rtl ? -1 : 1) * pages.clientWidth, behavior: 'smooth' });
+  };
+  reader.querySelectorAll<HTMLButtonElement>('[data-turn]').forEach((b) => b.addEventListener('click', () => turn(Number(b.dataset.turn))));
+  $('.reader .close').addEventListener('click', () => emit('book:close'));
+  reader.addEventListener('click', (e) => { if (e.target === reader) emit('book:close'); });
+  root.querySelectorAll<HTMLAnchorElement>('.chips [data-book]').forEach((a) =>
+    a.addEventListener('click', (e) => { e.preventDefault(); emit('book:open', { id: a.dataset.book }); }));
+
+  // ---- 显示器上的搜索框 ----
+  const screenUi = $<HTMLFormElement>('.screen-ui');
+  const input = screenUi.querySelector('input')!;
+  const back = $<HTMLButtonElement>('.back');
+  on('monitor:focus', () => {
+    root.dataset.mode = 'monitor'; back.hidden = false; screenUi.hidden = false;
+    if (matchMedia('(pointer: fine)').matches) setTimeout(() => root.dataset.mode === 'monitor' && input.focus({ preventScroll: true }), 900);
+  });
+  on('monitor:blur', () => {
+    if (root.dataset.mode === 'monitor') root.dataset.mode = '';
+    back.hidden = true; screenUi.hidden = true; input.blur();
+  });
+  on<{ x: number; y: number; w: number; h: number } | null>('monitor:rect', (r) => {
+    if (!r) return;
+    Object.assign(screenUi.style, { left: `${r.x}px`, top: `${r.y}px`, width: `${r.w}px`, height: `${r.h}px`, fontSize: `${r.h * 0.034}px` });
+  });
+  back.addEventListener('click', () => emit('monitor:blur'));
+  screenUi.addEventListener('submit', (e) => { if (!input.value.trim()) e.preventDefault(); });
+
+  // ---- 音乐 ----
+  const playing = $<HTMLButtonElement>('.playing');
+  let now: string | null = null;
+  on<{ id: string; title: string } | null>('music:state', (s) => {
+    now = s?.id ?? null; playing.hidden = !s;
+    if (s) playing.querySelector('span')!.textContent = s.title;
+  });
+  playing.addEventListener('click', () => emit('disc:stop'));
+
+  addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { emit('book:close'); emit('monitor:blur'); }
+    if (open && e.key === 'ArrowRight') turn(open.classList.contains('classic') ? -1 : 1);
+    if (open && e.key === 'ArrowLeft') turn(open.classList.contains('classic') ? 1 : -1);
+  });
+
+  // ---- 3D 场景 ----
   const tier = detectTier();
   root.dataset.tier = tier;
   if (tier !== 'low') {
-    const canvas = root.querySelector('canvas')!;
-    const data = JSON.parse(document.getElementById('site-data')!.textContent!);
-    const eject = root.querySelector<HTMLButtonElement>('.eject')!;
     import('../scene/runtime').then(({ start }) => {
-      const { bus } = start(canvas, tier, data);
+      start(root.querySelector('canvas')!, tier, data, bus);
       root.dataset.ready = 'true';
-      const emit = (type: string, detail?: unknown) => bus.dispatchEvent(new CustomEvent(type, { detail }));
-      root.querySelectorAll<HTMLAnchorElement>('[data-tape]').forEach((a) => {
-        a.addEventListener('click', (e) => { e.preventDefault(); emit('tape:insert', { id: a.dataset.tape }); });
-      });
-      eject.addEventListener('click', () => emit('tape:eject'));
-      bus.addEventListener('tape:state', (e) => {
-        const playing = (e as CustomEvent<{ playing: string | null }>).detail.playing;
-        root.dataset.playing = playing ?? '';
-        eject.hidden = !playing;
-        root.querySelectorAll<HTMLElement>('[data-tape]').forEach((a) => a.toggleAttribute('aria-current', a.dataset.tape === playing));
+      $('[data-action="search"]').addEventListener('click', (e) => { e.preventDefault(); emit('monitor:focus'); });
+      $('[data-action="music"]').addEventListener('click', (e) => {
+        e.preventDefault();
+        const ids: string[] = data.tracks.map((t: { id: string }) => t.id);
+        emit('disc:play', { id: ids[(ids.indexOf(now ?? '') + 1) % ids.length] });
       });
     }).catch((err) => {
       console.error('[scene] 初始化失败，退回静态版', err);
@@ -65,42 +163,97 @@ const anchors: Record<string, string> = { about: '#about', posts: '#posts' };
 </script>
 
 <style>
-  .scene { position: relative; width: 100%; height: 100svh; min-height: 520px; overflow: hidden; background: #0c0907; color: #f1e6d4; }
+  .scene { position: relative; width: 100%; height: 100svh; min-height: 520px; overflow: hidden; background: #f3c9a0; color: #fff; }
   canvas, .fallback { position: absolute; inset: 0; width: 100%; height: 100%; }
   canvas { touch-action: pan-y; }
+
+  /* low 档 / 加载前：一扇 CSS 画的窗，窗外是日出的海 */
   .fallback {
-    display: grid; place-items: center;
-    background: radial-gradient(ellipse at 60% 30%, #2b1f2e 0, #0c0907 70%);
-    transition: opacity .6s;
+    background: linear-gradient(#35599c 0%, #8fa8d4 30%, #f0b996 52%, #ffa262 60%, #1d4a5c 60%, #0e2b3a 100%);
+    transition: opacity .8s;
   }
-  .tv { width: min(64vw, 360px); aspect-ratio: 4/3.2; background: #cfc3ad; border-radius: 18px; padding: 7%; box-shadow: 0 30px 80px #000a; }
-  .glass { height: 100%; border-radius: 14px / 18px; background: radial-gradient(ellipse, #2a1608, #0d0703 75%); display: grid; place-items: center;
-    font: 700 clamp(14px, 3vw, 20px) ui-monospace, monospace; color: #ffb347; letter-spacing: .1em; text-shadow: 0 0 8px #ffb347; }
+  .sun { position: absolute; left: 38%; top: 60%; width: 16vmin; height: 16vmin; margin: -8vmin 0 0 -8vmin; border-radius: 50%;
+    background: radial-gradient(#fff6d8 0 45%, #ffd27a 70%); box-shadow: 0 0 12vmin 6vmin #ffb86b99;
+    clip-path: inset(-30vmin -30vmin 50% -30vmin); }
+  .sea { position: absolute; left: 0; right: 0; top: 60%; bottom: 0;
+    background: linear-gradient(90deg, transparent 30%, #ffb86b88 38%, transparent 46%), repeating-linear-gradient(#ffffff14 0 2px, transparent 2px 9px); }
+  .mullion { position: absolute; top: 0; bottom: 0; width: 6px; background: #2b2d31; }
   .scene[data-ready='true'] .fallback { opacity: 0; pointer-events: none; }
   .scene[data-tier='low'] canvas { display: none; }
-  .scene[data-tier='low'] [data-webgl-only] { display: none; }
+  .scene[data-tier='low'] [data-webgl-only], .scene[data-tier='low'] .hint { display: none; }
 
-  .overlay { position: absolute; inset: 0; pointer-events: none; padding: 16px; display: flex; flex-direction: column; }
+  .overlay { position: absolute; inset: 0; pointer-events: none; padding: 16px; display: flex; flex-direction: column;
+    background: radial-gradient(ellipse 60% 45% at 0 0, #0b1c3a80, transparent 70%); }
   .overlay > * { pointer-events: auto; }
-  .intro { max-width: 520px; transition: opacity .4s; }
-  .intro h1 { margin: 40px 0 4px; font-size: clamp(28px, 5vw, 44px); letter-spacing: .02em; }
-  .intro p { margin: 0; color: #c9b9a0; }
-  .scene[data-playing]:not([data-playing='']) .intro,
-  .scene[data-playing]:not([data-playing='']) .hint { opacity: 0; pointer-events: none; }
-  .tapes { display: flex; flex-wrap: wrap; gap: 8px; margin-top: auto; }
-  .tapes a {
-    font-size: 14px; padding: 6px 12px; border-radius: 4px; text-decoration: none; color: #2a1d12;
-    background: var(--c); box-shadow: inset 0 -3px 0 #0002;
+  .intro { max-width: 520px; transition: opacity .4s; pointer-events: none; text-shadow: 0 1px 12px #0b1c3a99, 0 0 2px #0b1c3a66; }
+  .intro h1 { margin: 28px 0 4px; font-size: clamp(28px, 5vw, 44px); letter-spacing: .02em; }
+  .intro p { margin: 0; opacity: .92; }
+  .scene:not([data-mode='']) .intro, .scene:not([data-mode='']) .hint { opacity: 0; }
+  .scene:not([data-mode='']) .overlay { background: none; }
+  .scene[data-mode='monitor'] .chips { display: none; }
+  .top-right { position: absolute; top: 16px; right: 16px; display: flex; gap: 8px; }
+  .top-right button, .chips a {
+    font: inherit; font-size: 14px; color: #fff; text-decoration: none; cursor: pointer;
+    background: #10203acc; border: 1px solid #ffffff40; border-radius: 999px; padding: 6px 14px;
+    backdrop-filter: blur(6px);
   }
-  .tapes a[aria-current] { outline: 2px solid #ffb347; outline-offset: 2px; }
-  .tapes a:focus-visible, .eject:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
-  .hint { margin: 10px 0 0; font-size: 13px; color: #8f8170; }
-  .scene[data-tier='low'] .hint { display: none; }
-  .eject {
-    position: absolute; top: 16px; right: 16px; font: inherit; font-size: 14px; color: #f1e6d4;
-    background: #0008; border: 1px solid #f1e6d455; border-radius: 4px; padding: 6px 12px; cursor: pointer;
-  }
-  .eject[hidden] { display: none; }
+  .top-right button[hidden] { display: none; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: auto; }
+  .chips a:hover, .top-right button:hover { background: #1b3560; }
+  :is(.chips a, .top-right button, .reader button):focus-visible { outline: 2px solid #ffd27a; outline-offset: 2px; }
+  .hint { margin: 10px 0 0; font-size: 13px; opacity: .85; text-shadow: 0 1px 6px #000a; transition: opacity .4s; }
+  .hint .narrow { display: none; }
+  @media (max-aspect-ratio: 11/10) { .hint .wide { display: none; } .hint .narrow { display: inline; } }
   kbd { font: 12px ui-monospace, monospace; opacity: .7; }
-  @media (min-width: 900px) { .overlay { padding: 24px 32px; } }
+
+  .screen-ui { position: absolute; margin: 0; opacity: 0; animation: appear .3s .75s forwards; }
+  .screen-ui[hidden] { display: none; }
+  @keyframes appear { to { opacity: 1; } }
+  .screen-ui input, .screen-ui button { position: absolute; box-sizing: border-box; border: 0; background: transparent; outline: 0; font: inherit; }
+  .screen-ui input { padding: 0 1.2em; color: #222; font-size: 1em; font-family: system-ui, "PingFang SC", sans-serif; border-radius: .7em 0 0 .7em; }
+  .screen-ui input::placeholder { color: #9195a3; }
+  .screen-ui button { cursor: pointer; }
+  .screen-ui button:focus-visible { outline: 2px solid #ffd27a; }
+
+  /* 阅读器 */
+  .reader { position: absolute; inset: 0; display: grid; grid-template: minmax(0, 1fr) / minmax(0, 1fr); place-items: center; padding: 56px 16px 64px; background: #0b1424b3; backdrop-filter: blur(5px); animation: appear .25s forwards; opacity: 0; }
+  .reader[hidden], .book[hidden] { display: none; }
+  .book { width: min(940px, 100%); height: min(600px, 100%); min-width: 0; }
+  .pages { height: 100%; display: flex; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; border-radius: 6px; box-shadow: 0 30px 80px #000a; outline: 0; }
+  .pages::-webkit-scrollbar { display: none; }
+  .page { flex: 0 0 50%; min-width: 0; scroll-snap-align: start; box-sizing: border-box; padding: 40px 36px; overflow: auto; color: #2a2622; background: #fbf8f1; box-shadow: inset 12px 0 18px -14px #0005; }
+  .page:nth-child(odd) { box-shadow: inset -12px 0 18px -14px #0005; }
+  .page h2 { font-size: clamp(24px, 4vw, 36px); margin: 0 0 12px; line-height: 1.3; }
+  .page h3 { font-size: 18px; margin: 0 0 16px; color: #8a4b2a; letter-spacing: .08em; }
+  .page p { margin: 0 0 14px; line-height: 1.9; }
+  .page .author { color: #7c746a; }
+  .page .link { display: flex; justify-content: space-between; gap: 12px; border-bottom: 1px dashed #d9d0bf; padding-bottom: 8px; }
+  .page .link a { color: #1f4e79; text-decoration: none; }
+  .page .link a:hover { text-decoration: underline; }
+  .page small { color: #9a9186; flex: none; font-variant-numeric: tabular-nums; }
+  .title-page { display: flex; flex-direction: column; justify-content: center; }
+  /* 古籍：竖排，从右往左翻，泛黄的纸和朱丝栏 */
+  .classic .pages { direction: rtl; }
+  .classic .page {
+    direction: ltr; writing-mode: vertical-rl; color: #2b2118; padding: 36px 30px;
+    font-family: "Songti SC", "STSong", "Noto Serif CJK SC", "Source Han Serif SC", "SimSun", "KaiTi", "PingFang SC", "Microsoft YaHei", serif; font-size: 20px;
+    background: repeating-linear-gradient(90deg, transparent 0 39px, #b5483a70 39px 40px), #efe2c4;
+    background-position: right 30px top 0;
+  }
+  .classic .page p { margin: 0 0 0 0; line-height: 40px; letter-spacing: .12em; text-indent: 0; }
+  .classic .page h3 { margin: 0; line-height: 40px; color: #8d2f22; font-size: 20px; }
+  .classic .page h2 { margin: 0; font-size: 34px; letter-spacing: .3em; padding: 22px 8px 12px; border: 2px solid #2b2118; background: #f7efd9; line-height: 1.5; }
+  .classic .title-page { display: grid; place-content: center; place-items: center; gap: 28px; background: #e9dab8; }
+  .classic .author { margin: 0; font-size: 16px; line-height: 1.6; }
+  .reader .close, .turn button {
+    font: inherit; color: #fff; background: #10203acc; border: 1px solid #ffffff40; border-radius: 999px; cursor: pointer;
+    width: 40px; height: 40px; font-size: 22px; line-height: 1;
+  }
+  .reader .close { position: absolute; top: 12px; right: 16px; }
+  .turn { position: absolute; bottom: 14px; left: 0; right: 0; display: flex; justify-content: center; gap: 16px; }
+  @media (max-width: 700px) {
+    .page { flex-basis: 100%; padding: 28px 22px; }
+    .page, .page:nth-child(odd) { box-shadow: none; }
+  }
+  @media (min-width: 900px) { .overlay { padding: 24px 32px; } .top-right { top: 24px; right: 32px; } }
 </style>

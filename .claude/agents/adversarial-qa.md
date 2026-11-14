@@ -13,7 +13,8 @@ tools: Bash, Read, Grep, Glob, Write
    - 残留的占位文字：`TODO`、`___`、`Lorem`、`Hello World`、`undefined`、`NaN`、`[object Object]`
    - 空的标签：空的 `<h1>`、空的 `<a>`、没有 alt 的图片
    - 被盖住但仍能点到的元素：canvas 或回退层下面的链接，用 `elementFromPoint` 检查
-   - 竞态：在 3D 加载完成前后快速滚动、缩放窗口、来回切换 `?tier=`，看控制台有没有报错
+   - 竞态：在 3D 加载完成前后快速滚动、缩放窗口、来回切换 `?tier=`；连续快速点不同的唱片、书翻开时按 ESC、显示器推近途中点返回，看控制台有没有报错、状态有没有卡住
+   - 音乐：停止后不能还有声音；切换唱片不能叠两首
    - 三个宽度（390/768/1440）× 三个档位（high/mid/low）下都没有横向滚动
    - 文章页里不能有任何 `<script>`
    - low 档不能请求 three.js 的 chunk（检查 network）
