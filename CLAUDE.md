@@ -5,12 +5,14 @@
 
 ## 命令
 - `npm run dev`：开发服务器，地址 http://localhost:4321
-- `npm run build`：输出到 `dist/`（Cloudflare Pages 的输出目录填 `dist`，不是 `public`）
+- `npm run build`：输出到 `dist/`
+- 部署：推送到 `main` 后，`.github/workflows/deploy.yml` 会自动构建并发布到 GitHub Pages。仓库的 Settings → Pages → Source 要选 **GitHub Actions**。
 - `npm run preview`：本地预览构建结果
 - `npm run shots -- <url> <outDir>`：在 390/768/1440 三个宽度 × high/mid/low 三档截图，同时检查控制台报错和横向滚动。改了视觉后**必须**跑它并真的打开截图看过，不许没渲染就说「看起来不错」。
 - `npm run migrate:hexo -- <hexo 仓库路径>`：迁移 Hexo 文章
 
 ## 架构
+- **站内链接一律用 `url('/path')`（`src/lib/url.ts`），不要直接写 `/path`。** 项目仓库的 Pages 地址在 `/<repo>/` 子路径下，直接写死的根路径会 404。可以用 `BASE=/test/ npm run build` 检查。
 - 一个站，路由分治：`/` 是主页，带唯一一个 3D island（`src/components/Scene.astro`）；`/posts/**` 是零 JS 的静态页。**文章页不允许出现 `<script>`。**
 - 文章在 `src/content/posts/`，schema 在 `src/content.config.ts`。
 - 3D 代码全在 `src/scene/`。three.js 只能通过 `runtime.ts` 动态 import 进来，不能被首页的首屏 bundle 静态引用。

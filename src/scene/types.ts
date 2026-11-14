@@ -6,6 +6,7 @@ export interface SiteData {
   tagline: string;
   bio: string[];
   posts: { title: string; url: string; date: string }[];
+  postsIndex: string;
   links: { label: string; url: string }[];
 }
 

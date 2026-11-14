@@ -1,4 +1,5 @@
 ---
+import { url } from '../lib/url';
 interface Props { title: string; description?: string; bare?: boolean }
 const { title, description = '个人主页与博客', bare = false } = Astro.props;
 ---
@@ -13,8 +14,8 @@ const { title, description = '个人主页与博客', bare = false } = Astro.pro
   <body>
     {!bare && (
       <header class="site-header">
-        <a href="/" class="brand">Home</a>
-        <nav><a href="/posts/">文章</a></nav>
+        <a href={url('/')} class="brand">Home</a>
+        <nav><a href={url('/posts/')}>文章</a></nav>
       </header>
     )}
     <slot />

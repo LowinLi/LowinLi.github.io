@@ -1,8 +1,11 @@
 import { defineConfig } from 'astro/config';
 
-// 纯静态输出，部署到 Cloudflare Pages，输出目录 dist
+// 纯静态输出，部署到 GitHub Pages（.github/workflows/deploy.yml），输出目录 dist
+// SITE / BASE 由部署 workflow 注入：
+//   <user>.github.io 仓库 → base '/'；其它仓库 → base '/<repo>/'
 export default defineConfig({
-  site: 'https://example.com', // TODO: 换成正式域名
+  site: process.env.SITE ?? 'http://localhost:4321',
+  base: process.env.BASE ?? '/',
   output: 'static',
   build: { format: 'directory' },
 });

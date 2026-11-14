@@ -6,7 +6,7 @@ export const posts: Tape = {
   label: '文章',
   color: '#b9d4c8',
   mount({ ctx, width, height, data, navigate }) {
-    const items = [...data.posts.slice(0, 7), { title: '全部文章 →', url: '/posts/', date: '' }];
+    const items = [...data.posts.slice(0, 7), { title: '全部文章 →', url: data.postsIndex, date: '' }];
     const top = 110, row = 42;
     let sel = 0;
     const hitRow = (y: number) => {
