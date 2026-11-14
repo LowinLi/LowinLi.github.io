@@ -1,71 +1,150 @@
 import * as THREE from 'three';
 import { Bin, type SceneObject } from '../types';
 import { L } from '../layout';
+import { Batch, blob, canvasTex, contactMaterial, leafGeo, potGeo, rbox, rng, speckle, type V3 } from '../util';
 
-/** 盆栽：桌上一盆阔叶、一盆多肉，地上一盆虎尾兰。点击会晃，悬停会轻轻动一下；平时有一点微风。 */
+/**
+ * 盆栽：桌上一盆橡皮树、一盆石莲花，地上一盆虎尾兰（带木质花架）。
+ * 点击会晃，悬停会轻轻动一下；平时有一点微风。每盆的叶子分成几组，各自用阻尼弹簧摆动，所以晃起来有先有后。
+ */
 export const plants: SceneObject = ({ scene, tier, pick }) => {
   const bin = new Bin();
   const group = new THREE.Group();
   const high = tier === 'high';
-  const leafGeo = bin.add(new THREE.SphereGeometry(1, high ? 10 : 6, high ? 8 : 5));
-  leafGeo.scale(0.34, 1, 0.06); leafGeo.translate(0, 1, 0); // 原点在叶柄
-  const swordGeo = bin.add(new THREE.SphereGeometry(1, 6, 8));
-  swordGeo.scale(0.13, 1, 0.03); swordGeo.translate(0, 1, 0);
-  const fatGeo = bin.add(new THREE.SphereGeometry(1, 8, 6));
-  fatGeo.scale(0.36, 1, 0.2); fatGeo.translate(0, 1, 0);
-  const soil = bin.add(new THREE.MeshStandardMaterial({ color: 0x2e241c, roughness: 1 }));
-  const green = (c: number) => bin.add(new THREE.MeshStandardMaterial({ color: c, roughness: 0.55 }));
+  const std = (o: THREE.MeshStandardMaterialParameters) => bin.add(new THREE.MeshStandardMaterial(o));
+  const soil = std({ roughness: 1, map: bin.add(canvasTex(64, 64, (g, w, h) => { g.fillStyle = '#2b2018'; g.fillRect(0, 0, w, h); speckle(g, w, h, 71, 500, '150,120,90', 0.5); })) });
+  const contact = contactMaterial(bin, high ? 0.32 : 0.55);
 
-  type Leaf = { pivot: THREE.Group; tilt: number; w: number };
-  type Plant = { top: THREE.Group; leaves: Leaf[]; ax: number; az: number; vx: number; vz: number; seed: number; stiff: number };
+  type Part = { obj: THREE.Group; k: number; gain: number; ax: number; az: number; vx: number; vz: number };
+  type Plant = { parts: Part[]; seed: number };
   const list: Plant[] = [];
 
-  const make = (x: number, y: number, z: number, potR: number, potH: number, potColor: number, potRough: number, stiff: number) => {
-    const root = new THREE.Group(); root.position.set(x, y, z);
-    const pot = new THREE.Mesh(bin.add(new THREE.CylinderGeometry(potR, potR * 0.78, potH, 28)), bin.add(new THREE.MeshStandardMaterial({ color: potColor, roughness: potRough })));
-    pot.position.y = potH / 2; pot.castShadow = pot.receiveShadow = high;
-    const dirt = new THREE.Mesh(bin.add(new THREE.CircleGeometry(potR * 0.94, 24)), soil);
-    dirt.rotation.x = -Math.PI / 2; dirt.position.y = potH - 0.004;
-    const top = new THREE.Group(); top.position.y = potH - 0.004;
-    root.add(pot, dirt, top);
+  /** 建一盆：返回静态部件的 Batch、放叶子的顶部节点，以及「加一组会摆动的叶子」的函数 */
+  const make = (pos: V3, topY: number, stiff: number, groups: number) => {
+    const root = new THREE.Group(); root.position.set(...pos);
     group.add(root);
-    const plant: Plant = { top, leaves: [], ax: 0, az: 0, vx: 0, vz: 0, seed: Math.random() * 10, stiff };
-    const kick = (power: number) => { const a = Math.random() * Math.PI * 2; plant.vx += Math.cos(a) * power; plant.vz += Math.sin(a) * power; };
-    pick(root, { click() { kick(7); }, hover(on) { if (on) kick(1.6); } });
+    const statics = new Batch();
+    const plant: Plant = { parts: [], seed: pos[0] * 7 };
+    const leaves: Batch[] = [];
+    for (let i = 0; i < groups; i++) {
+      const obj = new THREE.Group(); obj.position.y = topY; root.add(obj);
+      plant.parts.push({ obj, k: stiff * (0.8 + i * 0.25), gain: 1 + i * 0.35, ax: 0, az: 0, vx: 0, vz: 0 });
+      leaves.push(new Batch(['position', 'normal', 'uv', 'color']));
+    }
+    const kick = (power: number) => {
+      const a = Math.random() * Math.PI * 2;
+      for (const p of plant.parts) { p.vx += Math.cos(a) * power * p.gain; p.vz += Math.sin(a) * power * p.gain; }
+    };
+    pick(root, { click() { kick(6); }, hover(on) { if (on) kick(1.4); } });
     list.push(plant);
-    return plant;
-  };
-  const leaf = (p: Plant, geo: THREE.BufferGeometry, mat: THREE.Material, yaw: number, tilt: number, size: number, y = 0) => {
-    const yawG = new THREE.Group(); yawG.rotation.y = yaw; yawG.position.y = y;
-    const pivot = new THREE.Group(); pivot.rotation.z = tilt;
-    const mesh = new THREE.Mesh(geo, mat); mesh.scale.setScalar(size); mesh.castShadow = high;
-    pivot.add(mesh); yawG.add(pivot); p.top.add(yawG);
-    p.leaves.push({ pivot, tilt, w: 0.6 + Math.random() * 0.8 });
+    const finish = () => {
+      statics.build(root, bin, { cast: high, receive: high, noCast: [contact] });
+      leaves.forEach((b, i) => b.build(plant.parts[i].obj, bin, { cast: high, receive: high }));
+    };
+    return { statics, leaves, finish };
   };
 
-  // 1. 桌面左前：阔叶
-  const a = make(-1.03, 0, 0.33, 0.07, 0.11, 0xf3efe8, 0.25, 55);
-  const ga = [green(0x2f7d4a), green(0x3b9158), green(0x276b3f)];
-  for (let i = 0; i < 11; i++) leaf(a, leafGeo, ga[i % 3], i * 2.4, 0.25 + (i / 11) * 0.75, 0.085 + ((i * 3) % 4) * 0.012, (i / 11) * 0.05);
-  // 2. 显示器右边：多肉
-  const b = make(0.44, 0, -0.3, 0.05, 0.06, 0xc8744e, 0.8, 110);
-  const gb = [green(0x7fae8e), green(0x93bfa0)];
-  for (let ring = 0; ring < 3; ring++) for (let i = 0; i < 7 - ring * 2; i++) leaf(b, fatGeo, gb[(i + ring) % 2], i * (Math.PI * 2 / (7 - ring * 2)) + ring * 0.5, 1.05 - ring * 0.42, 0.034 - ring * 0.005, ring * 0.008);
-  // 3. 地上：虎尾兰
-  const c = make(1.62, L.floorY, -0.45, 0.2, 0.36, 0x3a3d42, 0.6, 38);
-  const gc = [green(0x2c6a45), green(0x3f8452), green(0x24583a)];
-  for (let i = 0; i < 12; i++) leaf(c, swordGeo, gc[i % 3], i * 2.4, 0.06 + ((i * 5) % 6) * 0.045, 0.34 + ((i * 7) % 5) * 0.045);
+  // ---- 1. 桌面左前：橡皮树。白瓷盆 + 托盘，深绿油亮的大叶子沿茎互生 ----
+  {
+    const p = make([-1.03, 0, 0.33], 0.105, 50, 3);
+    const glaze = std({ color: 0xf4f1ea, roughness: 0.18 });
+    p.statics.add(glaze, potGeo(0.07, 0.052, 0.11), [0, 0.006, 0]);
+    p.statics.add(glaze, new THREE.CylinderGeometry(0.068, 0.06, 0.008, 36), [0, 0.004, 0]);
+    p.statics.add(soil, new THREE.CircleGeometry(0.064, 28).rotateX(-Math.PI / 2), [0, 0.104, 0]);
+    p.statics.add(contact, blob(0.11, 0.11), [0, 0.0009, 0]);
+    const leafTex = bin.add(canvasTex(128, 256, (g, w, h) => {
+      const grad = g.createLinearGradient(0, h, 0, 0); grad.addColorStop(0, '#1f5a35'); grad.addColorStop(1, '#2f7d48');
+      g.fillStyle = grad; g.fillRect(0, 0, w, h);
+      g.strokeStyle = 'rgba(190,225,170,.75)'; g.lineWidth = 3; g.beginPath(); g.moveTo(w / 2, h); g.lineTo(w / 2, 0); g.stroke(); // 中脉
+      g.strokeStyle = 'rgba(170,215,160,.28)'; g.lineWidth = 1.2;
+      for (let y = h - 10; y > 20; y -= 15) for (const s of [-1, 1]) { g.beginPath(); g.moveTo(w / 2, y); g.quadraticCurveTo(w / 2 + s * 30, y - 16, w / 2 + s * 62, y - 34); g.stroke(); }
+    }));
+    const leafMat = std({ map: leafTex, roughness: 0.3, side: THREE.DoubleSide });
+    const stemMat = std({ color: 0x4a3a26, roughness: 0.8 });
+    const stem = new THREE.CatmullRomCurve3([new THREE.Vector3(0, -0.01, 0), new THREE.Vector3(0.006, 0.08, 0.004), new THREE.Vector3(-0.004, 0.17, -0.004), new THREE.Vector3(0.004, 0.25, 0)]);
+    p.leaves[0].add(stemMat, new THREE.TubeGeometry(stem, 12, 0.005, 8));
+    const r = rng(3);
+    for (let i = 0; i < 11; i++) {
+      const t = 0.12 + (i / 10) * 0.86, at = stem.getPoint(t), len = 0.17 - t * 0.06 + r() * 0.02;
+      const geo = leafGeo({ len, width: len * 0.4, bend: 0.75, fold: 0.16, segs: 10 });
+      p.leaves[i % 3].add(leafMat, geo, [at.x, at.y, at.z], [1.25 - t * 0.85 + (r() - 0.5) * 0.2, i * 2.4, 0]);
+    }
+    p.finish();
+  }
+
+  // ---- 2. 显示器右边：石莲花。陶盆 + 托盘，肥厚的叶片一圈圈排成莲座，叶尖带粉 ----
+  {
+    const p = make([0.44, 0, -0.3], 0.058, 120, 1);
+    const terracotta = std({ roughness: 0.85, map: bin.add(canvasTex(64, 64, (g, w, h) => { g.fillStyle = '#c56f49'; g.fillRect(0, 0, w, h); speckle(g, w, h, 72, 600, '80,30,10', 0.2); })) });
+    p.statics.add(terracotta, potGeo(0.05, 0.036, 0.062, 0.006, 0.005), [0, 0.006, 0]);
+    p.statics.add(terracotta, new THREE.CylinderGeometry(0.052, 0.046, 0.007, 32), [0, 0.0035, 0]);
+    p.statics.add(soil, new THREE.CircleGeometry(0.045, 24).rotateX(-Math.PI / 2), [0, 0.056, 0]);
+    p.statics.add(contact, blob(0.08, 0.08), [0, 0.0009, 0]);
+    const fat = std({ vertexColors: true, roughness: 0.6 });
+    const base = new THREE.Color(0x8fb8a2), tipC = new THREE.Color(0xd98c8c), c = new THREE.Color();
+    const fatLeaf = () => {
+      const geo = new THREE.SphereGeometry(1, 10, 8);
+      geo.scale(0.4, 1, 0.15).translate(0, 1, 0);
+      const pos = geo.attributes.position, col = new Float32Array(pos.count * 3);
+      for (let i = 0; i < pos.count; i++) {
+        const t = pos.getY(i) / 2;
+        pos.setX(i, pos.getX(i) * (1 - 0.8 * Math.pow(t, 2.6)));       // 收成尖
+        pos.setZ(i, pos.getZ(i) + t * t * 0.3);                         // 向内勺起
+        c.copy(base).lerp(tipC, Math.pow(t, 5)).toArray(col, i * 3);
+      }
+      geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+      geo.computeVertexNormals();
+      return geo;
+    };
+    const rings = [[10, 1.3, 0.02], [9, 1.0, 0.0185], [7, 0.68, 0.016], [5, 0.36, 0.0125], [3, 0.12, 0.009]] as const;
+    rings.forEach(([n, tilt, size], ri) => {
+      for (let i = 0; i < n; i++) p.leaves[0].add(fat, fatLeaf(), [0, 0.002 + ri * 0.003, 0], [tilt, (i / n) * Math.PI * 2 + ri * 0.45, 0], size);
+    });
+    p.finish();
+  }
+
+  // ---- 3. 地上：虎尾兰。哑光陶盆架在三脚木花架上，剑形叶片有横向斑纹和黄边 ----
+  {
+    const fy = L.floorY, standH = 0.16, potH = 0.3;
+    const p = make([1.72, fy, -0.5], standH + potH - 0.01, 34, 3);
+    const pot = std({ roughness: 0.75, map: bin.add(canvasTex(128, 128, (g, w, h) => { g.fillStyle = '#e9e4da'; g.fillRect(0, 0, w, h); speckle(g, w, h, 73, 900, '80,70,60', 0.25); })) });
+    const wood = std({ color: 0x9a6a3e, roughness: 0.5 });
+    p.statics.add(pot, potGeo(0.19, 0.15, potH, 0.012, 0.012), [0, standH, 0]);
+    p.statics.add(soil, new THREE.CircleGeometry(0.176, 32).rotateX(-Math.PI / 2), [0, standH + potH - 0.012, 0]);
+    p.statics.add(wood, new THREE.TorusGeometry(0.165, 0.011, 10, 40), [0, standH + 0.02, 0], [Math.PI / 2, 0, 0]);
+    for (let i = 0; i < 3; i++) {
+      const a = (i / 3) * Math.PI * 2 + 0.5;
+      p.statics.add(wood, rbox(0.024, standH + 0.06, 0.024, 0.006), [Math.cos(a) * 0.18, (standH + 0.06) / 2, Math.sin(a) * 0.18], [Math.sin(a) * -0.12, 0, Math.cos(a) * 0.12]);
+    }
+    p.statics.add(contact, blob(0.3, 0.3), [0, 0.016, 0]);
+    const bladeTex = bin.add(canvasTex(64, 512, (g, w, h) => {
+      g.fillStyle = '#2d6a43'; g.fillRect(0, 0, w, h);
+      const r = rng(9);
+      for (let y = 0; y < h; y += 5 + r() * 9) { g.fillStyle = `rgba(${r() < 0.5 ? '18,60,36' : '120,170,120'},${0.25 + r() * 0.35})`; g.fillRect(0, y + Math.sin(y) * 2, w, 2 + r() * 5); } // 横斑
+      g.fillStyle = '#c9c46a'; g.fillRect(0, 0, 5, h); g.fillRect(w - 5, 0, 5, h);                                                                                              // 黄边
+    }));
+    const blade = std({ map: bladeTex, roughness: 0.5, side: THREE.DoubleSide });
+    const sword = (t: number) => (0.5 + 0.5 * Math.sin(Math.PI * Math.pow(t, 0.55))) * (1 - Math.pow(t, 5));
+    const r = rng(4);
+    for (let i = 0; i < 13; i++) {
+      const len = 0.5 + r() * 0.42, rad = 0.02 + r() * 0.07, a = i * 2.4;
+      const geo = leafGeo({ len, width: 0.036 + r() * 0.014, bend: 0.1 + r() * 0.18, fold: 0.3, twist: (r() - 0.5) * 1.2, segs: 14, shape: sword });
+      p.leaves[i % 3].add(blade, geo, [Math.sin(a) * rad, 0, Math.cos(a) * rad], [0.05 + r() * 0.22, a, 0]);
+    }
+    p.finish();
+  }
 
   scene.add(group);
   return {
     frame(dt, t) {
-      for (const p of list) {
-        // 阻尼弹簧
-        p.vx += (-p.stiff * p.ax - 2.4 * p.vx) * dt; p.vz += (-p.stiff * p.az - 2.4 * p.vz) * dt;
-        p.ax += p.vx * dt; p.az += p.vz * dt;
-        const bx = p.ax + Math.sin(t * 0.9 + p.seed) * 0.012, bz = p.az + Math.cos(t * 0.7 + p.seed) * 0.012;
-        p.top.rotation.z = bx * 0.25; p.top.rotation.x = bz * 0.25;
-        for (const l of p.leaves) l.pivot.rotation.z = l.tilt + (bx + bz) * 0.22 * l.w + Math.sin(t * 1.3 + l.w * 9) * 0.008;
+      for (const plant of list) {
+        plant.parts.forEach((p, i) => {
+          p.vx += (-p.k * p.ax - 2.6 * p.vx) * dt; p.vz += (-p.k * p.az - 2.6 * p.vz) * dt;
+          p.ax += p.vx * dt; p.az += p.vz * dt;
+          const breeze = 0.006 * (1 + i * 0.5);
+          p.obj.rotation.z = p.ax * 0.2 + Math.sin(t * 0.9 + plant.seed + i) * breeze;
+          p.obj.rotation.x = p.az * 0.2 + Math.cos(t * 0.7 + plant.seed + i * 2) * breeze;
+        });
       }
     },
     stop() { scene.remove(group); bin.dispose(); },

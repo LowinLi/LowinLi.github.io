@@ -12,22 +12,23 @@ const base = process.argv[2] ?? 'http://localhost:4321/';
 const out = process.argv[3] ?? 'shots';
 fs.mkdirSync(out, { recursive: true });
 
-const widths = [390, 768, 1440];
+const widths = [390, 768, 1100];
 const tiers = ['high', 'mid', 'low'];
 const browser = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
 const report = [];
 for (const w of widths) {
   for (const tier of tiers) {
-    const page = await browser.newPage({ viewport: { width: w, height: 900 } });
+    // 无 GPU 环境里 high 档很慢，视口高度收小一些
+    const page = await browser.newPage({ viewport: { width: w, height: tier === 'high' ? 640 : 900 } });
     const errors = [];
     page.on('pageerror', (e) => errors.push(String(e)));
     page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
     const url = new URL(base); url.searchParams.set('tier', tier);
     await page.goto(url.href, { waitUntil: 'networkidle' });
-    if (tier !== 'low') await page.waitForSelector('.scene[data-ready="true"]', { timeout: 10000 }).catch(() => errors.push('scene not ready in 10s'));
+    if (tier !== 'low') await page.waitForSelector('.scene[data-ready="true"]', { timeout: 60000 }).catch(() => errors.push('scene not ready in 60s'));
     await page.waitForTimeout(4000);
     const file = `${out}/${w}-${tier}.png`;
-    await page.screenshot({ path: file });
+    await page.screenshot({ path: file, timeout: 180000 });
     const info = await page.evaluate(() => {
       const s = window.__scene;
       return {
@@ -42,11 +43,11 @@ for (const w of widths) {
       // 无 GPU 环境帧率很低，动画要多等几秒
       await page.evaluate(() => window.__scene.emit('book:open', { id: 'lunyu' }));
       await page.waitForTimeout(3000);
-      await page.screenshot({ path: `${out}/${w}-${tier}-book.png` });
+      await page.screenshot({ path: `${out}/${w}-${tier}-book.png`, timeout: 180000 });
       await page.keyboard.press('Escape');
       await page.evaluate(() => window.__scene.emit('monitor:focus'));
       await page.waitForTimeout(7000);
-      await page.screenshot({ path: `${out}/${w}-${tier}-monitor.png` });
+      await page.screenshot({ path: `${out}/${w}-${tier}-monitor.png`, timeout: 180000 });
       await page.keyboard.press('Escape');
     }
     await page.close();
