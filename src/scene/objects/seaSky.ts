@@ -91,7 +91,10 @@ export const seaSky: SceneObject = ({ scene, renderer, tier }) => {
                  + wave(p, vec2(.8,.6), .62, .13, 1.3) + wave(p, vec2(-.2,.98), 1.3, .05, 1.9);
           vec2 q = p * 1.7 + vec2(uTime * .35, uTime * .22);
           g += (vec2(noise(q + vec2(.37, 0.)), noise(q + vec2(0., .37))) - noise(q)) * 1.3;
-          if (uDetail > .5) { vec2 q2 = p * 5.3 - vec2(uTime * .5, uTime * .3); g += (vec2(noise(q2 + vec2(.2, 0.)), noise(q2 + vec2(0., .2))) - noise(q2)) * .9; }
+          // 近处的海面再叠两层更细的波纹：从高处俯看窗外时，只有大波纹会显得像一团团色块
+          float nearSea = 1. / (1. + t * .04);
+          vec2 q2 = p * 5.3 - vec2(uTime * .5, uTime * .3); g += (vec2(noise(q2 + vec2(.2, 0.)), noise(q2 + vec2(0., .2))) - noise(q2)) * (.5 + .9 * nearSea);
+          vec2 q3 = p * 13. + vec2(uTime * .9, -uTime * .6); g += (vec2(noise(q3 + vec2(.1, 0.)), noise(q3 + vec2(0., .1))) - noise(q3)) * 1.1 * nearSea;
           g *= 1. / (1. + t * .012);
           vec3 n = normalize(vec3(-g.x, 1., -g.y));
           vec3 r = reflect(d, n); r.y = abs(r.y) + .015; r = normalize(r);

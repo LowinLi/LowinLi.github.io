@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { Bin, emit, on, type SceneObject } from '../types';
 import { L, SUN_LIGHT_DIR } from '../layout';
-import { Batch, canvasTex, rbox, rng, speckle, usePhotoTexture, woodGrain } from '../util';
+import { asset, Batch, canvasTex, rbox, rng, speckle, usePhotoTexture, woodGrain } from '../util';
 
 const SERIF = '"Kaiti SC","STKaiti","KaiTi","Songti SC","Noto Serif CJK SC","SimSun",serif';
 
@@ -33,7 +33,7 @@ export const room: SceneObject = ({ scene, camera, tier, bus, pick }) => {
   const sideWalls = [-1, 1].map((s) => {
     const mesh = new THREE.Mesh(bin.add(new THREE.BoxGeometry(th, H, sideLen)), wall);
     mesh.position.set(s * (RX + th / 2), yc, (RZ + wallZ - th) / 2);
-    mesh.receiveShadow = high;
+    mesh.receiveShadow = mesh.castShadow = high;
     group.add(mesh);
     return { mesh, s };
   });
@@ -102,7 +102,41 @@ export const room: SceneObject = ({ scene, camera, tier, bus, pick }) => {
   for (const y of [sy + 0.49, sy - 0.49]) batch.add(darkWood, new THREE.CylinderGeometry(0.013, 0.013, 0.38, 12), [sx, y, wallZ + 0.02], [0, 0, Math.PI / 2]);
   batch.add(rodMat, new THREE.CylinderGeometry(0.004, 0.004, 0.03, 6), [sx, sy + 0.6, wallZ + 0.012]);
 
-  batch.build(group, bin, { cast: high, receive: high, noCast: [floorMat, rugMat, scrollMat, trim] });
+  const built = batch.build(group, bin, { cast: high, receive: high, noCast: [floorMat, rugMat, scrollMat, trim] });
+  const meshOf = (m: THREE.Material) => built.find((x) => x.material === m)!;
+
+  // ---- 烘焙光照：墙和地板的光影是用 Blender 离线算好的（tools/bake_lighting.py）----
+  // 贴图里有天光从窗户进来的衰减、阳光在地板上的光斑、墙角的暗部和家具的柔和投影。
+  // 贴上之后这些面改用不受实时灯光影响的材质，否则会和实时的太阳重复计算。
+  // uv 是按世界坐标的平面投影，必须和烘焙脚本里的一致。
+  const LX0 = -(RX + th), LX1 = RX + th, LZ0 = wallZ - th, LZ1 = RZ;
+  const LM_INTENSITY = Math.PI * 3 * 2.0; // π × 脚本里的 RANGE × 整体曝光
+  const baked: { mesh: THREE.Mesh; src: THREE.MeshStandardMaterial; basic: THREE.MeshBasicMaterial }[] = [];
+  let stopped = false;
+  // paint：墙面烘焙后改成干净的乳胶漆白墙（不再叠灰泥照片：照片的颗粒乘上光照贴图会显脏），并用偏冷的底色抵消地板反弹上来的暖色
+  const bake = (mesh: THREE.Mesh, name: string, uv: (x: number, y: number, z: number) => [number, number], paint?: THREE.Color) => {
+    new THREE.TextureLoader().loadAsync(asset(`light/${name}.jpg`)).then((tex) => {
+      if (stopped) { tex.dispose(); return; }
+      tex.colorSpace = THREE.SRGBColorSpace; tex.channel = 1; bin.add(tex);
+      const pos = mesh.geometry.attributes.position, uv1 = new Float32Array(pos.count * 2);
+      for (let i = 0; i < pos.count; i++) uv1.set(uv(pos.getX(i) + mesh.position.x, pos.getY(i) + mesh.position.y, pos.getZ(i) + mesh.position.z), i * 2);
+      mesh.geometry.setAttribute('uv1', new THREE.BufferAttribute(uv1, 2));
+      const src = mesh.material as THREE.MeshStandardMaterial;
+      const basic = bin.add(new THREE.MeshBasicMaterial({ map: paint ? null : src.map, color: paint ?? src.color.clone(), lightMap: tex, lightMapIntensity: LM_INTENSITY }));
+      mesh.material = basic; mesh.receiveShadow = false;
+      if (!paint) baked.push({ mesh, src, basic });
+    }).catch((e) => console.warn(`[scene] 光照贴图 ${name} 加载失败，继续用实时光照`, e));
+  };
+  // 采样位置夹在室内：墙体厚度里的那部分贴图是被室外天光照亮的，不夹住的话墙角会渗出一条亮边
+  const cx = (x: number) => THREE.MathUtils.clamp(x, -RX + 0.12, RX - 0.12), cz = (z: number) => Math.max(z, wallZ + 0.14);
+  const floorUV = (x: number, _y: number, z: number): [number, number] => [(cx(x) - LX0) / (LX1 - LX0), (cz(z) - LZ0) / (LZ1 - LZ0)];
+  const sideUV = (_x: number, y: number, z: number): [number, number] => [(cz(z) - LZ0) / (LZ1 - LZ0), (y - floorY) / H];
+  bake(meshOf(floorMat), 'floor', floorUV);
+  bake(meshOf(rugMat), 'floor', floorUV);
+  const paint = new THREE.Color(0.72, 0.8, 0.9);
+  bake(meshOf(wall), 'wall_back', (x, y) => [(cx(x) - LX0) / (LX1 - LX0), (y - floorY) / H], paint);
+  bake(sideWalls[0].mesh, 'wall_left', sideUV, paint);
+  bake(sideWalls[1].mesh, 'wall_right', sideUV, paint);
 
   // ---- 纱帘：被朝阳照透，随微风轻轻摆动 ----
   const linen = bin.add(new THREE.MeshStandardMaterial({
@@ -153,15 +187,21 @@ export const room: SceneObject = ({ scene, camera, tier, bus, pick }) => {
   pick(viewArea, { click() { emit(bus, atWindow ? 'window:blur' : 'window:focus'); } });
 
   // ---- 光：朝阳从窗外斜照进来，冷色天光补暗部，身后一点暖色补光 ----
-  const sun = new THREE.DirectionalLight(0xffbe82, 3.6);
-  sun.position.copy(SUN_LIGHT_DIR).multiplyScalar(14);
-  sun.target.position.set(0, 0, 0);
+  // high 档：平行光 + 覆盖整个房间的阴影贴图，墙会把不该晒到的家具挡在阴影里。
+  // mid 档没有阴影贴图：改用一束只罩住书桌的远距离聚光，免得房间另一头的家具也被「晒」到。
+  let sun: THREE.DirectionalLight | THREE.SpotLight;
   if (high) {
-    sun.castShadow = true;
-    sun.shadow.mapSize.set(2048, 2048);
-    const c = sun.shadow.camera; c.left = -2.4; c.right = 2.4; c.top = 2.3; c.bottom = -1.6; c.near = 4; c.far = 24;
-    sun.shadow.bias = -0.0003; sun.shadow.normalBias = 0.012; sun.shadow.radius = 3;
+    const d = new THREE.DirectionalLight(0xffbe82, 3.6);
+    d.castShadow = true;
+    d.shadow.mapSize.set(4096, 4096);
+    const c = d.shadow.camera; c.left = -4; c.right = 4; c.top = 4.2; c.bottom = -3.2; c.near = 2; c.far = 30;
+    d.shadow.bias = -0.0004; d.shadow.normalBias = 0.015; d.shadow.radius = 4;
+    sun = d;
+  } else {
+    sun = new THREE.SpotLight(0xffbe82, 3.6, 0, 0.115, 0.6, 0);
   }
+  sun.position.copy(SUN_LIGHT_DIR).multiplyScalar(14);
+  sun.target.position.set(0, 0, 0.1);
   const hemi = new THREE.HemisphereLight(0xdcdff2, 0x7a6048, 0.55);
   const fill = new THREE.PointLight(0xffe2c4, 1.0, 8, 1.2);
   fill.position.set(0.4, 1.5, 2.6);
@@ -174,6 +214,8 @@ export const room: SceneObject = ({ scene, camera, tier, bus, pick }) => {
   return {
     frame(_dt, t) {
       for (const w of sideWalls) w.mesh.visible = camera.position.x * w.s < RX - 0.05;
+      // 实拍贴图可能比光照贴图晚到：把颜色贴图同步到烘焙材质上
+      for (const b of baked) if (b.basic.map !== b.src.map) { b.basic.map = b.src.map; b.basic.color.copy(b.src.color); b.basic.needsUpdate = true; }
       for (const c of curtains) {
         const p = c.geo.attributes.position;
         for (let i = 0; i < p.count; i++) {
@@ -186,6 +228,6 @@ export const room: SceneObject = ({ scene, camera, tier, bus, pick }) => {
         c.geo.computeVertexNormals();
       }
     },
-    stop() { off.forEach((f) => f()); scene.remove(group); bin.dispose(); },
+    stop() { stopped = true; off.forEach((f) => f()); scene.remove(group); bin.dispose(); },
   };
 };
