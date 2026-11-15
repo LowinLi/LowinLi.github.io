@@ -215,9 +215,8 @@ export const countryside: SceneObject = ({ scene, tier }) => {
   put(new THREE.CylinderGeometry(0.004, 0.004, 0.7, 4), 0xcbb98a, [wx, gy + 0.9, wz]);
   put(new THREE.CylinderGeometry(0.13, 0.1, 0.24, 12, 1, true), 0x8a6a44, [wx + 0.85, gy + 0.12, wz + 0.3]);
   shade(wx, wz, 0.7, 1.1);
-  const bx = 1.5, bz = -6.2; // 箩筐里刚摘的菜
+  const bx = 1.5, bz = -6.2; // 箩筐（里面的菜是模型，在 animals.ts 里加载）
   put(new THREE.CylinderGeometry(0.2, 0.15, 0.22, 14, 1, true), 0xb89858, [bx, gy + 0.11, bz]);
-  for (let i = 0; i < 5; i++) put(lump(0.07, i), pick([0x5fa24a, 0xd9301f, 0x8cc660]), [bx + (r() - 0.5) * 0.2, gy + 0.2, bz + (r() - 0.5) * 0.2]);
   shade(bx, bz, 0.22, 0.3);
   put(new THREE.CylinderGeometry(0.015, 0.015, 1.5, 5), 0x8a6a44, [8.45, gy + 0.72, -5.2], [0, 0, 0.18]);
   put(new THREE.BoxGeometry(0.16, 0.02, 0.1), 0x4a4c50, [8.34, gy + 0.03, -5.2], [0, 0, 0.5]);
@@ -327,11 +326,7 @@ export const countryside: SceneObject = ({ scene, tier }) => {
   put(new THREE.ConeGeometry(0.3, 0.16, 12), 0xd9ba66, [fx, gy + 1.5, fz - 0.38], [-0.3, 0, 0]);
   put(new THREE.CylinderGeometry(0.018, 0.018, 1.5, 5), 0x8a6a44, [fx + 0.05, gy + 0.75, fz - 0.75], [-0.75, 0, 0]);
   shade(fx, fz, 0.3, 1.6);
-  const ox = 8.5, oz = -30; // 水牛：低着头
-  put(new THREE.SphereGeometry(1, 12, 9), 0x3a3a42, [ox, gy + 0.95, oz], [0, 0.4, 0], [0.42, 0.42, 0.95]);
-  for (const [dx, dz] of [[-0.22, 0.55], [0.22, 0.55], [-0.22, -0.55], [0.22, -0.55]]) put(new THREE.CylinderGeometry(0.09, 0.07, 0.75, 6), 0x34343c, [ox + dx * Math.cos(0.4) + dz * Math.sin(0.4), gy + 0.38, oz - dx * Math.sin(0.4) + dz * Math.cos(0.4)]);
-  put(new THREE.SphereGeometry(0.2, 10, 8), 0x3a3a42, [ox + 0.45, gy + 0.8, oz + 1.05], [0.5, 0.4, 0], [1, 1, 1.5]);
-  for (const s of [-1, 1]) put(new THREE.TorusGeometry(0.16, 0.025, 5, 8, Math.PI * 0.8), 0xc9c2b0, [ox + 0.4 + s * 0.14, gy + 1.02, oz + 0.92], [0.3, 0.4 + s * 1.2, s * 0.5]);
+  const ox = 8.5, oz = -30; // 水牛是带动画的模型，在 animals.ts 里；这里只留它的影子
   shade(ox, oz, 0.55, 2.4);
 
   // ---------- 地平线上的小山：三层，近的深、远的淡，山脚发白；朝阳那儿留一个豁口 ----------

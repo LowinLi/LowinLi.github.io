@@ -1,6 +1,6 @@
 # 素材出处
 
-`public/assets/` 下的实拍素材全部来自 [Poly Haven](https://polyhaven.com)，授权为 **CC0**（可商用，无需署名）。这里记录出处，方便以后更新或替换。
+`public/assets/` 下的实拍素材大部分来自 [Poly Haven](https://polyhaven.com)，动物和箩筐里的菜来自 Quaternius 和 Kenney，授权都是 **CC0**（可商用，无需署名）。这里记录出处，方便以后更新或替换。
 
 | 文件 | 素材 | 用在哪里 | 处理 |
 | --- | --- | --- | --- |
@@ -17,6 +17,9 @@
 | `models/vintage_grandfather_clock_01/` | 模型「Vintage Grandfather Clock 01」 | 窗边的落地座钟（指针走真实时间；钟摆是另加的） | 1K 贴图重新压缩 |
 | `models/antique_ceramic_vase_01/` | 模型「Antique Ceramic Vase 01」 | 条案上的青花瓷瓶 | 贴图缩到 512 |
 | `models/ceramic_vase_01/` | 模型「Ceramic Vase 01」 | 条案上的小瓷瓶 | 贴图缩到 512 |
+| `models/animals/cat.glb`、`dog.glb` | Quaternius「Animal Pack Vol.2」（[OpenGameArt](https://opengameart.org/content/animated-animales-low-poly)，CC0） | 菜园里走过的猫和狗 | .blend 转 glb，运行时重新上色 |
+| `models/animals/cow.glb` | Quaternius「Farm Animals」（[OpenGameArt](https://opengameart.org/content/lowpoly-animated-farm-animal-pack)，CC0） | 稻田里的水牛 | 同上 |
+| `models/produce/*.glb` | Kenney「Food Kit」（[OpenGameArt](https://opengameart.org/content/food-kit)，CC0） | 箩筐里的菜 | 原样 |
 | `light/*.jpg` | 用上面那张 HDRI 当天光，在 Blender 里烘焙的光照贴图 | 地面和三面墙的光影 | 见 `tools/bake_lighting.py` |
 
-其余所有东西（窗外的菜园、稻田、远山、猫和狗，木格窗、竹帘、字画，书桌、留声机、书、显示器、键盘、虎尾兰，音乐等）都是代码生成的，没有外部素材。
+其余所有东西（窗外的菜园、稻田、树、房子、远山、鸡、蝴蝶、鸟，木格窗、竹帘、字画，书桌、留声机、书、显示器、键盘、虎尾兰，音乐等）都是代码生成的，没有外部素材。

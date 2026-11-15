@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { asset } from '../util';
 import { Bin, type SceneObject } from '../types';
 import { L } from '../layout';
 
@@ -23,7 +25,9 @@ interface Spec { len: number; legLen: number; bodyR: number; headR: number; coat
 
 /**
  * 菜园里的活物：
- * - 一只橘猫和一条黄狗时不时沿着菜园中间的横路走过：四条腿交替迈步，尾巴摆动，走到半路停下来，转头朝屋里看一会儿。猫偶尔贴着窗根走。
+ * - 一只橘猫和一条黄狗时不时沿着菜园中间的横路走过，走到半路停下来站一会儿。猫偶尔贴着窗根走。
+ *   用的是带骨骼动画的模型（Quaternius，CC0）：走路和站立两套动作，切换时交叉淡入淡出。模型加载完成前 / 失败时用代码拼的版本顶替。
+ * - 稻田里一头站着甩尾巴的水牛（同一来源的牛模型，改成水牛的深灰色）。
  * - 三只鸡在路边踱步、低头啄食。
  * - 两三只蝴蝶在菜地上飞。
  * - 隔一阵有一小群鸟从远处的天上飞过。
@@ -86,11 +90,81 @@ export const animals: SceneObject = ({ scene, tier }) => {
     root.add(tail);
     root.visible = false;
     group.add(root);
-    return { root, head, legs, tail, spec: s, state: 'wait' as 'wait' | 'walk' | 'pause', timer: 0, dir: 1, z: -8.2, pauseAt: 0, paused: false, phase: 0, stride: 0 };
+    return { root, head, legs, tail, spec: s, state: 'wait' as 'wait' | 'walk' | 'pause', timer: 0, dir: 1, z: -8.2, pauseAt: 0, paused: false, phase: 0, stride: 0,
+      mixer: null as THREE.AnimationMixer | null, walk: null as THREE.AnimationAction | null, idle: null as THREE.AnimationAction | null };
   };
   const cat = build({ kind: 'cat', len: 0.42, legLen: 0.16, bodyR: 0.09, headR: 0.075, coat: 0xd98a3a, stripe: 0xa85e20, belly: 0xf3ead8, ear: 0xc9772c, nose: 0xd98a8a, speed: 0.85 });
   const dog = build({ kind: 'dog', len: 0.62, legLen: 0.3, bodyR: 0.14, headR: 0.11, coat: 0xc9a15a, stripe: 0xc9a15a, belly: 0xe6d3a4, ear: 0x8f6a34, nose: 0x1c1a18, speed: 1.25 });
   cat.timer = 3; dog.timer = 14;
+
+  // ---------- 带骨骼动画的模型 ----------
+  // 屋外的东西不吃室内的灯：材质换成以自发光为主的 Lambert，只留一点受光，好让身体有明暗
+  let stopped = false;
+  const loaded: THREE.Object3D[] = [], mixers: THREE.AnimationMixer[] = [];
+  const loader = new GLTFLoader();
+  const prepare = (model: THREE.Object3D, recolor: Record<string, number>, height: number) => {
+    model.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (!m.isMesh) return;
+      const swap = (old: THREE.Material) => {
+        const c = new THREE.Color(recolor[old.name] ?? (old as THREE.MeshStandardMaterial).color.getHex());
+        old.dispose();
+        return bin.add(new THREE.MeshLambertMaterial({ color: c.clone().multiplyScalar(0.5), emissive: c.clone().multiplyScalar(0.62), flatShading: true }));
+      };
+      m.material = Array.isArray(m.material) ? m.material.map(swap) : swap(m.material);
+      m.frustumCulled = false; // 蒙皮网格的包围盒不跟着骨骼动
+      m.userData.noAO = true;
+    });
+    const box = new THREE.Box3().setFromObject(model);
+    model.scale.multiplyScalar(height / (box.max.y - box.min.y));
+    return model;
+  };
+  const useAnimal = (a: typeof cat, file: string, recolor: Record<string, number>, height: number) => {
+    loader.loadAsync(asset(`models/animals/${file}.glb`)).then((gltf) => {
+      if (stopped) return;
+      const model = prepare(gltf.scene, recolor, height);
+      model.rotation.y = -Math.PI / 2; // 模型的头朝 +x，转到朝 +z（和代码拼的版本一致）
+      a.root.children.forEach((c) => { c.visible = false; });
+      a.root.add(model);
+      a.mixer = new THREE.AnimationMixer(model); mixers.push(a.mixer);
+      const clip = (n: string) => gltf.animations.find((c) => c.name.toLowerCase().includes(n));
+      const w = clip('walk'), i = clip('idle');
+      if (w) { a.walk = a.mixer.clipAction(w); a.walk.play(); a.walk.timeScale = a.spec.kind === 'cat' ? 1.5 : 1.3; }
+      if (i) { a.idle = a.mixer.clipAction(i); a.idle.play(); a.idle.setEffectiveWeight(0); }
+      loaded.push(model);
+    }).catch((e) => console.warn(`[scene] 动物模型 ${file} 加载失败，继续用程序版本`, e));
+  };
+  useAnimal(cat, 'cat', { Grey: 0xd98a3a, White: 0xf6efe0, Pink: 0xe8a8a0 }, 0.34);   // 灰猫改成橘猫
+  useAnimal(dog, 'dog', { Dog: 0xc9a15a }, 0.58);                                       // 改成黄狗
+  // 稻田里的水牛：站着，偶尔甩甩尾巴、动动头
+  loader.loadAsync(asset('models/animals/cow.glb')).then((gltf) => {
+    if (stopped) return;
+    const model = prepare(gltf.scene, { White: 0x4a4a54, Black: 0x33333b, Pink: 0x6a5a5e }, 1.45);
+    model.position.set(8.5, gy, -30); model.rotation.y = 2.2;
+    group.add(model);
+    const mixer = new THREE.AnimationMixer(model); mixers.push(mixer);
+    const idle = gltf.animations.find((c) => c.name === 'Idle');
+    if (idle) mixer.clipAction(idle).play();
+    loaded.push(model);
+  }).catch((e) => console.warn('[scene] 水牛模型加载失败', e));
+  // 箩筐里和箩筐边刚摘的菜（Kenney Food Kit，CC0）
+  ([['cabbage', 1.38, -6.2, 0.2, 0.24], ['tomato', 1.6, -6.12, 0.2, 0.1], ['eggplant', 1.52, -6.32, 0.2, 0.2], ['corn', 1.9, -6.1, 0, 0.24], ['pumpkin', 1.95, -6.5, 0, 0.3], ['carrot', 1.2, -5.85, 0, 0.2]] as const).forEach(([name, x, z, y, size], i) => {
+    loader.loadAsync(asset(`models/produce/${name}.glb`)).then((gltf) => {
+      if (stopped) return;
+      const model = gltf.scene;
+      model.traverse((o) => {
+        const m = o as THREE.Mesh;
+        if (!m.isMesh) return;
+        const old = m.material as THREE.MeshStandardMaterial;
+        m.material = bin.add(new THREE.MeshLambertMaterial({ map: old.map, color: 0x808080, emissive: 0xffffff, emissiveMap: old.map, emissiveIntensity: 0.62 }));
+        m.userData.noAO = true;
+      });
+      const box = new THREE.Box3().setFromObject(model), dim = box.getSize(new THREE.Vector3());
+      model.scale.multiplyScalar(size / Math.max(dim.x, dim.y, dim.z));
+      model.position.set(x, gy + y, z); model.rotation.y = i * 1.3;
+      group.add(model); loaded.push(model);
+    }).catch(() => { /* 没有也不影响 */ });
+  });
 
   // ---------- 鸡：在横路左边那一片踱步、低头啄食 ----------
   const hens = [0xb5522a, 0xe9e2d2, 0x3a2e28].map((coat, i) => {
@@ -152,6 +226,7 @@ export const animals: SceneObject = ({ scene, tier }) => {
   const EDGE = 9.6;
   return {
     frame(dt, t) {
+      for (const m of mixers) m.update(dt);
       for (const a of [cat, dog]) {
         const isCat = a.spec.kind === 'cat';
         if (a.state === 'wait') {
@@ -181,7 +256,13 @@ export const animals: SceneObject = ({ scene, tier }) => {
         a.head.rotation.y += (look - a.head.rotation.y) * Math.min(1, dt * 3);
         a.head.rotation.x = Math.sin(a.phase * 2) * 0.05 * a.stride + (a.state === 'pause' ? -0.1 : 0);
         for (const l of a.legs) l.m.rotation.x = Math.sin(a.phase + l.phase) * 0.55 * a.stride;
-        a.root.position.y = gy + Math.abs(Math.sin(a.phase)) * 0.008 * a.stride;
+        a.root.position.y = gy + (a.mixer ? 0 : Math.abs(Math.sin(a.phase)) * 0.008 * a.stride);
+        if (a.mixer) {
+          // 走和站两套动作按步幅混合；停下来时身子朝屋里侧过来一点
+          a.walk?.setEffectiveWeight(a.stride); a.idle?.setEffectiveWeight(1 - a.stride);
+          const want = a.state === 'pause' ? a.dir * 0.75 : a.dir * Math.PI / 2;
+          a.root.rotation.y += (want - a.root.rotation.y) * Math.min(1, dt * 3);
+        }
         a.tail.rotation.z = Math.sin(t * (isCat ? 2.2 : 7) + a.spec.len * 9) * (isCat ? 0.25 : 0.45);
         a.tail.rotation.x = isCat ? Math.sin(t * 1.3) * 0.12 : 0;
       }
@@ -226,6 +307,11 @@ export const animals: SceneObject = ({ scene, tier }) => {
         if (Math.abs(flight.x) > 80) { flight.active = false; flight.wait = 18 + Math.random() * 20; flock.forEach((f) => { f.root.visible = false; }); }
       }
     },
-    stop() { scene.remove(group); bin.dispose(); },
+    stop() {
+      stopped = true;
+      mixers.forEach((m) => m.stopAllAction());
+      for (const m of loaded) m.traverse((o) => { const x = o as THREE.Mesh; if (x.isMesh) { x.geometry.dispose(); const mm = x.material as THREE.MeshLambertMaterial; mm.map?.dispose?.(); } });
+      scene.remove(group); bin.dispose();
+    },
   };
 };
