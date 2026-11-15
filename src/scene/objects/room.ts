@@ -1,12 +1,12 @@
 import * as THREE from 'three';
-import { Bin, type SceneObject } from '../types';
+import { Bin, emit, on, type SceneObject } from '../types';
 import { L, SUN_LIGHT_DIR } from '../layout';
 import { Batch, canvasTex, rbox, rng, speckle, usePhotoTexture, woodGrain } from '../util';
 
 const SERIF = '"Kaiti SC","STKaiti","KaiTi","Songti SC","Noto Serif CJK SC","SimSun",serif';
 
 /** 房间：带大窗的墙、窗框窗台、纱帘、木地板、地毯、墙上的挂轴，以及晨光。 */
-export const room: SceneObject = ({ scene, tier }) => {
+export const room: SceneObject = ({ scene, tier, bus, pick }) => {
   const bin = new Bin();
   const group = new THREE.Group();
   const high = tier === 'high';
@@ -134,6 +134,15 @@ export const room: SceneObject = ({ scene, tier }) => {
   pane.position.set(0, wy, fz);
   group.add(pane);
 
+  // ---- 整扇窗是一个看不见的点击区：点一下走到窗前看海，再点一下回来 ----
+  // 它在所有桌面物件的后面，所以点显示器、书、留声机时不会误触
+  const viewArea = new THREE.Mesh(pane.geometry, bin.add(new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false })));
+  viewArea.position.set(0, wy, fz - 0.03);
+  group.add(viewArea);
+  let atWindow = false;
+  const off = [on(bus, 'window:focus', () => { atWindow = true; }), on(bus, 'window:blur', () => { atWindow = false; })];
+  pick(viewArea, { click() { emit(bus, atWindow ? 'window:blur' : 'window:focus'); } });
+
   // ---- 光：朝阳从窗外斜照进来，冷色天光补暗部，身后一点暖色补光 ----
   const sun = new THREE.DirectionalLight(0xffbe82, 3.6);
   sun.position.copy(SUN_LIGHT_DIR).multiplyScalar(14);
@@ -167,6 +176,6 @@ export const room: SceneObject = ({ scene, tier }) => {
         c.geo.computeVertexNormals();
       }
     },
-    stop() { scene.remove(group); bin.dispose(); },
+    stop() { off.forEach((f) => f()); scene.remove(group); bin.dispose(); },
   };
 };

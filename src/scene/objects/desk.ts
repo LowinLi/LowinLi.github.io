@@ -1,10 +1,11 @@
 import * as THREE from 'three';
-import { Bin, type SceneObject } from '../types';
+import { Bin, emit, on, type SceneObject } from '../types';
+import { damp } from '../tween';
 import { L } from '../layout';
 import { Batch, blob, canvasTex, contactMaterial, rbox, speckle, usePhotoTexture, woodGrain } from '../util';
 
 /** 书桌和桌上的小物：桌垫、键盘、鼠标、冒着热气的咖啡、笔记本和钢笔、插着毛笔的笔筒。 */
-export const desk: SceneObject = ({ scene, tier }) => {
+export const desk: SceneObject = ({ scene, tier, bus, pick }) => {
   const bin = new Bin();
   const group = new THREE.Group();
   const high = tier === 'high';
@@ -78,25 +79,45 @@ export const desk: SceneObject = ({ scene, tier }) => {
   const cork = std({ roughness: 1, map: bin.add(canvasTex(64, 64, (g, w, h) => { g.fillStyle = '#b98e5e'; g.fillRect(0, 0, w, h); speckle(g, w, h, 14, 900, '60,35,10', 0.3); })) });
   batch.add(cork, new THREE.CylinderGeometry(0.055, 0.055, 0.006, 32), [mx, 0.003, mz]);
 
-  // 笔记本（皮面、书签带、松紧带）和钢笔
-  const nx = -0.75, nz = 0.27, nr = 0.22;
+  // 笔记本（皮面烫金 About Me、书签带、松紧带）和钢笔：单独一个物件，点它翻开「关于我」
+  const nx = -0.75, nz = 0.27;
   const leather = std({ roughness: 0.6, map: bin.add(canvasTex(128, 128, (g, w, h) => { g.fillStyle = '#1e2a36'; g.fillRect(0, 0, w, h); speckle(g, w, h, 15, 3000, '255,255,255', 0.06); })) });
+  const coverTop = std({ roughness: 0.55, map: bin.add(canvasTex(360, 512, (g, w, h) => {
+    g.fillStyle = '#1e2a36'; g.fillRect(0, 0, w, h); speckle(g, w, h, 16, 9000, '255,255,255', 0.06);
+    g.strokeStyle = '#d8b56a'; g.lineWidth = 3; g.strokeRect(22, 22, w - 44, h - 44);
+    g.fillStyle = '#e6c57a'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.font = 'bold 44px Georgia, "Times New Roman", serif'; g.fillText('About Me', w / 2, h * 0.4);
+    g.font = '26px "Songti SC","Noto Serif CJK SC",serif'; g.fillText('关 于 我', w / 2, h * 0.4 + 58);
+  })) });
   const paper = std({ color: 0xf1ead8, roughness: 0.9 });
-  batch.add(paper, new THREE.BoxGeometry(0.146, 0.014, 0.206), [nx, 0.009, nz], [0, nr, 0]);
-  batch.add(leather, rbox(0.152, 0.003, 0.212, 0.0015), [nx, 0.0015, nz], [0, nr, 0]);
-  batch.add(leather, rbox(0.152, 0.003, 0.212, 0.0015), [nx, 0.0175, nz], [0, nr, 0]);
-  const off = (dx: number, dz: number): [number, number] => [nx + dx * Math.cos(nr) + dz * Math.sin(nr), nz - dx * Math.sin(nr) + dz * Math.cos(nr)];
-  const [ex, ez] = off(0.05, 0);
-  batch.add(steel, new THREE.BoxGeometry(0.008, 0.0005, 0.213), [ex, 0.0193, ez], [0, nr, 0]);
-  const [rx, rz] = off(-0.02, 0.115);
-  batch.add(std({ color: 0xb3261e, roughness: 0.8 }), new THREE.BoxGeometry(0.006, 0.0006, 0.03), [rx, 0.009, rz], [0, nr, 0]);
   const penBody = std({ color: 0x14213d, roughness: 0.2, metalness: 0.3 });
   const brass = std({ color: 0xd9a441, roughness: 0.25, metalness: 0.95 });
-  const pr = nr + 1.15, [px, pz] = off(-0.01, -0.01);
-  batch.add(penBody, new THREE.CylinderGeometry(0.0055, 0.005, 0.13, 16), [px, 0.0245, pz], [Math.PI / 2, pr, 0]);
-  batch.add(brass, new THREE.CylinderGeometry(0.0057, 0.0057, 0.006, 16), [px + Math.sin(pr) * 0.02, 0.0245, pz + Math.cos(pr) * 0.02], [Math.PI / 2, pr, 0]);
-  batch.add(brass, new THREE.ConeGeometry(0.005, 0.016, 12), [px + Math.sin(pr) * 0.073, 0.0245, pz + Math.cos(pr) * 0.073], [Math.PI / 2, pr, 0]);
-  batch.add(brass, new THREE.BoxGeometry(0.0025, 0.0015, 0.04), [px - Math.sin(pr) * 0.04, 0.0305, pz - Math.cos(pr) * 0.04], [0, pr, 0]);
+  const note = new THREE.Group();
+  note.position.set(nx, 0, nz);
+  note.rotation.y = 0.22;
+  const nb = new Batch();
+  nb.add(paper, new THREE.BoxGeometry(0.146, 0.014, 0.206), [0, 0.009, 0]);
+  nb.add(leather, rbox(0.152, 0.003, 0.212, 0.0015), [0, 0.0015, 0]);
+  // 封面单独贴一张面（盒子的各个面共用同一套 UV，整盒贴图会把字印到侧边上）
+  nb.add(leather, rbox(0.152, 0.003, 0.212, 0.0015), [0, 0.0175, 0]);
+  nb.add(coverTop, new THREE.PlaneGeometry(0.148, 0.208).rotateX(-Math.PI / 2), [0, 0.0192, 0]);
+  nb.add(steel, new THREE.BoxGeometry(0.008, 0.0006, 0.213), [0.055, 0.0196, 0]);
+  nb.add(std({ color: 0xb3261e, roughness: 0.8 }), new THREE.BoxGeometry(0.006, 0.0006, 0.03), [-0.02, 0.009, 0.115]);
+  // 钢笔斜搁在笔记本右侧的桌面上
+  const pr = 0.5, pxl = 0.115, pzl = 0.0, py = 0.0062;
+  const penAt = (k: number): [number, number, number] => [pxl + Math.sin(pr) * k, py, pzl + Math.cos(pr) * k];
+  nb.add(penBody, new THREE.CylinderGeometry(0.0055, 0.005, 0.13, 16), penAt(0), [Math.PI / 2, pr, 0]);
+  nb.add(brass, new THREE.CylinderGeometry(0.0057, 0.0057, 0.006, 16), penAt(0.02), [Math.PI / 2, pr, 0]);
+  nb.add(brass, new THREE.ConeGeometry(0.005, 0.016, 12), penAt(0.073), [Math.PI / 2, pr, 0]);
+  nb.add(brass, new THREE.BoxGeometry(0.0025, 0.0015, 0.04), [pxl - Math.sin(pr) * 0.04, py + 0.006, pzl - Math.cos(pr) * 0.04], [0, pr, 0]);
+  nb.build(note, bin, { cast: high, receive: high });
+  group.add(note);
+  let noteHover = false, noteOpen = false, noteLift = 0;
+  pick(note, { hover(v) { noteHover = v; }, click() { emit(bus, 'book:open', { id: 'about', from: 'desk' }); } });
+  const offs = [
+    on<{ from?: string }>(bus, 'book:open', ({ from }) => { noteOpen = from === 'desk'; }),
+    on(bus, 'book:close', () => { noteOpen = false; }),
+  ];
 
   // 笔筒：深色木筒，插着两支毛笔和两支铅笔
   const bx = -1.03, bz = -0.3;
@@ -127,7 +148,7 @@ export const desk: SceneObject = ({ scene, tier }) => {
   // 接触阴影
   const contact = contactMaterial(bin, high ? 0.3 : 0.5);
   const blobs: [number, number, number, number][] = [
-    [kx, kz, 0.19, 0.075], [0.3, 0.25, 0.045, 0.065], [mx, mz, 0.075, 0.075], [nx, nz, 0.11, 0.14], [bx, bz, 0.065, 0.065],
+    [kx, kz, 0.19, 0.075], [0.3, 0.25, 0.045, 0.065], [mx, mz, 0.075, 0.075], [nx + 0.02, nz, 0.14, 0.15], [bx, bz, 0.065, 0.065],
   ];
   blobs.forEach(([x, z, a, b], i) => batch.add(contact, blob(a, b), [x, 0.0046 + i * 0.0001, z]));
 
@@ -149,6 +170,10 @@ export const desk: SceneObject = ({ scene, tier }) => {
   scene.add(group);
   return {
     frame(dt, t) {
+      // 笔记本：悬停时微微抬起，点开时再抬高一点
+      noteLift = damp(noteLift, noteOpen ? 1 : noteHover ? 0.3 : 0, 8, dt);
+      note.position.y = noteLift * 0.035;
+      note.rotation.x = -noteLift * 0.12;
       for (const p of steam) {
         p.life = (p.life + dt * 0.22) % 1;
         const k = p.life;
@@ -157,6 +182,6 @@ export const desk: SceneObject = ({ scene, tier }) => {
         p.mat.opacity = Math.sin(k * Math.PI) * 0.22;
       }
     },
-    stop() { scene.remove(group); keys.dispose(); bin.dispose(); },
+    stop() { offs.forEach((f) => f()); scene.remove(group); keys.dispose(); bin.dispose(); },
   };
 };

@@ -68,11 +68,13 @@ export function start(canvas: HTMLCanvasElement, tier: Exclude<Tier, 'low'>, dat
   const send = (e: SceneInput) => mounted.forEach((m) => m.input?.(e));
   send({ type: 'resize', width, height });
 
-  let monitorFocused = false;
+  let monitorFocused = false, windowFocused = false;
   const offs = [
     on(bus, 'monitor:focus', () => { monitorFocused = true; }),
     on(bus, 'monitor:blur', () => { monitorFocused = false; }),
     on(bus, 'scene:changed', () => post?.refresh()),
+    on(bus, 'window:focus', () => { windowFocused = true; post?.setFarBlur(false); }),
+    on(bus, 'window:blur', () => { windowFocused = false; post?.setFarBlur(true); }),
   ];
 
   const onResize = () => send({ type: 'resize', ...size() });
@@ -97,8 +99,10 @@ export function start(canvas: HTMLCanvasElement, tier: Exclude<Tier, 'low'>, dat
     const start = downAt; downAt = null;
     if (!start || Math.hypot(e.clientX - start.x, e.clientY - start.y) > 8) return;
     const res = cast(e);
+    // 「点旁边退回」：在窗前时点哪里都回到座位；看显示器时点屏幕以外的地方退出
+    if (windowFocused) { emit(bus, 'window:blur'); return; }
+    if (monitorFocused && !res?.owner.userData.keepsMonitor) { emit(bus, 'monitor:blur'); return; }
     if (res) pickables.get(res.owner)?.click?.(res.hit);
-    else if (monitorFocused) emit(bus, 'monitor:blur'); // 点显示器外面退出
   };
   const onCancel = () => { downAt = null; };
   addEventListener('resize', onResize);

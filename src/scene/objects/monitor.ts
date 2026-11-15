@@ -41,6 +41,7 @@ export const monitor: SceneObject = ({ scene, camera, renderer, tier, bus, pick 
   const screenMat = bin.add(new THREE.MeshBasicMaterial({ map: tex, toneMapped: false, color: new THREE.Color().setScalar(high ? 1.5 : 1) }));
   const screen = new THREE.Mesh(bin.add(new THREE.PlaneGeometry(m.w, m.h)), screenMat);
   screen.position.set(m.x, m.cy, m.z);
+  screen.userData.keepsMonitor = true; // 聚焦显示器时，点屏幕本身不算「点旁边」
   group.add(screen);
   // 屏幕玻璃上一道斜的反光
   const glare = new THREE.Mesh(screen.geometry, bin.add(new THREE.MeshBasicMaterial({

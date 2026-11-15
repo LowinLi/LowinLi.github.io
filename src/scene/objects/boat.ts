@@ -6,7 +6,8 @@ import { L } from '../layout';
 export const boat: SceneObject = ({ scene }) => {
   const bin = new Bin();
   const root = new THREE.Group();
-  const hullMat = bin.add(new THREE.MeshBasicMaterial({ color: 0x2b2733 }));
+  // 船身是手写的三角形，朝向不保证对着镜头，所以两面都画
+  const hullMat = bin.add(new THREE.MeshBasicMaterial({ color: 0x2b2733, side: THREE.DoubleSide }));
   const sailMat = bin.add(new THREE.MeshBasicMaterial({ color: 0xffd9b0, side: THREE.DoubleSide }));
   const tri = (pts: number[]) => { const g = bin.add(new THREE.BufferGeometry()); g.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3)); return g; };
   // 船身：两头收尖的梯形

@@ -48,17 +48,17 @@ export function createPost(renderer: THREE.WebGLRenderer, scene: THREE.Scene, ca
     uniforms: {
       tDiffuse: { value: null }, tDepth: { value: gtao.depthTexture },
       uNear: { value: camera.near }, uFar: { value: camera.far },
-      uFocus: { value: 2.7 }, uTexel: { value: new THREE.Vector2() }, uMax: { value: 3 },
+      uFocus: { value: 2.7 }, uTexel: { value: new THREE.Vector2() }, uMax: { value: 3 }, uFarBlur: { value: 1 },
     },
     vertexShader: VERT,
     fragmentShader: /* glsl */ `
       #include <packing>
-      uniform sampler2D tDiffuse, tDepth; uniform float uNear, uFar, uFocus, uMax; uniform vec2 uTexel; varying vec2 vUv;
+      uniform sampler2D tDiffuse, tDepth; uniform float uNear, uFar, uFocus, uMax, uFarBlur; uniform vec2 uTexel; varying vec2 vUv;
       float coc(vec2 uv){
         float d = -perspectiveDepthToViewZ(texture2D(tDepth, uv).x, uNear, uFar);
         float far = clamp((d - uFocus * 1.3) / (uFocus * 2.4), 0., 1.);
         float near = clamp((uFocus * .72 - d) / (uFocus * .5), 0., 1.);
-        return max(far * .8, near);
+        return max(far * .8 * uFarBlur, near);
       }
       void main(){
         float c = coc(vUv);
@@ -114,9 +114,12 @@ export function createPost(renderer: THREE.WebGLRenderer, scene: THREE.Scene, ca
 
   const sunWorld = new THREE.Vector3(), v = new THREE.Vector3(), dir = new THREE.Vector3();
   const focusAt = new THREE.Vector3(L.monitor.x, L.monitor.cy, L.monitor.z);
+  let farBlur = 1;
   return {
     /** 场景里后来才加进来的东西（异步加载的模型）要重新收集一次 */
     refresh() { skip = null; },
+    /** 走到窗前看海时关掉远景虚化，海要是清楚的 */
+    setFarBlur(on: boolean) { farBlur = on ? 1 : 0; },
     setSize(w: number, h: number) {
       composer.setPixelRatio(renderer.getPixelRatio());
       composer.setSize(w, h);
@@ -126,7 +129,10 @@ export function createPost(renderer: THREE.WebGLRenderer, scene: THREE.Scene, ca
     },
     render(dt: number) {
       // 焦点落在显示器上：推近显示器时景深会自动变浅
-      dof.uniforms.uFocus.value = -v.copy(focusAt).applyMatrix4(camera.matrixWorldInverse).z;
+      // 显示器跑到镜头后面（走到窗前）时，焦点放到几米外
+      dof.uniforms.uFocus.value = Math.max(-v.copy(focusAt).applyMatrix4(camera.matrixWorldInverse).z, 0.25);
+      if (dof.uniforms.uFocus.value <= 0.25) dof.uniforms.uFocus.value = 4;
+      dof.uniforms.uFarBlur.value += (farBlur - dof.uniforms.uFarBlur.value) * Math.min(1, dt * 3);
       // 太阳在屏幕上的位置；背对太阳或太阳出画太远时关掉光束
       sunWorld.copy(camera.position).addScaledVector(SUN_DIR, 300);
       v.copy(sunWorld).project(camera);

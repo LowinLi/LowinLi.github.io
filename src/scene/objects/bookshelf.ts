@@ -121,7 +121,7 @@ export const bookshelf: SceneObject = ({ scene, tier, data, bus, pick }) => {
   scene.add(group);
 
   const off = [
-    on<{ id: string }>(bus, 'book:open', ({ id }) => items.forEach((it) => { it.open = it.id === id; })),
+    on<{ id: string; from?: string }>(bus, 'book:open', ({ id, from }) => items.forEach((it) => { it.open = it.id === id && from !== 'desk'; })),
     on(bus, 'book:close', () => items.forEach((it) => { it.open = false; })),
   ];
   return {
