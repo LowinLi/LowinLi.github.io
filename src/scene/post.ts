@@ -22,13 +22,14 @@ export function createPost(renderer: THREE.WebGLRenderer, scene: THREE.Scene, ca
   gtao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples: 12 });
   gtao.blendIntensity = 0.95;
   // 遮蔽通道用法线材质重画一遍场景：精灵、接触阴影、玻璃这类半透明的东西不该参与，先藏起来
+  // 镂空贴图的叶片（userData.noAO）也跳过：法线材质不认镂空，会在叶子周围留一圈黑边
   let skip: THREE.Object3D[] | null = null;
   const collect = () => {
     const list: THREE.Object3D[] = [];
     scene.traverse((o) => {
       const m = (o as THREE.Mesh).material as THREE.Material | THREE.Material[] | undefined;
       const mat = Array.isArray(m) ? m[0] : m;
-      if ((o as THREE.Sprite).isSprite || (mat && mat.transparent && !mat.depthWrite)) list.push(o);
+      if ((o as THREE.Sprite).isSprite || o.userData.noAO || (mat && mat.transparent && !mat.depthWrite)) list.push(o);
     });
     return list;
   };
@@ -114,6 +115,8 @@ export function createPost(renderer: THREE.WebGLRenderer, scene: THREE.Scene, ca
   const sunWorld = new THREE.Vector3(), v = new THREE.Vector3(), dir = new THREE.Vector3();
   const focusAt = new THREE.Vector3(L.monitor.x, L.monitor.cy, L.monitor.z);
   return {
+    /** 场景里后来才加进来的东西（异步加载的模型）要重新收集一次 */
+    refresh() { skip = null; },
     setSize(w: number, h: number) {
       composer.setPixelRatio(renderer.getPixelRatio());
       composer.setSize(w, h);

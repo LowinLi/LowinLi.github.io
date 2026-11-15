@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { Bin, type SceneObject } from '../types';
 import { L, SUN_LIGHT_DIR } from '../layout';
-import { Batch, canvasTex, rbox, rng, speckle, woodGrain } from '../util';
+import { Batch, canvasTex, rbox, rng, speckle, usePhotoTexture, woodGrain } from '../util';
 
 const SERIF = '"Kaiti SC","STKaiti","KaiTi","Songti SC","Noto Serif CJK SC","SimSun",serif';
 
@@ -20,6 +20,7 @@ export const room: SceneObject = ({ scene, tier }) => {
     g.fillStyle = '#ddd6ca'; g.fillRect(0, 0, w, h);
     speckle(g, w, h, 3, 2600, '90,70,50', 0.05); speckle(g, w, h, 4, 1800, '255,255,255', 0.08);
   }, [3, 3])) });
+  usePhotoTexture(bin, wall, 'plastered_wall_04', { repeat: [2, 2], color: [1.62, 1.54, 1.42], normalScale: 0.6 });
   const top = 2.9, th = 0.2, zc = wallZ - th / 2, H = top - floorY, yc = (top + floorY) / 2;
   batch.add(wall, new THREE.BoxGeometry(4, H, th), [win.x0 - 2, yc, zc]);
   batch.add(wall, new THREE.BoxGeometry(4, H, th), [win.x1 + 2, yc, zc]);
@@ -61,6 +62,7 @@ export const room: SceneObject = ({ scene, tier }) => {
     }
   }, [5, 4]));
   const floorMat = std({ map: floorTex, roughness: 0.42 });
+  usePhotoTexture(bin, floorMat, 'wood_floor', { repeat: [7, 4.5], color: [1.15, 1.05, 0.95] });
   batch.add(floorMat, new THREE.BoxGeometry(14, 0.1, 9), [0, floorY - 0.05, 1.5]);
   const rugMat = std({ roughness: 1, map: bin.add(canvasTex(512, 512, (g, w, h) => {
     g.fillStyle = '#d9d2c4'; g.fillRect(0, 0, w, h);
@@ -142,7 +144,7 @@ export const room: SceneObject = ({ scene, tier }) => {
     const c = sun.shadow.camera; c.left = -2.4; c.right = 2.4; c.top = 2.3; c.bottom = -1.6; c.near = 4; c.far = 24;
     sun.shadow.bias = -0.0003; sun.shadow.normalBias = 0.012; sun.shadow.radius = 3;
   }
-  const hemi = new THREE.HemisphereLight(0xc9d8ff, 0x7a6048, 0.5);
+  const hemi = new THREE.HemisphereLight(0xdcdff2, 0x7a6048, 0.55);
   const fill = new THREE.PointLight(0xffe2c4, 1.0, 8, 1.2);
   fill.position.set(0.4, 1.5, 2.6);
   // 阳光打在桌面上再弹起来的暖光，照亮书脊、屏幕下方这些背光面

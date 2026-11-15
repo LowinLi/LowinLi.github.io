@@ -147,3 +147,30 @@ export function potGeo(rTop: number, rBottom: number, h: number, lip = 0.008, wa
   ];
   return new THREE.LatheGeometry(pts, 40);
 }
+
+/** public/assets 下素材的地址（兼容 GitHub Pages 的子路径部署） */
+export const asset = (path: string) => `${import.meta.env.BASE_URL.replace(/\/$/, '')}/assets/${path}`;
+
+/**
+ * 把材质上现画的贴图换成实拍的 PBR 贴图（Poly Haven，CC0）。异步加载，加载完成前保持原样；加载失败就继续用现画的。
+ * rotate: 贴图旋转 90°（木纹方向）；color 可以大于 1，用来把偏灰的照片提亮或染色。
+ */
+export function usePhotoTexture(bin: Bin, mat: THREE.MeshStandardMaterial, name: string, o: { repeat?: [number, number]; rotate?: boolean; color?: [number, number, number]; normalScale?: number } = {}) {
+  const loader = new THREE.TextureLoader();
+  const setup = (t: THREE.Texture, srgb: boolean) => {
+    if (srgb) t.colorSpace = THREE.SRGBColorSpace;
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.repeat.set(...(o.repeat ?? [1, 1]));
+    if (o.rotate) { t.center.set(0.5, 0.5); t.rotation = Math.PI / 2; }
+    t.anisotropy = 8;
+    return bin.add(t);
+  };
+  Promise.all([loader.loadAsync(asset(`tex/${name}_diff.jpg`)), loader.loadAsync(asset(`tex/${name}_nor.jpg`))]).then(([diff, nor]) => {
+    mat.map = setup(diff, true);
+    mat.normalMap = setup(nor, false);
+    mat.normalScale.setScalar(o.normalScale ?? 1);
+    mat.bumpMap = null;
+    if (o.color) mat.color.setRGB(...o.color);
+    mat.needsUpdate = true;
+  }).catch((e) => console.warn(`[scene] 贴图 ${name} 加载失败，继续用程序贴图`, e));
+}

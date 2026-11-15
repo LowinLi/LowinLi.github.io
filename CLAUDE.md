@@ -56,6 +56,7 @@
 | `monitor:focus` | monitor / HTML 按钮 | 镜头推到显示器，显示搜索输入框 |
 | `monitor:blur` | ESC / 返回按钮 / 点显示器外面 | 退出显示器 |
 | `monitor:rect {x,y,w,h}` | monitor（聚焦时每帧） | 屏幕在画布上的像素矩形，HTML 输入框据此定位 |
+| `scene:changed` | plants（模型加载完成后） | 场景里新增了物体，后期处理需要重新收集 |
 | `disc:play {id}` | gramophone / HTML 按钮 | 请求播放一张唱片 |
 | `disc:stop` | gramophone / HTML 按钮 | 停止 |
 | `music:state {id,title}` 或 `null` | gramophone | 唱片落到转盘、音乐真正开始 / 停止 |
@@ -76,7 +77,7 @@ URL 加 `?tier=high|mid|low` 可以强制指定档位。
 ## 技术红线（`src/scene/budgets.ts`）
 - 帧率：high 60 fps，mid 45 fps
 - draw call：high ≤ 430，mid ≤ 140（high 档含阴影通道、环境光遮蔽通道和后期处理；截图脚本的报告会读 `window.__scene.info.render.calls`。目前约 360 / 105）
-- 3D 相关 JS gzip 后 ≤ 250 KB（目前 runtime 约 173 KB）
+- 3D 相关 JS gzip 后 ≤ 250 KB（目前 runtime 约 194 KB，含 glTF 加载器）
 - 任何宽度下都不能有横向滚动
 - 性能优化要附上优化前后的多角度截图像素对比，证明帧率提升不是靠降画质换来的
 
@@ -84,6 +85,12 @@ URL 加 `?tier=high|mid|low` 可以强制指定档位。
 - 当前方向：海边清晨。窗外是暖橙到淡蓝的日出天空，室内是偏冷的天光加上从窗外打进来的暖色阳光。家具是浅色橡木和黑色钢架，留声机的黄铜喇叭是画面里最亮的暖色点。
 - 天空和海是同一个着色器（`objects/seaSky.ts`）：按视线方向计算，海面是真正的透视平面，反射天空并带太阳光路。太阳方向在 `layout.ts` 的 `SUN_DIR`，正好在海平线上，所以只露出一半。
 - 相机高度要让海平线落在显示器上沿之上，这样太阳不会被显示器挡住；太阳只略偏左，竖屏时也在画面里。
+- **实拍素材**（`public/assets/`，约 4 MB，出处见 `CREDITS.md`，全部 CC0）：
+  - 天空是实拍的日出全景图。`seaSky.ts` 里低清全景铺满天球，窗外可见的那块再叠一张高清裁切；照片整体下移 2.3°，让太阳正好卡在海平线上。海面仍是程序生成的（要会动），但反射的是这张照片。
+  - 桌面、地板、墙面、留声机木箱用实拍的颜色图 + 法线图（`util.ts` 的 `usePhotoTexture`）。
+  - 桌上两盆植物是扫描模型（`plants.ts` 的 `useModel`）。
+  - 所有实拍素材都是**异步加载、带回退**的：加载完成前和加载失败时，显示的是代码现画的版本。新增素材也要保持这一点，不能让首屏等素材。
+  - 换素材只用 CC0 或同等宽松授权的，并在 `CREDITS.md` 里登记。
 - **细节是这一版的重点，不要退回纯色方块。** 新物件要做到：
   - 表面有材质：木纹、布纹、陶土颗粒等都用 canvas 现画（`util.ts` 的 `woodGrain`、`speckle`、`canvasTex`），不用图片文件。
   - 边角有倒角（`rbox`），容器有壁厚（旋转成型的 `LatheGeometry`、`potGeo`）。
@@ -123,6 +130,9 @@ URL 加 `?tier=high|mid|low` 可以强制指定档位。
 - 不要给窗玻璃这类大平面用带高光的材质：室内的点光源会在上面映出一个亮点，再被太阳光束拉成一道横穿画面的亮线。玻璃用不受光照的 `MeshBasicMaterial`。
 - 浮尘不能飘到镜头跟前，太近的一粒会变成大光斑（`dust.ts` 里限制了 z 范围）。
 - high 档走后期处理后，材质上的 `toneMapped: false` 不再生效，显示器屏幕会被压灰，所以 `monitor.ts` 在 high 档把屏幕提前调亮。
+- 镂空贴图的叶片模型要标 `userData.noAO = true`：环境光遮蔽通道用的法线材质不认镂空，会在叶子周围留一圈黑边。异步加进场景的东西要发 `scene:changed`，后期处理才会重新收集。
+- 色调映射过的全景照片没有高动态亮度：太阳本体的亮度是在着色器里补回去的，否则泛光和光束没有东西可用。
+- 这个云端环境默认连不上素材站，需要在环境的网络设置里放行 `api.polyhaven.com` 和 `dl.polyhaven.org`。
 - 截图环境里 high 档（后期处理 + 4 倍抗锯齿）极慢：1440×900 会超时，用 1100×690 左右，截图超时设到 3 分钟。mid 档可以用 1440×900。
 - `Batch` 合并要求所有几何体属性一致：它会自动转成非索引并补齐 uv；需要顶点色时用 `new Batch(['position','normal','uv','color'])`。
 - `place()` 的旋转顺序是 YXZ（先绕 x 倾斜，再绕 y 转向），叶片、笔这类「先倾斜再转一圈」的摆放依赖这一点。

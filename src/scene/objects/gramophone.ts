@@ -3,7 +3,7 @@ import { Bin, emit, on, type SceneObject } from '../types';
 import { L } from '../layout';
 import { damp } from '../tween';
 import { playTrack } from '../music';
-import { Batch, blob, canvasTex, contactMaterial, rbox, speckle, woodGrain } from '../util';
+import { Batch, blob, canvasTex, contactMaterial, rbox, speckle, usePhotoTexture, woodGrain } from '../util';
 
 const SERIF = '"Songti SC","Noto Serif CJK SC","SimSun",serif';
 
@@ -73,6 +73,7 @@ export const gramophone: SceneObject = ({ scene, tier, data, bus, pick, audio })
   group.add(body);
 
   const walnut = std({ roughness: 0.38, map: bin.add(canvasTex(512, 256, (c, w, h) => woodGrain(c, 0, 0, w, h, '#6a3c22', '25,10,4', 41, 150))) });
+  usePhotoTexture(bin, walnut, 'walnut_veneer', { rotate: true, color: [0.62, 0.42, 0.3] });
   const darkWood = std({ color: 0x3a2012, roughness: 0.4 });
   const brass = std({ color: 0xdba63f, roughness: 0.2, metalness: 1, side: THREE.DoubleSide });
   const felt = std({ color: 0x5a1f1c, roughness: 1 });

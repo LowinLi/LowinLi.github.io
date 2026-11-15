@@ -72,6 +72,7 @@ export function start(canvas: HTMLCanvasElement, tier: Exclude<Tier, 'low'>, dat
   const offs = [
     on(bus, 'monitor:focus', () => { monitorFocused = true; }),
     on(bus, 'monitor:blur', () => { monitorFocused = false; }),
+    on(bus, 'scene:changed', () => post?.refresh()),
   ];
 
   const onResize = () => send({ type: 'resize', ...size() });

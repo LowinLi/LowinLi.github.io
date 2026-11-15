@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { Bin, type SceneObject } from '../types';
 import { L } from '../layout';
-import { Batch, blob, canvasTex, contactMaterial, rbox, speckle, woodGrain } from '../util';
+import { Batch, blob, canvasTex, contactMaterial, rbox, speckle, usePhotoTexture, woodGrain } from '../util';
 
 /** 书桌和桌上的小物：桌垫、键盘、鼠标、冒着热气的咖啡、笔记本和钢笔、插着毛笔的笔筒。 */
 export const desk: SceneObject = ({ scene, tier }) => {
@@ -19,6 +19,7 @@ export const desk: SceneObject = ({ scene, tier }) => {
     for (const y of [h * 0.33, h * 0.66]) { g.fillStyle = 'rgba(90,55,25,.25)'; g.fillRect(0, y, w, 1.5); } // 拼板缝
   })) });
   batch.add(oak, rbox(D.w, D.t, D.d, 0.008), [0, -D.t / 2, 0]);
+  usePhotoTexture(bin, oak, 'oak_veneer_01', { rotate: true, repeat: [1, 2.2], color: [1.08, 1.02, 0.95] });
   const steel = std({ color: 0x1b1c1e, roughness: 0.4, metalness: 0.75 });
   const legH = -floorY - D.t;
   for (const x of [-D.w / 2 + 0.14, D.w / 2 - 0.14]) {

@@ -1,13 +1,15 @@
 import * as THREE from 'three';
 import { Bin, type SceneObject } from '../types';
 import { L } from '../layout';
-import { Batch, blob, canvasTex, contactMaterial, leafGeo, potGeo, rbox, rng, speckle, type V3 } from '../util';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { emit } from '../types';
+import { asset, Batch, blob, canvasTex, contactMaterial, leafGeo, potGeo, rbox, rng, speckle, type V3 } from '../util';
 
 /**
  * 盆栽：桌上一盆橡皮树、一盆石莲花，地上一盆虎尾兰（带木质花架）。
  * 点击会晃，悬停会轻轻动一下；平时有一点微风。每盆的叶子分成几组，各自用阻尼弹簧摆动，所以晃起来有先有后。
  */
-export const plants: SceneObject = ({ scene, tier, pick }) => {
+export const plants: SceneObject = ({ scene, tier, pick, bus }) => {
   const bin = new Bin();
   const group = new THREE.Group();
   const high = tier === 'high';
@@ -42,7 +44,45 @@ export const plants: SceneObject = ({ scene, tier, pick }) => {
       statics.build(root, bin, { cast: high, receive: high, noCast: [contact] });
       leaves.forEach((b, i) => b.build(plant.parts[i].obj, bin, { cast: high, receive: high }));
     };
-    return { statics, leaves, finish };
+    return { statics, leaves, finish, root, plant };
+  };
+
+  // 桌上的两盆在加载完成后换成扫描级的真实模型（Poly Haven，CC0）；加载失败就保留上面现画的版本
+  let stopped = false;
+  const models: THREE.Object3D[] = [];
+  const useModel = (target: { root: THREE.Group; plant: Plant }, name: string, o: { scale: number; sway: string; drop?: string[]; stiff: number; shadowR: number }) => {
+    new GLTFLoader().loadAsync(asset(`models/${name}/${name}.gltf`)).then((gltf) => {
+      const model = gltf.scene;
+      if (stopped) return;
+      for (const n of o.drop ?? []) model.getObjectByName(n)?.removeFromParent();
+      model.traverse((obj) => {
+        const mesh = obj as THREE.Mesh;
+        if (!mesh.isMesh) return;
+        mesh.castShadow = mesh.receiveShadow = high;
+        const mat = mesh.material as THREE.MeshStandardMaterial;
+        if (mat.map) mat.map.anisotropy = 8;
+        if (mat.alphaTest > 0) mesh.userData.noAO = true; // 镂空叶片不参与环境光遮蔽
+      });
+      model.scale.setScalar(o.scale);
+      const sway = model.getObjectByName(o.sway);
+      // 保留点击 / 悬停的拾取节点，只把里面现画的东西换掉
+      target.root.clear();
+      target.root.add(model);
+      const shadow = new THREE.Mesh(bin.add(blob(o.shadowR, o.shadowR)), contact);
+      shadow.position.y = 0.0009;
+      target.root.add(shadow);
+      if (sway) {
+        // 叶子绕自己的根部摆：包一层以根部为原点的节点
+        const pivot = new THREE.Group();
+        const box = new THREE.Box3().setFromObject(sway);
+        pivot.position.set((box.min.x + box.max.x) / 2, box.min.y, (box.min.z + box.max.z) / 2);
+        sway.parent!.add(pivot);
+        pivot.attach(sway);
+        target.plant.parts = [{ obj: pivot, k: o.stiff, gain: 1, ax: 0, az: 0, vx: 0, vz: 0 }];
+      } else target.plant.parts = [];
+      models.push(model);
+      emit(bus, 'scene:changed');
+    }).catch((e) => console.warn(`[scene] 模型 ${name} 加载失败，继续用程序版本`, e));
   };
 
   // ---- 1. 桌面左前：橡皮树。白瓷盆 + 托盘，深绿油亮的大叶子沿茎互生 ----
@@ -71,6 +111,7 @@ export const plants: SceneObject = ({ scene, tier, pick }) => {
       p.leaves[i % 3].add(leafMat, geo, [at.x, at.y, at.z], [1.25 - t * 0.85 + (r() - 0.5) * 0.2, i * 2.4, 0]);
     }
     p.finish();
+    useModel(p, 'potted_plant_02', { scale: 0.4, sway: 'potted_plant_02_leaves', stiff: 45, shadowR: 0.13 });
   }
 
   // ---- 2. 显示器右边：石莲花。陶盆 + 托盘，肥厚的叶片一圈圈排成莲座，叶尖带粉 ----
@@ -102,6 +143,7 @@ export const plants: SceneObject = ({ scene, tier, pick }) => {
       for (let i = 0; i < n; i++) p.leaves[0].add(fat, fatLeaf(), [0, 0.002 + ri * 0.003, 0], [tilt, (i / n) * Math.PI * 2 + ri * 0.45, 0], size);
     });
     p.finish();
+    useModel(p, 'potted_plant_04', { scale: 0.62, sway: 'potted_plant_04_plant', drop: ['potted_plant_04_ground'], stiff: 110, shadowR: 0.085 });
   }
 
   // ---- 3. 地上：虎尾兰。哑光陶盆架在三脚木花架上，剑形叶片有横向斑纹和黄边 ----
@@ -148,6 +190,17 @@ export const plants: SceneObject = ({ scene, tier, pick }) => {
         });
       }
     },
-    stop() { scene.remove(group); bin.dispose(); },
+    stop() {
+      stopped = true;
+      for (const m of models) m.traverse((o) => {
+        const mesh = o as THREE.Mesh;
+        if (!mesh.isMesh) return;
+        mesh.geometry.dispose();
+        const mat = mesh.material as THREE.MeshStandardMaterial;
+        for (const t of [mat.map, mat.normalMap, mat.roughnessMap, mat.metalnessMap, mat.aoMap]) t?.dispose();
+        mat.dispose();
+      });
+      scene.remove(group); bin.dispose();
+    },
   };
 };
