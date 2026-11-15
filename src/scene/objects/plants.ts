@@ -11,7 +11,8 @@ export const plants: SceneObject = ({ scene, tier, pick }) => {
   const bin = new Bin();
   const group = new THREE.Group();
   const high = tier === 'high';
-  const std = (o: THREE.MeshStandardMaterialParameters) => bin.add(new THREE.MeshStandardMaterial(o));
+  // 有贴图的材质默认把同一张图当凹凸图，让木纹、布纹、叶脉有起伏
+  const std = (o: THREE.MeshStandardMaterialParameters) => bin.add(new THREE.MeshStandardMaterial(o.map && o.bumpScale !== 0 ? { bumpMap: o.map, bumpScale: 1, ...o } : o));
   const soil = std({ roughness: 1, map: bin.add(canvasTex(64, 64, (g, w, h) => { g.fillStyle = '#2b2018'; g.fillRect(0, 0, w, h); speckle(g, w, h, 71, 500, '150,120,90', 0.5); })) });
   const contact = contactMaterial(bin, high ? 0.32 : 0.55);
 

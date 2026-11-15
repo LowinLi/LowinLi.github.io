@@ -2,11 +2,7 @@ import * as THREE from 'three';
 import { BUDGETS } from './budgets';
 import { emit, on, type MountContext, type Mounted, type PickHandlers, type SceneInput, type SceneObject, type SiteData } from './types';
 import type { Tier } from './tier';
-import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
-import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
-import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
-import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
-import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
+import { createPost } from './post';
 import { seaSky } from './objects/seaSky';
 import { boat } from './objects/boat';
 import { desk } from './objects/desk';
@@ -16,10 +12,11 @@ import { bookshelf } from './objects/bookshelf';
 import { gramophone } from './objects/gramophone';
 import { plants } from './objects/plants';
 import { gulls } from './objects/gulls';
+import { dust } from './objects/dust';
 import { cameraRig } from './objects/cameraRig';
 
 /** 场景里挂载的物件清单。新物件：在 objects/ 下建文件，然后加到这里。cameraRig 放最后。 */
-const OBJECTS: SceneObject[] = [seaSky, boat, room, desk, monitor, bookshelf, gramophone, plants, gulls, cameraRig];
+const OBJECTS: SceneObject[] = [seaSky, boat, room, desk, monitor, bookshelf, gramophone, plants, gulls, dust, cameraRig];
 
 export function start(canvas: HTMLCanvasElement, tier: Exclude<Tier, 'low'>, data: SiteData, bus: EventTarget) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: tier === 'high', powerPreference: 'high-performance' });
@@ -34,28 +31,13 @@ export function start(canvas: HTMLCanvasElement, tier: Exclude<Tier, 'low'>, dat
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(38, 1, 0.05, 1000);
 
-  // high 档的后期：泛光（太阳、海面碎光、黄铜高光）+ 暗角和一点暖调，最后统一做色调映射
-  let composer: EffectComposer | null = null;
-  if (tier === 'high') {
-    composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 4 }));
-    composer.addPass(new RenderPass(scene, camera));
-    composer.addPass(new UnrealBloomPass(new THREE.Vector2(1, 1), 0.16, 0.6, 2.7));
-    composer.addPass(new ShaderPass({
-      uniforms: { tDiffuse: { value: null } },
-      vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.); }',
-      fragmentShader: `uniform sampler2D tDiffuse; varying vec2 vUv;
-        void main(){ vec4 c = texture2D(tDiffuse, vUv); vec2 p = vUv - .5;
-          c.rgb *= 1. - dot(p, p) * .5; c.rgb *= vec3(1.03, 1., .965); gl_FragColor = c; }`,
-    }));
-    composer.addPass(new OutputPass());
-  }
+  const post = tier === 'high' ? createPost(renderer, scene, camera) : null;
   renderer.info.autoReset = false;
 
   const size = () => {
     const { clientWidth: w, clientHeight: h } = canvas;
     renderer.setSize(w, h, false);
-    composer?.setPixelRatio(renderer.getPixelRatio());
-    composer?.setSize(w, h);
+    post?.setSize(w, h);
     camera.aspect = w / Math.max(1, h);
     camera.updateProjectionMatrix();
     return { width: w, height: h };
@@ -136,7 +118,7 @@ export function start(canvas: HTMLCanvasElement, tier: Exclude<Tier, 'low'>, dat
     const t = clock.elapsedTime;
     for (const m of mounted) m.frame(dt, t);
     renderer.info.reset();
-    if (composer) composer.render(dt); else renderer.render(scene, camera);
+    if (post) post.render(dt); else renderer.render(scene, camera);
   });
 
   // 暴露给 QA / 截图脚本读取的诊断信息
@@ -153,7 +135,7 @@ export function start(canvas: HTMLCanvasElement, tier: Exclude<Tier, 'low'>, dat
     canvas.removeEventListener('pointerup', onUp);
     canvas.removeEventListener('pointercancel', onCancel);
     void audioCtx?.close();
-    composer?.dispose();
+    post?.dispose();
     renderer.dispose();
   };
 }

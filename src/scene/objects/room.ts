@@ -11,7 +11,8 @@ export const room: SceneObject = ({ scene, tier }) => {
   const group = new THREE.Group();
   const high = tier === 'high';
   const batch = new Batch();
-  const std = (o: THREE.MeshStandardMaterialParameters) => bin.add(new THREE.MeshStandardMaterial(o));
+  // 有贴图的材质默认把同一张图当凹凸图，让木纹、布纹、叶脉有起伏
+  const std = (o: THREE.MeshStandardMaterialParameters) => bin.add(new THREE.MeshStandardMaterial(o.map && o.bumpScale !== 0 ? { bumpMap: o.map, bumpScale: 1, ...o } : o));
   const { win, wallZ, floorY } = L;
 
   // ---- 墙 ----
@@ -111,6 +112,26 @@ export const room: SceneObject = ({ scene, tier }) => {
     return { geo, base: Float32Array.from(geo.attributes.position.array as Float32Array), side };
   });
 
+  // ---- 窗玻璃：一层很淡的薄膜，带一点没擦干净的水痕 ----
+  // 用不受光照的材质：带高光的玻璃会把室内补光灯映成一个亮点，再被光束拉成一道线
+  const glass = bin.add(new THREE.MeshBasicMaterial({
+    color: 0xfff4e6, transparent: true, opacity: 0.09, depthWrite: false,
+    alphaMap: bin.add(canvasTex(256, 256, (g, w, h) => {
+      g.fillStyle = '#555'; g.fillRect(0, 0, w, h);
+      const r = rng(23);
+      for (let i = 0; i < 26; i++) {
+        const x = r() * w, y = r() * h, len = 30 + r() * 120;
+        const grad = g.createLinearGradient(x, y, x + len * 0.2, y + len);
+        grad.addColorStop(0, 'rgba(255,255,255,0)'); grad.addColorStop(0.5, `rgba(255,255,255,${0.1 + r() * 0.25})`); grad.addColorStop(1, 'rgba(255,255,255,0)');
+        g.strokeStyle = grad; g.lineWidth = 2 + r() * 10; g.beginPath(); g.moveTo(x, y); g.lineTo(x + len * 0.2, y + len); g.stroke();
+      }
+      speckle(g, w, h, 24, 400, '255,255,255', 0.5);
+    })),
+  }));
+  const pane = new THREE.Mesh(bin.add(new THREE.PlaneGeometry(ww - fw * 2, wh - fw * 2)), glass);
+  pane.position.set(0, wy, fz);
+  group.add(pane);
+
   // ---- 光：朝阳从窗外斜照进来，冷色天光补暗部，身后一点暖色补光 ----
   const sun = new THREE.DirectionalLight(0xffbe82, 3.6);
   sun.position.copy(SUN_LIGHT_DIR).multiplyScalar(14);
@@ -124,7 +145,10 @@ export const room: SceneObject = ({ scene, tier }) => {
   const hemi = new THREE.HemisphereLight(0xc9d8ff, 0x7a6048, 0.5);
   const fill = new THREE.PointLight(0xffe2c4, 1.0, 8, 1.2);
   fill.position.set(0.4, 1.5, 2.6);
-  group.add(sun, sun.target, hemi, fill);
+  // 阳光打在桌面上再弹起来的暖光，照亮书脊、屏幕下方这些背光面
+  const bounce = new THREE.PointLight(0xffc48c, 0.8, 2.4, 1.4);
+  bounce.position.set(0, 0.4, 0.3);
+  group.add(sun, sun.target, hemi, fill, bounce);
 
   scene.add(group);
   return {

@@ -93,7 +93,8 @@ export const bookshelf: SceneObject = ({ scene, tier, data, bus, pick }) => {
     const w = classic ? 0.026 + r() * 0.008 : 0.036 + r() * 0.02;
     const h = classic ? 0.2 + r() * 0.006 : 0.215 + r() * 0.04;
     const d = classic ? 0.14 : 0.155 + r() * 0.02;
-    const mat = bin.add(new THREE.MeshStandardMaterial({ map: bin.add(bookTexture(b, i)), roughness: classic ? 0.95 : 0.62 }));
+    const tex = bin.add(bookTexture(b, i));
+    const mat = bin.add(new THREE.MeshStandardMaterial({ map: tex, bumpMap: tex, bumpScale: 0.8, roughness: classic ? 0.95 : 0.62 }));
     const mesh = new THREE.Mesh(bin.add(bookGeometry(w, h, d, classic)), mat);
     mesh.castShadow = mesh.receiveShadow = high;
     const root = new THREE.Group();
