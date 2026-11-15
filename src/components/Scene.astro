@@ -31,7 +31,12 @@ const pct = (n: number) => `${(n * 100).toFixed(2)}%`;
       <a href="#" data-action="search" data-webgl-only>搜索</a>
       <a href="#" data-action="music" data-webgl-only>音乐</a>
     </nav>
-    <p class="hint"><span class="wide">点窗外看海 · 点书翻开 · 点唱片放音乐 · 点盆栽 · 点显示器搜索</span><span class="narrow">左右拖动看看桌面 · 点一点桌上的东西</span></p>
+    <div class="zoom" data-webgl-only role="group" aria-label="视角">
+      <button type="button" data-zoom="1" aria-label="拉近">＋</button>
+      <button type="button" data-zoom="-1" aria-label="拉远">－</button>
+      <button type="button" data-zoom="0" aria-label="复位视角">⟲</button>
+    </div>
+    <p class="hint"><span class="wide">拖动旋转 · 滚轮缩放 · 点窗外看海 · 点书、唱片、盆栽、显示器</span><span class="narrow">左右拖动旋转 · 双指缩放 · 点一点桌上的东西</span></p>
   </div>
 
   <!-- 镜头推到显示器时，真正的输入框叠在屏幕上画的搜索框上 -->
@@ -173,6 +178,10 @@ const pct = (n: number) => `${(n * 100).toFixed(2)}%`;
       root.dataset.ready = 'true';
       $('[data-action="search"]').addEventListener('click', (e) => { e.preventDefault(); emit('monitor:focus'); });
       $('[data-action="window"]').addEventListener('click', (e) => { e.preventDefault(); emit('window:focus'); });
+      root.querySelectorAll<HTMLButtonElement>('[data-zoom]').forEach((b) => b.addEventListener('click', () => {
+        const dir = Number(b.dataset.zoom);
+        if (dir) emit('view:zoom', { dir }); else emit('view:reset');
+      }));
       $('[data-action="music"]').addEventListener('click', (e) => {
         e.preventDefault();
         const ids: string[] = data.tracks.map((t: { id: string }) => t.id);
@@ -207,7 +216,8 @@ const pct = (n: number) => `${(n * 100).toFixed(2)}%`;
 
   .overlay { position: absolute; inset: 0; pointer-events: none; padding: 16px; display: flex; flex-direction: column;
     background: radial-gradient(ellipse 60% 45% at 0 0, #0b1c3a80, transparent 70%); }
-  .overlay > * { pointer-events: auto; }
+  /* 覆盖层本身不拦点击：只有按钮和链接接收，其余位置的点击和拖动都落到 3D 画面上 */
+  .overlay :is(a, button) { pointer-events: auto; }
   .intro { max-width: 520px; transition: opacity .4s; pointer-events: none; text-shadow: 0 1px 12px #0b1c3a99, 0 0 2px #0b1c3a66; }
   .intro h1 { margin: 28px 0 4px; font-size: clamp(28px, 5vw, 44px); letter-spacing: .02em; }
   .intro p { margin: 0; opacity: .92; }
@@ -224,6 +234,14 @@ const pct = (n: number) => `${(n * 100).toFixed(2)}%`;
   .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: auto; }
   .chips a:hover, .top-right button:hover { background: #1b3560; }
   :is(.chips a, .top-right button, .reader button):focus-visible { outline: 2px solid #ffd27a; outline-offset: 2px; }
+  .zoom { position: absolute; right: 16px; bottom: 16px; display: flex; flex-direction: column; gap: 6px; }
+  .zoom button {
+    width: 38px; height: 38px; font: inherit; font-size: 18px; line-height: 1; color: #fff; cursor: pointer;
+    background: #10203acc; border: 1px solid #ffffff40; border-radius: 50%; backdrop-filter: blur(6px);
+  }
+  .zoom button:hover { background: #1b3560; }
+  .zoom button:focus-visible { outline: 2px solid #ffd27a; outline-offset: 2px; }
+  .scene:not([data-mode='']) .zoom { display: none; }
   .hint { margin: 10px 0 0; font-size: 13px; opacity: .85; text-shadow: 0 1px 6px #000a; transition: opacity .4s; }
   .hint .narrow { display: none; }
   @media (max-aspect-ratio: 11/10) { .hint .wide { display: none; } .hint .narrow { display: inline; } }
@@ -316,5 +334,5 @@ const pct = (n: number) => `${(n * 100).toFixed(2)}%`;
     .book.opening .pages, .classic.opening .pages { animation-name: reveal-one; }
     @keyframes reveal-one { 0%, 49% { opacity: 0; } 50%, 100% { opacity: 1; } }
   }
-  @media (min-width: 900px) { .overlay { padding: 24px 32px; } .top-right { top: 24px; right: 32px; } }
+  @media (min-width: 900px) { .overlay { padding: 24px 32px; } .top-right { top: 24px; right: 32px; } .zoom { right: 32px; bottom: 24px; } }
 </style>

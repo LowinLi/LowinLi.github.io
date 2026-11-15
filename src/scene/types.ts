@@ -39,7 +39,8 @@ export interface MountContext {
 
 export type SceneInput =
   | { type: 'pointer'; x: number; y: number } // 归一化到 [-1, 1]
-  | { type: 'drag'; dx: number } // 按住拖动，dx 为相对画布宽度的比例
+  | { type: 'drag'; dx: number; dy: number } // 按住拖动，相对画布宽 / 高的比例
+  | { type: 'zoom'; k: number } // 缩放倍数：1 是默认距离，小于 1 拉近，大于 1 拉远
   | { type: 'resize'; width: number; height: number };
 
 export interface Mounted {

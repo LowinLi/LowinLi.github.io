@@ -6,7 +6,7 @@ import { Batch, canvasTex, rbox, rng, speckle, usePhotoTexture, woodGrain } from
 const SERIF = '"Kaiti SC","STKaiti","KaiTi","Songti SC","Noto Serif CJK SC","SimSun",serif';
 
 /** 房间：带大窗的墙、窗框窗台、纱帘、木地板、地毯、墙上的挂轴，以及晨光。 */
-export const room: SceneObject = ({ scene, tier, bus, pick }) => {
+export const room: SceneObject = ({ scene, camera, tier, bus, pick }) => {
   const bin = new Bin();
   const group = new THREE.Group();
   const high = tier === 'high';
@@ -22,12 +22,21 @@ export const room: SceneObject = ({ scene, tier, bus, pick }) => {
   }, [3, 3])) });
   usePhotoTexture(bin, wall, 'plastered_wall_04', { repeat: [2, 2], color: [1.62, 1.54, 1.42], normalScale: 0.6 });
   const top = 2.9, th = 0.2, zc = wallZ - th / 2, H = top - floorY, yc = (top + floorY) / 2;
-  batch.add(wall, new THREE.BoxGeometry(4, H, th), [win.x0 - 2, yc, zc]);
-  batch.add(wall, new THREE.BoxGeometry(4, H, th), [win.x1 + 2, yc, zc]);
+  // 房间内宽 6.4 m（x ±3.2），进深约 5.8 m（z 从窗墙到 4.6）
+  const RX = 3.2, RZ = 4.6, sideW = RX + th - win.x1;
+  batch.add(wall, new THREE.BoxGeometry(sideW, H, th), [win.x0 - sideW / 2, yc, zc]);
+  batch.add(wall, new THREE.BoxGeometry(sideW, H, th), [win.x1 + sideW / 2, yc, zc]);
   batch.add(wall, new THREE.BoxGeometry(win.x1 - win.x0, win.y0 - floorY, th), [0, (win.y0 + floorY) / 2, zc]);
   batch.add(wall, new THREE.BoxGeometry(win.x1 - win.x0, top - win.y1, th), [0, (top + win.y1) / 2, zc]);
-  batch.add(wall, new THREE.BoxGeometry(th, H, 7), [-3.3, yc, 2.2]);
-  batch.add(wall, new THREE.BoxGeometry(th, H, 7), [3.3, yc, 2.2]);
+  // 两面侧墙单独成网格：镜头绕到墙外时把那面墙藏起来，房间就成了能看进去的剖面
+  const sideLen = RZ - (wallZ - th);
+  const sideWalls = [-1, 1].map((s) => {
+    const mesh = new THREE.Mesh(bin.add(new THREE.BoxGeometry(th, H, sideLen)), wall);
+    mesh.position.set(s * (RX + th / 2), yc, (RZ + wallZ - th) / 2);
+    mesh.receiveShadow = high;
+    group.add(mesh);
+    return { mesh, s };
+  });
   const trim = std({ color: 0xf6f3ec, roughness: 0.5 });
   batch.add(trim, rbox(6.4, 0.1, 0.018, 0.004), [0, floorY + 0.05, wallZ + 0.009]); // 踢脚线
 
@@ -62,8 +71,8 @@ export const room: SceneObject = ({ scene, tier, bus, pick }) => {
     }
   }, [5, 4]));
   const floorMat = std({ map: floorTex, roughness: 0.42 });
-  usePhotoTexture(bin, floorMat, 'wood_floor', { repeat: [7, 4.5], color: [1.15, 1.05, 0.95] });
-  batch.add(floorMat, new THREE.BoxGeometry(14, 0.1, 9), [0, floorY - 0.05, 1.5]);
+  usePhotoTexture(bin, floorMat, 'wood_floor', { repeat: [3.4, 3], color: [1.15, 1.05, 0.95] });
+  batch.add(floorMat, new THREE.BoxGeometry((RX + th) * 2, 0.25, sideLen), [0, floorY - 0.125, (RZ + wallZ - th) / 2]);
   const rugMat = std({ roughness: 1, map: bin.add(canvasTex(512, 512, (g, w, h) => {
     g.fillStyle = '#d9d2c4'; g.fillRect(0, 0, w, h);
     for (let y = 0; y < h; y += 4) { g.fillStyle = y % 8 ? 'rgba(120,105,85,.10)' : 'rgba(255,255,255,.12)'; g.fillRect(0, y, w, 2); }
@@ -164,6 +173,7 @@ export const room: SceneObject = ({ scene, tier, bus, pick }) => {
   scene.add(group);
   return {
     frame(_dt, t) {
+      for (const w of sideWalls) w.mesh.visible = camera.position.x * w.s < RX - 0.05;
       for (const c of curtains) {
         const p = c.geo.attributes.position;
         for (let i = 0; i < p.count; i++) {

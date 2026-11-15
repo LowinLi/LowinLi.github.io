@@ -12,11 +12,12 @@ import { bookshelf } from './objects/bookshelf';
 import { gramophone } from './objects/gramophone';
 import { plants } from './objects/plants';
 import { gulls } from './objects/gulls';
+import { furniture } from './objects/furniture';
 import { dust } from './objects/dust';
 import { cameraRig } from './objects/cameraRig';
 
 /** 场景里挂载的物件清单。新物件：在 objects/ 下建文件，然后加到这里。cameraRig 放最后。 */
-const OBJECTS: SceneObject[] = [seaSky, boat, room, desk, monitor, bookshelf, gramophone, plants, gulls, dust, cameraRig];
+const OBJECTS: SceneObject[] = [seaSky, boat, room, furniture, desk, monitor, bookshelf, gramophone, plants, gulls, dust, cameraRig];
 
 export function start(canvas: HTMLCanvasElement, tier: Exclude<Tier, 'low'>, data: SiteData, bus: EventTarget) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: tier === 'high', powerPreference: 'high-performance' });
@@ -68,22 +69,48 @@ export function start(canvas: HTMLCanvasElement, tier: Exclude<Tier, 'low'>, dat
   const send = (e: SceneInput) => mounted.forEach((m) => m.input?.(e));
   send({ type: 'resize', width, height });
 
-  let monitorFocused = false, windowFocused = false;
+  let monitorFocused = false, windowFocused = false, bookOpen = false;
+  // 缩放：1 是默认距离。只在自由视角下生效（没在看显示器 / 窗外 / 书）
+  const ZOOM_MIN = 0.45, ZOOM_MAX = 2.4;
+  let zoomK = 1;
+  const free = () => !monitorFocused && !windowFocused && !bookOpen;
+  const setZoom = (k: number) => {
+    const next = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, k));
+    if (next === zoomK) return false;
+    zoomK = next; send({ type: 'zoom', k: zoomK });
+    return true;
+  };
   const offs = [
     on(bus, 'monitor:focus', () => { monitorFocused = true; }),
     on(bus, 'monitor:blur', () => { monitorFocused = false; }),
     on(bus, 'scene:changed', () => post?.refresh()),
+    on(bus, 'book:open', () => { bookOpen = true; }),
+    on(bus, 'book:close', () => { bookOpen = false; }),
+    on<{ dir: number }>(bus, 'view:zoom', ({ dir }) => { if (free()) setZoom(zoomK * (dir > 0 ? 0.75 : 1 / 0.75)); }),
+    on(bus, 'view:reset', () => setZoom(1)),
     on(bus, 'window:focus', () => { windowFocused = true; post?.setFarBlur(false); }),
     on(bus, 'window:blur', () => { windowFocused = false; post?.setFarBlur(true); }),
   ];
 
   const onResize = () => send({ type: 'resize', ...size() });
   let downAt: { x: number; y: number } | null = null;
-  let lastX = 0;
+  let lastX = 0, lastY = 0;
+  // 双指缩放：记录当前按下的触点
+  const touches = new Map<number, { x: number; y: number }>();
+  let pinchDist = 0;
   const onMove = (e: PointerEvent) => {
     const r = canvas.getBoundingClientRect();
     send({ type: 'pointer', x: ((e.clientX - r.left) / r.width) * 2 - 1, y: -(((e.clientY - r.top) / r.height) * 2 - 1) });
-    if (downAt) { send({ type: 'drag', dx: (e.clientX - lastX) / r.width }); lastX = e.clientX; }
+    if (touches.has(e.pointerId)) touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (touches.size === 2) {
+      const [a, b] = [...touches.values()];
+      const d = Math.hypot(a.x - b.x, a.y - b.y);
+      if (pinchDist > 0 && free()) setZoom(zoomK * (pinchDist / d));
+      pinchDist = d;
+      downAt = null; // 双指时不算拖动也不算点击
+      return;
+    }
+    if (downAt) { send({ type: 'drag', dx: (e.clientX - lastX) / r.width, dy: (e.clientY - lastY) / r.height }); lastX = e.clientX; lastY = e.clientY; }
     const res = cast(e);
     const owner = res?.owner ?? null;
     if (owner !== hovered) {
@@ -94,8 +121,13 @@ export function start(canvas: HTMLCanvasElement, tier: Exclude<Tier, 'low'>, dat
     canvas.style.cursor = owner && pickables.get(owner)!.click ? 'pointer' : '';
     if (res) pickables.get(res.owner)?.move?.(res.hit);
   };
-  const onDown = (e: PointerEvent) => { downAt = { x: e.clientX, y: e.clientY }; lastX = e.clientX; };
+  const onDown = (e: PointerEvent) => {
+    downAt = { x: e.clientX, y: e.clientY }; lastX = e.clientX; lastY = e.clientY;
+    if (e.pointerType === 'touch') { touches.set(e.pointerId, { x: e.clientX, y: e.clientY }); pinchDist = 0; }
+    else canvas.setPointerCapture(e.pointerId); // 鼠标拖出画布也继续旋转
+  };
   const onUp = (e: PointerEvent) => {
+    touches.delete(e.pointerId); pinchDist = 0;
     const start = downAt; downAt = null;
     if (!start || Math.hypot(e.clientX - start.x, e.clientY - start.y) > 8) return;
     const res = cast(e);
@@ -104,12 +136,19 @@ export function start(canvas: HTMLCanvasElement, tier: Exclude<Tier, 'low'>, dat
     if (monitorFocused && !res?.owner.userData.keepsMonitor) { emit(bus, 'monitor:blur'); return; }
     if (res) pickables.get(res.owner)?.click?.(res.hit);
   };
-  const onCancel = () => { downAt = null; };
+  const onCancel = (e: PointerEvent) => { downAt = null; touches.delete(e.pointerId); pinchDist = 0; };
+  // 滚轮：向上拉近，向下拉远。已经拉到最远还继续滚，就把滚动交还给页面（往下看文章）
+  const onWheel = (e: WheelEvent) => {
+    if (!free()) return;
+    const changed = setZoom(zoomK * Math.exp(e.deltaY * (e.ctrlKey ? 0.01 : 0.0013)));
+    if (changed || e.ctrlKey) e.preventDefault();
+  };
   addEventListener('resize', onResize);
   canvas.addEventListener('pointermove', onMove);
   canvas.addEventListener('pointerdown', onDown);
   canvas.addEventListener('pointerup', onUp);
   canvas.addEventListener('pointercancel', onCancel);
+  canvas.addEventListener('wheel', onWheel, { passive: false });
 
   // 不在视口内或标签页隐藏时停止渲染
   let visible = true;
@@ -139,6 +178,7 @@ export function start(canvas: HTMLCanvasElement, tier: Exclude<Tier, 'low'>, dat
     canvas.removeEventListener('pointerdown', onDown);
     canvas.removeEventListener('pointerup', onUp);
     canvas.removeEventListener('pointercancel', onCancel);
+    canvas.removeEventListener('wheel', onWheel);
     void audioCtx?.close();
     post?.dispose();
     renderer.dispose();
