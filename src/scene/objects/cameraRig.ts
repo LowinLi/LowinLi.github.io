@@ -9,7 +9,7 @@ const AZ_MAX = 1.1, EL_MIN = -0.07, EL_MAX = 0.8;
  * 相机。
  * home：围着书桌的环绕视角——拖动旋转，滚轮 / 双指缩放（zoom 由 runtime 传进来），指针带一点视差。
  *       拉远时自动抬高一点，能俯看整间办公室；拉近时视线压低到桌面。
- * monitor：推近到显示器；book：稍微靠向书架；window：走到窗前看海。
+ * monitor：推近到显示器；book：稍微靠向书架；window：走到窗前看菜园。
  */
 export const cameraRig: SceneObject = ({ camera, bus }) => {
   let mode: 'home' | 'monitor' | 'book' | 'window' = 'home';
@@ -32,8 +32,8 @@ export const cameraRig: SceneObject = ({ camera, bus }) => {
       const tan = Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2);
       const m = L.monitor;
       if (mode === 'window') {
-        // 走到窗前，朝着日出的方向看海；指针可以带着视线左右、上下看一点
-        tp.set(px * 0.1, 0.92 + py * 0.04, L.wallZ + 0.2);
+        // 走到窗前、探出窗外（越过窗棂，不让格子挡住视线），朝着日出的方向看；指针可以带着视线左右、上下看一点
+        tp.set(px * 0.1, 0.92 + py * 0.04, L.wallZ - 0.32);
         tl.set(tp.x + SUN_DIR.x * 10 + px * 1.8, tp.y - 0.35 + py * 0.9, tp.z + SUN_DIR.z * 10);
       } else if (mode === 'monitor') {
         const dist = Math.max(m.h / 0.78, m.w / 0.92 / aspect) / 2 / tan;

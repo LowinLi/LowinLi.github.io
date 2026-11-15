@@ -11,10 +11,11 @@ export const L = {
   gramophone: { x: 0.8, z: -0.2 },
   discs: { x: 0.6, z: 0.27 },
   cam: { pos: [0, 0.86, 2.5], look: [0, 0.55, -0.2] },
-  seaY: -7,
+  /** 屋外地面：比室内地面低一个台阶 */
+  groundY: -0.95,
 } as const;
 
-/** 太阳方向：正好在海平线上（露出一半）。只略偏左：海平线比显示器上沿高，不会被挡住，竖屏时也能看到 */
+/** 太阳方向：正好在地平线上，从远山的豁口里升起来。只略偏左：地平线比显示器上沿高，不会被挡住，竖屏时也能看到 */
 export const SUN_DIR = new THREE.Vector3(-0.068, 0.0, -1).normalize();
 /** 照进房间的光稍微抬高一点，让阳光能铺在桌面上 */
 export const SUN_LIGHT_DIR = new THREE.Vector3(-0.12, 0.24, -1).normalize();

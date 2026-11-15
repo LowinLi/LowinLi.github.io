@@ -6,7 +6,7 @@ interface Props { data: SiteData }
 const { data } = Astro.props;
 const pct = (n: number) => `${(n * 100).toFixed(2)}%`;
 ---
-<section class="scene" data-tier="pending" data-mode="" aria-label="海边的办公室">
+<section class="scene" data-tier="pending" data-mode="" aria-label="乡间的书房">
   <div class="fallback" aria-hidden="true">
     <div class="sun"></div>
     <div class="sea"></div>
@@ -27,7 +27,7 @@ const pct = (n: number) => `${(n * 100).toFixed(2)}%`;
     <nav class="chips" aria-label="快捷入口">
       <a href="#" data-book="about">关于我</a>
       <a href={data.postsIndex} data-book="posts">文章</a>
-      <a href="#" data-action="window" data-webgl-only>看海</a>
+      <a href="#" data-action="window" data-webgl-only>看窗外</a>
       <a href="#" data-action="search" data-webgl-only>搜索</a>
       <a href="#" data-action="music" data-webgl-only>音乐</a>
     </nav>
@@ -36,7 +36,7 @@ const pct = (n: number) => `${(n * 100).toFixed(2)}%`;
       <button type="button" data-zoom="-1" aria-label="拉远">－</button>
       <button type="button" data-zoom="0" aria-label="复位视角">⟲</button>
     </div>
-    <p class="hint"><span class="wide">拖动旋转 · 滚轮缩放 · 点窗外看海 · 点书、唱片、盆栽、显示器</span><span class="narrow">拖动旋转 · 双指缩放 · 点一点桌上的东西</span></p>
+    <p class="hint"><span class="wide">拖动旋转 · 滚轮缩放 · 点窗外看菜园 · 点书、唱片、盆栽、显示器</span><span class="narrow">拖动旋转 · 双指缩放 · 点一点桌上的东西</span></p>
   </div>
 
   <!-- 镜头推到显示器时，真正的输入框叠在屏幕上画的搜索框上 -->
@@ -143,7 +143,7 @@ const pct = (n: number) => `${(n * 100).toFixed(2)}%`;
   });
   back.addEventListener('click', () => { emit('monitor:blur'); emit('window:blur'); });
 
-  // ---- 走到窗前看海 ----
+  // ---- 走到窗前看菜园 ----
   on('window:focus', () => {
     if (root.dataset.mode === 'monitor') emit('monitor:blur');
     root.dataset.mode = 'window'; back.hidden = false;
@@ -200,17 +200,17 @@ const pct = (n: number) => `${(n * 100).toFixed(2)}%`;
   canvas, .fallback { position: absolute; inset: 0; width: 100%; height: 100%; }
   canvas { touch-action: none; } /* 页面不滚动了：单指上下拖也用来转视角 */
 
-  /* low 档 / 加载前：一扇 CSS 画的窗，窗外是日出的海 */
+  /* low 档 / 加载前：一扇 CSS 画的窗，窗外是日出时的远山和稻田 */
   .fallback {
-    background: linear-gradient(#35599c 0%, #8fa8d4 30%, #f0b996 52%, #ffa262 60%, #1d4a5c 60%, #0e2b3a 100%);
+    background: linear-gradient(#5f7fb8 0%, #a9b9d8 30%, #f0c2a2 50%, #ffb07a 57%, #8fa89a 57%, #9bb07a 62%, #86a83e 62%, #5f8a34 100%);
     transition: opacity .8s;
   }
-  .sun { position: absolute; left: 38%; top: 60%; width: 16vmin; height: 16vmin; margin: -8vmin 0 0 -8vmin; border-radius: 50%;
+  .sun { position: absolute; left: 38%; top: 57%; width: 16vmin; height: 16vmin; margin: -8vmin 0 0 -8vmin; border-radius: 50%;
     background: radial-gradient(#fff6d8 0 45%, #ffd27a 70%); box-shadow: 0 0 12vmin 6vmin #ffb86b99;
     clip-path: inset(-30vmin -30vmin 50% -30vmin); }
-  .sea { position: absolute; left: 0; right: 0; top: 60%; bottom: 0;
-    background: linear-gradient(90deg, transparent 30%, #ffb86b88 38%, transparent 46%), repeating-linear-gradient(#ffffff14 0 2px, transparent 2px 9px); }
-  .mullion { position: absolute; top: 0; bottom: 0; width: 6px; background: #2b2d31; }
+  .sea { position: absolute; left: 0; right: 0; top: 62%; bottom: 0; /* 稻田：一垄一垄的稻子 */
+    background: repeating-linear-gradient(90deg, #ffffff10 0 3px, transparent 3px 14px), repeating-linear-gradient(#0000000d 0 2px, transparent 2px 22px); }
+  .mullion { position: absolute; top: 0; bottom: 0; width: 8px; background: #4a2618; }
   .scene[data-ready='true'] .fallback { opacity: 0; pointer-events: none; }
   .scene[data-tier='low'] canvas { display: none; }
   .scene[data-tier='low'] [data-webgl-only], .scene[data-tier='low'] .hint { display: none; }

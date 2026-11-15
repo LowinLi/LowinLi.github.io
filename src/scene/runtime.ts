@@ -3,21 +3,21 @@ import { BUDGETS } from './budgets';
 import { emit, on, type MountContext, type Mounted, type PickHandlers, type SceneInput, type SceneObject, type SiteData } from './types';
 import type { Tier } from './tier';
 import { createPost } from './post';
-import { seaSky } from './objects/seaSky';
-import { boat } from './objects/boat';
+import { sky } from './objects/sky';
+import { countryside } from './objects/countryside';
+import { animals } from './objects/animals';
 import { desk } from './objects/desk';
 import { room } from './objects/room';
 import { monitor } from './objects/monitor';
 import { bookshelf } from './objects/bookshelf';
 import { gramophone } from './objects/gramophone';
 import { plants } from './objects/plants';
-import { gulls } from './objects/gulls';
 import { furniture } from './objects/furniture';
 import { dust } from './objects/dust';
 import { cameraRig } from './objects/cameraRig';
 
 /** 场景里挂载的物件清单。新物件：在 objects/ 下建文件，然后加到这里。cameraRig 放最后。 */
-const OBJECTS: SceneObject[] = [seaSky, boat, room, furniture, desk, monitor, bookshelf, gramophone, plants, gulls, dust, cameraRig];
+const OBJECTS: SceneObject[] = [sky, countryside, animals, room, furniture, desk, monitor, bookshelf, gramophone, plants, dust, cameraRig];
 
 export function start(canvas: HTMLCanvasElement, tier: Exclude<Tier, 'low'>, data: SiteData, bus: EventTarget) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: tier === 'high', powerPreference: 'high-performance' });

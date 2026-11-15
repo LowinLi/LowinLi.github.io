@@ -5,7 +5,7 @@ import { asset, Batch, canvasTex, rbox, rng, speckle, usePhotoTexture, woodGrain
 
 const SERIF = '"Kaiti SC","STKaiti","KaiTi","Songti SC","Noto Serif CJK SC","SimSun",serif';
 
-/** 房间：带大窗的墙、窗框窗台、纱帘、木地板、地毯、墙上的挂轴，以及晨光。 */
+/** 房间：带大窗的墙、中式木格窗和竹帘、方砖地面、墙上的挂轴，以及晨光。 */
 export const room: SceneObject = ({ scene, camera, tier, bus, pick }) => {
   const bin = new Bin();
   const group = new THREE.Group();
@@ -20,7 +20,6 @@ export const room: SceneObject = ({ scene, camera, tier, bus, pick }) => {
     g.fillStyle = '#ddd6ca'; g.fillRect(0, 0, w, h);
     speckle(g, w, h, 3, 2600, '90,70,50', 0.05); speckle(g, w, h, 4, 1800, '255,255,255', 0.08);
   }, [3, 3])) });
-  usePhotoTexture(bin, wall, 'plastered_wall_04', { repeat: [2, 2], color: [1.62, 1.54, 1.42], normalScale: 0.6 });
   const top = 2.9, th = 0.2, zc = wallZ - th / 2, H = top - floorY, yc = (top + floorY) / 2;
   // 房间内宽 6.4 m（x ±3.2），进深约 5.8 m（z 从窗墙到 4.6）
   const RX = 3.2, RZ = 4.6, sideW = RX + th - win.x1;
@@ -40,52 +39,57 @@ export const room: SceneObject = ({ scene, camera, tier, bus, pick }) => {
   const trim = std({ color: 0xf6f3ec, roughness: 0.5 });
   batch.add(trim, rbox(6.4, 0.1, 0.018, 0.004), [0, floorY + 0.05, wallZ + 0.009]); // 踢脚线
 
-  // ---- 窗框（深色铝合金，三扇）、把手、木窗台 ----
-  const alu = std({ color: 0x26282c, roughness: 0.4, metalness: 0.75 });
-  const ww = win.x1 - win.x0, wh = win.y1 - win.y0, wy = (win.y0 + win.y1) / 2, fz = wallZ - 0.11, fw = 0.05;
-  batch.add(alu, rbox(ww, fw, 0.07, 0.006), [0, win.y1 - fw / 2, fz]);
-  batch.add(alu, rbox(ww, fw, 0.07, 0.006), [0, win.y0 + fw / 2, fz]);
-  for (const x of [win.x0 + fw / 2, win.x1 - fw / 2]) batch.add(alu, rbox(fw, wh, 0.07, 0.006), [x, wy, fz]);
-  for (const x of [-ww / 6, ww / 6]) {
-    batch.add(alu, rbox(0.06, wh - fw, 0.06, 0.006), [x, wy, fz]);
-    // 每扇窗内侧再套一圈细窗扇
-    for (const dx of [-0.04, 0.04]) batch.add(alu, rbox(0.014, wh - fw * 2, 0.03, 0.003), [x + dx, wy, fz + 0.02]);
-  }
-  batch.add(alu, rbox(0.016, 0.11, 0.022, 0.004), [ww / 6 - 0.045, wy - 0.25, fz + 0.045]);
-  batch.add(alu, rbox(0.018, 0.02, 0.07, 0.004), [ww / 6 - 0.045, wy - 0.2, fz + 0.075]);
-  const sillWood = std({ roughness: 0.5, map: bin.add(canvasTex(512, 64, (g, w, h) => woodGrain(g, 0, 0, w, h, '#b88a5e', '70,40,18', 21, 60))) });
-  batch.add(sillWood, rbox(ww + 0.16, 0.035, 0.3, 0.012), [0, win.y0 - 0.0175, wallZ - 0.02]);
-
-  // ---- 地板和地毯 ----
-  const floorTex = bin.add(canvasTex(1024, 1024, (g, w, h) => {
-    const r = rng(8), rows = 8, rh = h / rows;
-    for (let i = 0; i < rows; i++) {
-      let x = -r() * 300;
-      while (x < w) {
-        const len = 260 + r() * 300, tone = Math.floor(r() * 26);
-        woodGrain(g, x, i * rh, len, rh, `rgb(${178 - tone},${140 - tone},${104 - tone})`, '80,48,22', Math.floor(r() * 1e6), 34);
-        g.fillStyle = 'rgba(40,24,10,.55)'; g.fillRect(x + len - 1.5, i * rh, 2.5, rh);
-        x += len;
-      }
-      g.fillStyle = 'rgba(40,24,10,.5)'; g.fillRect(0, i * rh, w, 2);
+  // ---- 中式木格窗：深色实木窗框，三扇；上面一条横披是回纹格子，下面每扇套一圈细棂，中间留空好看风景 ----
+  const winWood = std({ roughness: 0.5, map: bin.add(canvasTex(256, 256, (g, w, h) => woodGrain(g, 0, 0, w, h, '#4a2618', '14,6,3', 21, 120))) });
+  const ww = win.x1 - win.x0, wh = win.y1 - win.y0, wy = (win.y0 + win.y1) / 2, fz = wallZ - 0.11, fw = 0.06;
+  const bar = (w: number, h: number, x: number, y: number, d = 0.035, z = fz) => batch.add(winWood, rbox(w, h, d, 0.004), [x, y, z]);
+  bar(ww, fw, 0, win.y1 - fw / 2, 0.08); bar(ww, fw, 0, win.y0 + fw / 2, 0.08);
+  for (const x of [win.x0 + fw / 2, win.x1 - fw / 2]) bar(fw, wh, x, wy, 0.08);
+  for (const x of [-ww / 6, ww / 6]) bar(0.065, wh - fw, x, wy, 0.07);
+  const transomH = 0.36, ty0 = win.y1 - fw - transomH; // 横披的下沿
+  bar(ww, 0.045, 0, ty0, 0.06);
+  for (let p = 0; p < 3; p++) {
+    const x0 = win.x0 + fw + p * (ww / 3) + (p === 0 ? 0 : -fw / 2 + 0.0325), x1 = win.x0 + (p + 1) * (ww / 3) - (p === 2 ? fw : 0.0325);
+    const pw = x1 - x0, cx = (x0 + x1) / 2, t = 0.018;
+    // 横披里的格子：竖棂 + 中间一圈回纹
+    const n = 6;
+    for (let i = 1; i < n; i++) bar(t, transomH, x0 + (pw * i) / n, ty0 + transomH / 2 + 0.01, 0.025);
+    bar(pw, t, cx, ty0 + transomH * 0.5 + 0.01, 0.025);
+    for (const [bw, bh] of [[pw * 0.5, transomH * 0.56]]) {
+      bar(bw, t, cx, ty0 + 0.01 + (transomH + bh) / 2, 0.03); bar(bw, t, cx, ty0 + 0.01 + (transomH - bh) / 2, 0.03);
+      bar(t, bh, cx - bw / 2, ty0 + transomH / 2 + 0.01, 0.03); bar(t, bh, cx + bw / 2, ty0 + transomH / 2 + 0.01, 0.03);
     }
-  }, [5, 4]));
-  const floorMat = std({ map: floorTex, roughness: 0.42 });
-  usePhotoTexture(bin, floorMat, 'wood_floor', { repeat: [3.4, 3], color: [1.15, 1.05, 0.95] });
-  batch.add(floorMat, new THREE.BoxGeometry((RX + th) * 2, 0.25, sideLen), [0, floorY - 0.125, (RZ + wallZ - th) / 2]);
-  const rugMat = std({ roughness: 1, map: bin.add(canvasTex(512, 512, (g, w, h) => {
-    g.fillStyle = '#d9d2c4'; g.fillRect(0, 0, w, h);
-    for (let y = 0; y < h; y += 4) { g.fillStyle = y % 8 ? 'rgba(120,105,85,.10)' : 'rgba(255,255,255,.12)'; g.fillRect(0, y, w, 2); }
-    g.strokeStyle = '#5f7f8c'; g.lineWidth = 10; g.strokeRect(34, 34, w - 68, h - 68);
-    g.strokeStyle = '#b8695a'; g.lineWidth = 3; g.strokeRect(54, 54, w - 108, h - 108);
-    speckle(g, w, h, 5, 5000, '60,50,40', 0.08);
+    // 下面的窗扇：四边各退进来一道细棂，四角用短棂连到窗框上
+    const by0 = win.y0 + fw, by1 = ty0 - 0.0225, inset = 0.09, bh = by1 - by0;
+    bar(pw - inset * 2, t, cx, by0 + inset, 0.025); bar(pw - inset * 2, t, cx, by1 - inset, 0.025);
+    bar(t, bh - inset * 2, x0 + inset, (by0 + by1) / 2, 0.025); bar(t, bh - inset * 2, x1 - inset, (by0 + by1) / 2, 0.025);
+    for (const yy of [by0 + inset + 0.14, by1 - inset - 0.14]) { bar(inset, t, x0 + inset / 2, yy, 0.025); bar(inset, t, x1 - inset / 2, yy, 0.025); }
+    for (const xx of [x0 + inset + 0.14, x1 - inset - 0.14]) { bar(t, inset, xx, by0 + inset / 2, 0.025); bar(t, inset, xx, by1 - inset / 2, 0.025); }
+  }
+  batch.add(winWood, rbox(ww + 0.16, 0.04, 0.3, 0.012), [0, win.y0 - 0.02, wallZ - 0.02]); // 窗台
+  // 卷在窗子上方的竹帘
+  const blind = std({ roughness: 0.7, map: bin.add(canvasTex(256, 64, (g, w, h) => {
+    g.fillStyle = '#c9ad72'; g.fillRect(0, 0, w, h);
+    for (let y = 0; y < h; y += 4) { g.fillStyle = y % 8 ? 'rgba(90,60,20,.28)' : 'rgba(255,240,200,.18)'; g.fillRect(0, y, w, 1.5); }
+    for (const x of [40, 128, 216]) { g.fillStyle = 'rgba(120,40,30,.8)'; g.fillRect(x, 0, 3, h); } // 编绳
   })) });
-  batch.add(rugMat, rbox(3.3, 0.014, 2.3, 0.006), [0, floorY + 0.007, 0.95]);
+  batch.add(blind, new THREE.CylinderGeometry(0.05, 0.05, ww + 0.1, 16).rotateZ(Math.PI / 2), [0, win.y1 + 0.03, wallZ + 0.05]);
+  batch.add(blind, new THREE.PlaneGeometry(ww + 0.06, 0.2), [0, win.y1 - 0.06, wallZ + 0.012]);
+  for (const x of [-ww / 2 + 0.2, ww / 2 - 0.2]) batch.add(winWood, new THREE.CylinderGeometry(0.004, 0.004, 0.16, 5), [x, win.y1 + 0.12, wallZ + 0.03]);
 
-  // ---- 窗帘杆和墙上的挂轴 ----
+  // ---- 地面：灰色方砖（青砖地），不铺地毯 ----
+  const floorTex = bin.add(canvasTex(512, 512, (g, w, h) => {
+    const r = rng(8), n = 3, t = w / n;
+    g.fillStyle = '#5c5f60'; g.fillRect(0, 0, w, h); // 砖缝
+    for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) { const v = 128 + Math.floor(r() * 26); g.fillStyle = `rgb(${v},${v + 3},${v + 5})`; g.fillRect(i * t + 3, j * t + 3, t - 6, t - 6); }
+    speckle(g, w, h, 9, 6000, '40,45,50', 0.2); speckle(g, w, h, 10, 3000, '230,235,235', 0.15);
+  }, [4.5, 4]));
+  const floorMat = std({ map: floorTex, roughness: 0.6 });
+  usePhotoTexture(bin, floorMat, 'large_grey_tiles', { repeat: [6.5, 5.7], color: [1.12, 1.14, 1.16] });
+  batch.add(floorMat, new THREE.BoxGeometry((RX + th) * 2, 0.25, sideLen), [0, floorY - 0.125, (RZ + wallZ - th) / 2]);
+
+  // ---- 墙上的挂轴 ----
   const rodMat = std({ color: 0x1b1b1d, roughness: 0.35, metalness: 0.8 });
-  batch.add(rodMat, new THREE.CylinderGeometry(0.012, 0.012, 3.7, 12), [0, 2.06, wallZ + 0.08], [0, 0, Math.PI / 2]);
-  for (const x of [-1.87, 1.87]) batch.add(rodMat, new THREE.SphereGeometry(0.026, 16, 12), [x, 2.06, wallZ + 0.08]);
   const scrollMat = std({ roughness: 0.9, map: bin.add(canvasTex(256, 768, (g, w, h) => {
     g.fillStyle = '#b89a6a'; g.fillRect(0, 0, w, h);                       // 绫边
     speckle(g, w, h, 6, 3000, '255,240,200', 0.12);
@@ -102,7 +106,7 @@ export const room: SceneObject = ({ scene, camera, tier, bus, pick }) => {
   for (const y of [sy + 0.49, sy - 0.49]) batch.add(darkWood, new THREE.CylinderGeometry(0.013, 0.013, 0.38, 12), [sx, y, wallZ + 0.02], [0, 0, Math.PI / 2]);
   batch.add(rodMat, new THREE.CylinderGeometry(0.004, 0.004, 0.03, 6), [sx, sy + 0.6, wallZ + 0.012]);
 
-  const built = batch.build(group, bin, { cast: high, receive: high, noCast: [floorMat, rugMat, scrollMat, trim] });
+  const built = batch.build(group, bin, { cast: high, receive: high, noCast: [floorMat, scrollMat, trim, blind] });
   const meshOf = (m: THREE.Material) => built.find((x) => x.material === m)!;
 
   // ---- 烘焙光照：墙和地板的光影是用 Blender 离线算好的（tools/bake_lighting.py）----
@@ -132,30 +136,10 @@ export const room: SceneObject = ({ scene, camera, tier, bus, pick }) => {
   const floorUV = (x: number, _y: number, z: number): [number, number] => [(cx(x) - LX0) / (LX1 - LX0), (cz(z) - LZ0) / (LZ1 - LZ0)];
   const sideUV = (_x: number, y: number, z: number): [number, number] => [(cz(z) - LZ0) / (LZ1 - LZ0), (y - floorY) / H];
   bake(meshOf(floorMat), 'floor', floorUV);
-  bake(meshOf(rugMat), 'floor', floorUV);
   const paint = new THREE.Color(0.72, 0.8, 0.9);
   bake(meshOf(wall), 'wall_back', (x, y) => [(cx(x) - LX0) / (LX1 - LX0), (y - floorY) / H], paint);
   bake(sideWalls[0].mesh, 'wall_left', sideUV, paint);
   bake(sideWalls[1].mesh, 'wall_right', sideUV, paint);
-
-  // ---- 纱帘：被朝阳照透，随微风轻轻摆动 ----
-  const linen = bin.add(new THREE.MeshStandardMaterial({
-    color: 0xf7f2e8, roughness: 1, side: THREE.DoubleSide, transparent: true, opacity: 0.9,
-    emissive: 0x8a6a4c, emissiveIntensity: 0.4,
-    map: bin.add(canvasTex(128, 128, (g, w, h) => {
-      g.fillStyle = '#fff'; g.fillRect(0, 0, w, h);
-      for (let i = 0; i < w; i += 3) { g.fillStyle = 'rgba(150,130,110,.14)'; g.fillRect(i, 0, 1, h); g.fillRect(0, i, w, 1); }
-    }, [6, 30])),
-  }));
-  const cw = 0.4, ch = 2.06 - floorY - 0.03;
-  const curtains = [-1, 1].map((side) => {
-    const geo = bin.add(new THREE.PlaneGeometry(cw, ch, 26, 10));
-    const mesh = new THREE.Mesh(geo, linen);
-    mesh.position.set(side * (win.x1 + 0.16), 2.06 - ch / 2, wallZ + 0.08);
-    mesh.castShadow = high;
-    group.add(mesh);
-    return { geo, base: Float32Array.from(geo.attributes.position.array as Float32Array), side };
-  });
 
   // ---- 窗玻璃：一层很淡的薄膜，带一点没擦干净的水痕 ----
   // 用不受光照的材质：带高光的玻璃会把室内补光灯映成一个亮点，再被光束拉成一道线
@@ -212,21 +196,10 @@ export const room: SceneObject = ({ scene, camera, tier, bus, pick }) => {
 
   scene.add(group);
   return {
-    frame(_dt, t) {
+    frame() {
       for (const w of sideWalls) w.mesh.visible = camera.position.x * w.s < RX - 0.05;
       // 实拍贴图可能比光照贴图晚到：把颜色贴图同步到烘焙材质上
       for (const b of baked) if (b.basic.map !== b.src.map) { b.basic.map = b.src.map; b.basic.color.copy(b.src.color); b.basic.needsUpdate = true; }
-      for (const c of curtains) {
-        const p = c.geo.attributes.position;
-        for (let i = 0; i < p.count; i++) {
-          const x = c.base[i * 3], y = c.base[i * 3 + 1];
-          const hang = 0.5 - y / ch; // 0 在帘杆处，1 在下摆
-          p.setZ(i, Math.sin(x * 48) * 0.022 + Math.sin(t * 0.8 + y * 2.2 + x * 4 + c.side) * 0.02 * hang);
-          p.setX(i, x * (1 - 0.05 * hang) + Math.sin(t * 0.6 + y * 1.7) * 0.008 * hang);
-        }
-        p.needsUpdate = true;
-        c.geo.computeVertexNormals();
-      }
     },
     stop() { stopped = true; off.forEach((f) => f()); scene.remove(group); bin.dispose(); },
   };

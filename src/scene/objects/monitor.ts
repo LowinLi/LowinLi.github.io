@@ -94,7 +94,7 @@ export const monitor: SceneObject = ({ scene, camera, renderer, tier, bus, pick 
     ctx.fillStyle = '#fff'; ctx.font = `28px ${SANS}`; ctx.textAlign = 'center'; ctx.fillText('百度一下', bx + bw + btn / 2, by + bh / 2 + 1);
     if (!focused) { ctx.fillStyle = '#9195a3'; ctx.font = `25px ${SANS}`; ctx.textAlign = 'left'; ctx.fillText('点击屏幕开始搜索', bx + 30, by + bh / 2 + 1); }
     // 热搜（内容是和这间屋子有关的玩笑，不是真的热搜）
-    const hot = ['海边日出最佳观赏时间', '留声机的工作原理', '虎尾兰多久浇一次水', '论语十则', '线装书怎么保存', '海鸥为什么跟着船飞'];
+    const hot = ['白菜什么时候种最好', '座钟多久上一次弦', '虎尾兰多久浇一次水', '论语十则', '线装书怎么保存', '水稻几月收割'];
     const hx = bx, hy = by + bh + 70;
     ctx.fillStyle = '#222'; ctx.font = `bold 24px ${SANS}`; ctx.textAlign = 'left'; ctx.fillText('百度热搜 ›', hx, hy);
     ctx.fillStyle = '#626675'; ctx.font = `20px ${SANS}`; ctx.textAlign = 'right'; ctx.fillText('↻ 换一换', bx + bw + btn, hy);

@@ -14,21 +14,19 @@ export const desk: SceneObject = ({ scene, tier, bus, pick }) => {
   const std = (o: THREE.MeshStandardMaterialParameters) => bin.add(new THREE.MeshStandardMaterial(o.map && o.bumpScale !== 0 ? { bumpMap: o.map, bumpScale: 1, ...o } : o));
   const { desk: D, floorY } = L;
 
-  // 橡木台面 + 黑色钢架
-  const oak = std({ roughness: 0.5, map: bin.add(canvasTex(1024, 512, (g, w, h) => {
-    woodGrain(g, 0, 0, w, h, '#d6b88e', '120,80,40', 11, 260);
-    for (const y of [h * 0.33, h * 0.66]) { g.fillStyle = 'rgba(90,55,25,.25)'; g.fillRect(0, y, w, 1.5); } // 拼板缝
-  })) });
+  // 深色实木书桌：台面、四条方腿、台面下一圈牙板、两侧的脚踏横枨
+  const oak = std({ roughness: 0.42, map: bin.add(canvasTex(1024, 512, (g, w, h) => woodGrain(g, 0, 0, w, h, '#5a2f1c', '18,8,4', 11, 260))) });
   batch.add(oak, rbox(D.w, D.t, D.d, 0.008), [0, -D.t / 2, 0]);
-  usePhotoTexture(bin, oak, 'oak_veneer_01', { rotate: true, repeat: [1, 2.2], color: [1.08, 1.02, 0.95] });
+  usePhotoTexture(bin, oak, 'walnut_veneer', { rotate: true, repeat: [1, 2.2], color: [0.62, 0.36, 0.25] });
+  const legWood = std({ roughness: 0.45, map: bin.add(canvasTex(128, 512, (g, w, h) => woodGrain(g, 0, 0, w, h, '#4f2818', '14,6,3', 12, 90))) });
   const steel = std({ color: 0x1b1c1e, roughness: 0.4, metalness: 0.75 });
-  const legH = -floorY - D.t;
-  for (const x of [-D.w / 2 + 0.14, D.w / 2 - 0.14]) {
-    for (const z of [-D.d / 2 + 0.09, D.d / 2 - 0.09]) batch.add(steel, rbox(0.04, legH, 0.04, 0.006), [x, floorY + legH / 2, z]);
-    batch.add(steel, rbox(0.04, 0.04, D.d - 0.14, 0.006), [x, -D.t - 0.02, 0]);
-    batch.add(steel, rbox(0.04, 0.025, D.d - 0.14, 0.006), [x, floorY + 0.0125, 0]);
+  const legH = -floorY - D.t, lx = D.w / 2 - 0.1, lz = D.d / 2 - 0.08;
+  for (const x of [-lx, lx]) {
+    for (const z of [-lz, lz]) batch.add(legWood, rbox(0.06, legH, 0.06, 0.006), [x, floorY + legH / 2, z]);
+    batch.add(legWood, rbox(0.035, 0.09, lz * 2, 0.004), [x, -D.t - 0.045, 0]);
+    batch.add(legWood, rbox(0.04, 0.04, lz * 2, 0.004), [x, floorY + 0.16, 0]);
   }
-  batch.add(steel, rbox(D.w - 0.28, 0.04, 0.02, 0.006), [0, -D.t - 0.02, -D.d / 2 + 0.09]);
+  for (const z of [-lz, lz]) batch.add(legWood, rbox(lx * 2, 0.09, 0.035, 0.004), [0, -D.t - 0.045, z]);
 
   // 毛毡桌垫
   const felt = std({ roughness: 1, map: bin.add(canvasTex(256, 128, (g, w, h) => { g.fillStyle = '#4a4f57'; g.fillRect(0, 0, w, h); speckle(g, w, h, 12, 6000, '255,255,255', 0.07); speckle(g, w, h, 13, 6000, '0,0,0', 0.12); })) });

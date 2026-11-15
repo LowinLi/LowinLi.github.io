@@ -97,7 +97,7 @@ export function createPost(renderer: THREE.WebGLRenderer, scene: THREE.Scene, ca
             uv -= delta;
             vec3 s = texture2D(tDiffuse, uv).rgb;
             // 只让太阳周围那片天空发光束：喇叭高光、浮尘这些远离太阳的亮点不算
-            float nearSun = smoothstep(.34, .04, distance(uv, uSun));
+            float nearSun = smoothstep(.2, .03, distance(uv, uSun));
             acc += s * clamp(dot(s, vec3(.3, .6, .1)) - 1.7, 0., 2.) * decay * nearSun;
             decay *= .965;
           }
@@ -118,7 +118,7 @@ export function createPost(renderer: THREE.WebGLRenderer, scene: THREE.Scene, ca
   return {
     /** 场景里后来才加进来的东西（异步加载的模型）要重新收集一次 */
     refresh() { skip = null; },
-    /** 走到窗前看海时关掉远景虚化，海要是清楚的 */
+    /** 走到窗前看风景时关掉远景虚化，远处的稻田和山要是清楚的 */
     setFarBlur(on: boolean) { farBlur = on ? 1 : 0; },
     setSize(w: number, h: number) {
       composer.setPixelRatio(renderer.getPixelRatio());
@@ -139,7 +139,7 @@ export function createPost(renderer: THREE.WebGLRenderer, scene: THREE.Scene, ca
       const facing = camera.getWorldDirection(dir).dot(SUN_DIR);
       const inView = THREE.MathUtils.smoothstep(1.6 - Math.max(Math.abs(v.x), Math.abs(v.y)), 0, 0.6);
       rays.uniforms.uSun.value.set(v.x * 0.5 + 0.5, v.y * 0.5 + 0.5);
-      rays.uniforms.uStrength.value = facing > 0 ? 0.3 * inView : 0;
+      rays.uniforms.uStrength.value = facing > 0 ? 0.2 * inView : 0;
       composer.render(dt);
     },
     dispose() { composer.dispose(); },

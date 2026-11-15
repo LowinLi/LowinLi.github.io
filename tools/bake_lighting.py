@@ -82,8 +82,8 @@ H = TOP - FLOOR_Y
 X0, X1 = -(RX + TH), RX + TH           # 地板和窗墙的横向范围
 Z0, Z1 = WALL_Z - TH, RZ               # 地板的纵深范围
 m_wall = material('wall', (0.74, 0.71, 0.66))
-m_floor = material('floor', (0.42, 0.29, 0.19), 0.5)
-m_wood = material('wood', (0.68, 0.53, 0.36), 0.5)
+m_floor = material('floor', (0.42, 0.43, 0.44), 0.6)  # 灰色方砖
+m_wood = material('wood', (0.3, 0.16, 0.1), 0.5)  # 深色实木
 m_dark = material('dark', (0.06, 0.06, 0.07), 0.4)
 m_cloth = material('cloth', (0.85, 0.82, 0.76))
 m_mid = material('mid', (0.3, 0.3, 0.32))
@@ -120,17 +120,24 @@ box('reveal_l', (WIN['x0'] - 0.01, wy, WALL_Z - TH / 2), (0.02, wh, TH), m_wall)
 box('reveal_r', (WIN['x1'] + 0.01, wy, WALL_Z - TH / 2), (0.02, wh, TH), m_wall)
 box('reveal_t', (0, WIN['y1'] + 0.01, WALL_Z - TH / 2), (ww, 0.02, TH), m_wall)
 box('sill', (0, WIN['y0'] - 0.0175, WALL_Z - 0.02), (ww + 0.16, 0.035, 0.3), m_wood)
-# 窗框和两根竖框：会在地板的光斑里投下影子
+# 木格窗：外框、两根竖框、上面的横披（格子用一排细条近似）
 fz = WALL_Z - 0.11
-for y in (WIN['y1'] - 0.025, WIN['y0'] + 0.025): box('frame_h', (0, y, fz), (ww, 0.05, 0.07), m_dark)
-for x in (WIN['x0'] + 0.025, WIN['x1'] - 0.025, -ww / 6, ww / 6): box('frame_v', (x, wy, fz), (0.06, wh, 0.07), m_dark)
-# 纱帘
-for s in (-1, 1): box('curtain', (s * (WIN['x1'] + 0.16), (2.06 + FLOOR_Y) / 2, WALL_Z + 0.08), (0.4, 2.06 - FLOOR_Y, 0.03), m_cloth)
+for y in (WIN['y1'] - 0.03, WIN['y0'] + 0.03): box('frame_h', (0, y, fz), (ww, 0.06, 0.08), m_wood)
+for x in (WIN['x0'] + 0.03, WIN['x1'] - 0.03, -ww / 6, ww / 6): box('frame_v', (x, wy, fz), (0.065, wh, 0.08), m_wood)
+ty0 = WIN['y1'] - 0.06 - 0.36
+box('transom_rail', (0, ty0, fz), (ww, 0.045, 0.06), m_wood)
+for i in range(1, 18): box('transom_bar', (WIN['x0'] + ww * i / 18, ty0 + 0.19, fz), (0.02, 0.36, 0.03), m_wood)
+box('transom_mid', (0, ty0 + 0.19, fz), (ww, 0.02, 0.03), m_wood)
+# 卷起来的竹帘
+box('blind', (0, WIN['y1'] + 0.03, WALL_Z + 0.05), (ww + 0.1, 0.1, 0.1), m_cloth)
+# 屋外的地面：菜园和稻田把偏绿的光反弹进来
+add_mesh('ground', [bl(-200, -0.95, -400), bl(200, -0.95, -400), bl(200, -0.95, WALL_Z - TH), bl(-200, -0.95, WALL_Z - TH)], [(0, 1, 2, 3)], material('ground', (0.22, 0.3, 0.12)))
 
 # ---- 家具和桌面物件的遮挡体（位置和 desk.ts / furniture.ts 一致，形状取近似）----
 box('desk_top', (0, -0.02, 0), (2.3, 0.04, 1.0), m_wood)
-for x in (-1.01, 1.01):
-    for z in (-0.41, 0.41): box('desk_leg', (x, (FLOOR_Y - 0.04) / 2, z), (0.04, -FLOOR_Y - 0.04, 0.04), m_dark)
+for x in (-1.05, 1.05):
+    for z in (-0.42, 0.42): box('desk_leg', (x, (FLOOR_Y - 0.04) / 2, z), (0.06, -FLOOR_Y - 0.04, 0.06), m_wood)
+    box('desk_apron', (x, -0.085, 0), (0.035, 0.09, 0.84), m_wood)
 box('monitor', (0, 0.37, -0.205), (0.66, 0.39, 0.02), m_dark)
 box('monitor_stand', (0, 0.17, -0.26), (0.075, 0.34, 0.012), m_mid)
 box('books', (-0.63, 0.115, -0.27), (0.52, 0.23, 0.17), m_mid)
@@ -139,19 +146,21 @@ bpy.ops.mesh.primitive_uv_sphere_add(radius=0.17, location=bl(0.72, 0.6, -0.1));
 bpy.ops.mesh.primitive_uv_sphere_add(radius=0.13, location=bl(-1.03, 0.24, 0.33)); bpy.context.object.data.materials.append(m_green)
 box('plant_floor_pot', (1.72, FLOOR_Y + 0.31, -0.5), (0.36, 0.3, 0.36), m_cloth)
 box('plant_floor_leaves', (1.72, FLOOR_Y + 0.9, -0.5), (0.3, 0.8, 0.3), m_green)
-# 办公椅（斜着推开）
-box('chair_seat', (0.62, FLOOR_Y + 0.47, 1.42), (0.5, 0.08, 0.48), m_mid, -0.55)
-box('chair_back', (0.62 + 0.25 * math.sin(-0.55), FLOOR_Y + 0.8, 1.42 + 0.25 * math.cos(-0.55)), (0.46, 0.52, 0.07), m_mid, -0.55)
-box('chair_post', (0.62, FLOOR_Y + 0.22, 1.42), (0.07, 0.44, 0.07), m_dark)
-box('chair_base', (0.62, FLOOR_Y + 0.07, 1.42), (0.55, 0.05, 0.55), m_dark, 0.3)
-# 左墙边柜（离地有脚）和上面的摆设
-box('cabinet', (-2.96, FLOOR_Y + 0.14 + 0.28, 1.3), (0.42, 0.56, 1.6), m_wood)
-box('cabinet_lamp', (-2.96, FLOOR_Y + 0.7 + 0.25, 0.8), (0.2, 0.4, 0.2), m_cloth)
-# 右后方的休闲椅
-box('lounge_seat', (2.45, FLOOR_Y + 0.25, 2.7), (0.75, 0.5, 0.8), m_mid, 0.5)
-box('lounge_back', (2.45 + 0.3, FLOOR_Y + 0.6, 2.7 + 0.2), (0.2, 0.6, 0.75), m_mid, 0.5)
-# 墙角落地灯的底座和灯杆
-box('floor_lamp', (-2.7, FLOOR_Y + 0.7, -0.7), (0.03, 1.4, 0.03), m_dark)
+# 圈椅（斜着推开）
+box('chair_seat', (0.62, FLOOR_Y + 0.36, 1.42), (0.44, 0.05, 0.42), m_wood, -0.55)
+box('chair_back', (0.62 + 0.2 * math.sin(-0.55), FLOOR_Y + 0.75, 1.42 + 0.2 * math.cos(-0.55)), (0.42, 0.75, 0.04), m_wood, -0.55)
+for dx in (-0.2, 0.2):
+    for dz in (-0.19, 0.19): box('chair_leg', (0.62 + dx, FLOOR_Y + 0.17, 1.42 + dz), (0.04, 0.34, 0.04), m_wood)
+# 左墙边的条案和上面的瓷瓶
+box('console_top', (-2.99, FLOOR_Y + 0.63, 1.3), (0.34, 0.06, 1.72), m_wood)
+for dz in (-0.75, 0.75): box('console_leg', (-2.99, FLOOR_Y + 0.3, 1.3 + dz), (0.3, 0.6, 0.08), m_wood)
+box('vase', (-2.99, FLOOR_Y + 0.88, 0.8), (0.24, 0.44, 0.24), m_cloth)
+# 右后方的茶几和两只凳子
+box('tea_table', (2.3, FLOOR_Y + 0.25, 2.7), (0.84, 0.5, 0.84), m_wood, 0.3)
+box('stool_a', (1.45, FLOOR_Y + 0.31, 2.5), (0.5, 0.62, 0.6), m_wood, 0.4)
+box('stool_b', (2.5, FLOOR_Y + 0.31, 3.55), (0.5, 0.62, 0.6), m_wood, -0.5)
+# 窗边的落地座钟
+box('clock', (-2.15, FLOOR_Y + 1.1, WALL_Z + 0.32), (0.6, 2.19, 0.42), m_wood)
 
 # ---- 光：实拍天空做环境光，加一盏和实时渲染方向一致的太阳 ----
 world = bpy.data.worlds.new('sky'); scene.world = world; world.use_nodes = True
