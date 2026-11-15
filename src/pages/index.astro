@@ -12,25 +12,7 @@ const postRefs = posts.slice(0, 18).map((p) => ({ title: p.data.title, url: url(
 const postsIndex = url('/posts/');
 const data = { ...SITE, postsIndex, posts: postRefs, books: buildBooks(SITE, postRefs, postsIndex), tracks: TRACKS };
 ---
+<!-- 首页只有房间：「关于我」和文章列表在房间里的笔记本和书里（阅读器的内容是服务端渲染进 HTML 的） -->
 <Base title={SITE.name} description={SITE.tagline} bare>
   <Scene data={data} />
-  <main class="list">
-    <section id="about">
-      <h2>关于我</h2>
-      {SITE.bio.map((l) => <p>{l}</p>)}
-      <p>{SITE.links.map((l, i) => <>{i > 0 && ' · '}<a href={`https://${l.url.replace(/^https?:\/\//, '')}`}>{l.label}</a></>)}</p>
-    </section>
-    <section id="posts">
-      <h2>最近文章</h2>
-      <ul class="posts">
-        {data.posts.slice(0, 6).map((p) => <li><time>{p.date}</time><a href={p.url}>{p.title}</a></li>)}
-      </ul>
-      <p><a href={data.postsIndex}>全部文章 →</a></p>
-    </section>
-  </main>
 </Base>
-<style>
-  .posts { list-style: none; padding: 0; }
-  .posts li { display: flex; gap: 16px; padding: 8px 0; border-bottom: 1px solid var(--line); }
-  time { color: var(--muted); font-variant-numeric: tabular-nums; flex: none; }
-</style>

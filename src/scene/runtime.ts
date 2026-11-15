@@ -137,11 +137,10 @@ export function start(canvas: HTMLCanvasElement, tier: Exclude<Tier, 'low'>, dat
     if (res) pickables.get(res.owner)?.click?.(res.hit);
   };
   const onCancel = (e: PointerEvent) => { downAt = null; touches.delete(e.pointerId); pinchDist = 0; };
-  // 滚轮：向上拉近，向下拉远。已经拉到最远还继续滚，就把滚动交还给页面（往下看文章）
+  // 滚轮：向上拉近，向下拉远。首页只有这一屏，没有内容可滚，所以滚轮一律用来缩放
   const onWheel = (e: WheelEvent) => {
-    if (!free()) return;
-    const changed = setZoom(zoomK * Math.exp(e.deltaY * (e.ctrlKey ? 0.01 : 0.0013)));
-    if (changed || e.ctrlKey) e.preventDefault();
+    e.preventDefault();
+    if (free()) setZoom(zoomK * Math.exp(e.deltaY * (e.ctrlKey ? 0.01 : 0.0013)));
   };
   addEventListener('resize', onResize);
   canvas.addEventListener('pointermove', onMove);

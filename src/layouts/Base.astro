@@ -19,7 +19,7 @@ const { title, description = '个人主页与博客', bare = false } = Astro.pro
       </header>
     )}
     <slot />
-    <footer class="site-footer">© {new Date().getFullYear()}</footer>
+    {!bare && <footer class="site-footer">© {new Date().getFullYear()}</footer>}
   </body>
 </html>
 
