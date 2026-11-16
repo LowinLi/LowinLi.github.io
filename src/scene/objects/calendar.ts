@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { Bin, emit, type SceneObject } from '../types';
+import { Bin, emit, on, type SceneObject } from '../types';
 import { damp } from '../tween';
 import { Batch, blob, canvasTex, contactMaterial, rbox, speckle } from '../util';
 import { addDays, basicInfo, dayKey, drawPage, fullInfo, loadLunar, PAGE_H, PAGE_W, PAPER, type DayInfo } from '../../almanac';
@@ -13,7 +13,7 @@ const SERIF = '"Songti SC","Noto Serif CJK SC","SimSun",serif';
  * 进来时如果距离上次来过了几天（或者第一次来），会把这几天的页一张张撕掉，最后露出今天；过了零点也会自己撕一页。
  * 点它发 calendar:open，HTML 层放大显示这一页（可以前后翻看别的日子）。
  */
-export const calendar: SceneObject = ({ scene, tier, bus, pick }) => {
+export const calendar: SceneObject = ({ scene, camera, renderer, tier, bus, pick }) => {
   const bin = new Bin();
   const high = tier === 'high';
   const std = (o: THREE.MeshStandardMaterialParameters) => bin.add(new THREE.MeshStandardMaterial(o));
@@ -97,6 +97,11 @@ export const calendar: SceneObject = ({ scene, tier, bus, pick }) => {
   page.position.copy(pageAt);
   page.receiveShadow = high;
   tilt.add(page);
+  // 点开大图时，桌上这一页「被拿走」，露出下面明天那一页；大图缩回来再盖上
+  const underTex = makeTex();
+  const under = new THREE.Mesh(pageGeo, std({ map: underTex, roughness: 0.92 }));
+  under.position.copy(pageAt); under.position.z -= 0.0002; under.visible = false;
+  tilt.add(under);
 
   let lib: Parameters<typeof fullInfo>[0] | null = null;
   const info = (d: Date) => (lib ? fullInfo(lib, d) : basicInfo(d));
@@ -130,6 +135,10 @@ export const calendar: SceneObject = ({ scene, tier, bus, pick }) => {
   if (queue.length) startFly(queue.shift()!, true);
   let delay = 3; // 等画面稳定、农历算出来再撕
 
+  const off = [
+    on(bus, 'calendar:shown', () => { paint(underTex, info(addDays(shown, 1))); under.visible = true; page.visible = false; }),
+    on(bus, 'calendar:closed', () => { page.visible = true; under.visible = false; }),
+  ];
   loadLunar().then((L) => {
     lib = L;
     paint(pageTex, info(shown));
@@ -139,8 +148,21 @@ export const calendar: SceneObject = ({ scene, tier, bus, pick }) => {
   let hover = false, lift = 0, check = 5;
   pick(group, {
     hover(v) { hover = v; },
-    click() { emit(bus, 'calendar:open', { date: dayKey(shown) }); },
+    // 带上这一页此刻在屏幕上的矩形：HTML 层的大图从这里展开，关的时候缩回这里
+    click() { emit(bus, 'calendar:open', { date: dayKey(shown), rect: pageRect() }); },
   });
+  const corner = new THREE.Vector3();
+  const pageRect = () => {
+    const c = renderer.domElement.getBoundingClientRect();
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    page.updateWorldMatrix(true, false);
+    for (const [x, y] of [[-PW / 2, 0], [PW / 2, 0], [-PW / 2, -PH], [PW / 2, -PH]]) {
+      corner.set(x, y, 0); page.localToWorld(corner).project(camera);
+      const sx = c.left + (corner.x + 1) / 2 * c.width, sy = c.top + (1 - corner.y) / 2 * c.height;
+      x0 = Math.min(x0, sx); x1 = Math.max(x1, sx); y0 = Math.min(y0, sy); y1 = Math.max(y1, sy);
+    }
+    return { left: x0, top: y0, width: x1 - x0, height: y1 - y0 };
+  };
   scene.add(group);
 
   return {
@@ -168,6 +190,6 @@ export const calendar: SceneObject = ({ scene, tier, bus, pick }) => {
       lift = damp(lift, hover ? 1 : 0, 10, dt);
       tilt.rotation.x = -TILT + lift * 0.06;
     },
-    stop() { endFly(); scene.remove(group); bin.dispose(); },
+    stop() { off.forEach((f) => f()); endFly(); scene.remove(group); bin.dispose(); },
   };
 };

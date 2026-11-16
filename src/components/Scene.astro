@@ -224,15 +224,47 @@ const pct = (n: number) => `${(n * 100).toFixed(2)}%`;
     dl.replaceChildren(...rows.flatMap(([k, v]) => { const dt = document.createElement('dt'), dd = document.createElement('dd'); dt.textContent = k; dd.textContent = v; return [dt, dd]; }));
   };
   const today = () => { const n = new Date(); return new Date(n.getFullYear(), n.getMonth(), n.getDate()); };
-  on('calendar:open', () => {
+  // 打开：先把这一页画好，再让大图从桌上那一页的位置「拿起来」——带着日历的后仰角度，翻正、放大到屏幕中间
+  type Rect = { left: number; top: number; width: number; height: number };
+  const card = alm.querySelector<HTMLDivElement>('.almanac-card')!;
+  const extras = [...card.children].filter((c) => c !== almCanvas) as HTMLElement[];
+  const still = matchMedia('(prefers-reduced-motion: reduce)');
+  let fromRect: Rect | null = null, almBusy = false;
+  const flyFrom = (r: Rect) => {
+    const f = almCanvas.getBoundingClientRect();
+    const dx = r.left + r.width / 2 - (f.left + f.width / 2), dy = r.top + r.height / 2 - (f.top + f.height / 2);
+    return `translate(${dx}px, ${dy}px) perspective(900px) rotateX(14deg) scale(${r.width / f.width}, ${r.height / f.height})`;
+  };
+  const EASE = 'cubic-bezier(.2,.75,.2,1)';
+  on<{ rect?: Rect }>('calendar:open', async (d) => {
+    if (!alm.hidden || almBusy) return;
+    almBusy = true;
     for (const t of ['monitor:blur', 'window:blur', 'cup:blur']) emit(t);
-    alm.hidden = false; root.dataset.mode = 'calendar';
-    void showDay(today());
+    await showDay(today());
+    alm.hidden = false; alm.scrollTop = 0; root.dataset.mode = 'calendar';
+    emit('calendar:shown'); // 大图已经盖在桌上那一页上了：3D 那页可以「拿走」
+    fromRect = d?.rect ?? null;
+    if (fromRect && !still.matches) {
+      almCanvas.animate([{ transform: flyFrom(fromRect), boxShadow: 'none' }, { transform: 'none' }], { duration: 650, easing: EASE });
+      alm.animate([{ backgroundColor: 'rgba(11,20,36,0)', backdropFilter: 'blur(0px)' }, {}], { duration: 500, easing: 'ease-out' });
+      for (const el of extras) el.animate([{ opacity: 0, transform: 'translateY(12px)' }, { opacity: 0, offset: 0.5 }, {}], { duration: 750, easing: 'ease-out' });
+    }
+    almBusy = false;
   });
-  on('calendar:close', () => {
-    if (alm.hidden) return;
+  on('calendar:close', async () => {
+    if (alm.hidden || almBusy) return;
+    almBusy = true;
+    if (fromRect && !still.matches) {
+      const a = almCanvas.animate([{}, { transform: flyFrom(fromRect), boxShadow: 'none' }], { duration: 420, easing: 'cubic-bezier(.5,0,.75,.4)', fill: 'forwards' });
+      alm.animate([{}, { backgroundColor: 'rgba(11,20,36,0)', backdropFilter: 'blur(0px)' }], { duration: 420, fill: 'forwards' });
+      for (const el of extras) el.animate([{}, { opacity: 0 }], { duration: 180, fill: 'forwards' });
+      await a.finished.catch(() => {});
+    }
     alm.hidden = true; almDay = null;
+    for (const el of [almCanvas, alm, ...extras]) el.getAnimations().forEach((x) => x.cancel());
     if (root.dataset.mode === 'calendar') root.dataset.mode = '';
+    emit('calendar:closed'); // 桌上那一页重新露出来
+    almBusy = false;
   });
   alm.addEventListener('click', (e) => { if (e.target === alm) emit('calendar:close'); });
   alm.querySelectorAll<HTMLButtonElement>('[data-day]').forEach((b) => b.addEventListener('click', () => {
@@ -346,10 +378,8 @@ const pct = (n: number) => `${(n * 100).toFixed(2)}%`;
   .cup-hint[hidden] { display: none; }
   .almanac { position: absolute; inset: 0; z-index: 5; display: grid; place-items: center; padding: 16px; background: #0b1424b3; backdrop-filter: blur(3px); overflow: auto; }
   .almanac[hidden] { display: none; }
-  .almanac-card { width: min(440px, 100%); display: flex; flex-direction: column; gap: 10px; animation: alm-in .35s ease-out; }
-  @keyframes alm-in { from { transform: translateY(24px) rotate(-2deg); opacity: 0; } }
-  @media (prefers-reduced-motion: reduce) { .almanac-card { animation: none; } }
-  .almanac canvas { position: static; inset: auto; width: 100%; height: auto; aspect-ratio: 600 / 840; border-radius: 4px; box-shadow: 0 12px 40px #0008; }
+  .almanac-card { width: min(440px, 100%); display: flex; flex-direction: column; gap: 10px; }
+  .almanac canvas { position: static; inset: auto; transform-origin: 50% 50%; width: 100%; height: auto; aspect-ratio: 600 / 840; border-radius: 4px; box-shadow: 0 12px 40px #0008; }
   .almanac-nav { display: flex; justify-content: space-between; gap: 8px; }
   .almanac-nav button { flex: 1; padding: 8px 0; border: 1px solid #ffffff40; border-radius: 999px; color: #fff; background: #10203acc; font: inherit; font-size: 14px; cursor: pointer; }
   .almanac-nav button:hover { background: #1b3560; }
