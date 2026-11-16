@@ -197,7 +197,7 @@ export const cups: SceneObject = ({ scene, camera, tier, bus, pick }) => {
     held = c;
     camera.updateMatrixWorld();
     holdPose(c, 0, want, wantQ);
-    emit(bus, 'cup:focus', { p: want.toArray() });
+    emit(bus, 'cup:focus', { p: want.toArray(), by: 'cups' });
     say(hint(c));
   };
   const putDown = () => { if (held) { held = null; emit(bus, 'cup:blur'); } };
@@ -227,6 +227,8 @@ export const cups: SceneObject = ({ scene, camera, tier, bus, pick }) => {
   };
   const off = [
     on(bus, 'cup:blur', () => { held = null; say(null); }),
+    // 端起了桌上的饭菜：手里的杯子先放下（不发 blur，那边已经接管了焦点）
+    on<{ by?: string }>(bus, 'cup:focus', ({ by } = {}) => { if (by !== 'cups') held = null; }),
     on(bus, 'monitor:focus', () => { putDown(); say(null); }),
     on(bus, 'window:focus', () => { putDown(); say(null); }),
   ];
