@@ -9,12 +9,13 @@ import { MACHINE } from './coffee';
  * 两杯咖啡和咖啡机的出咖啡按钮。
  *
  * 杯位有两个：书桌上的杯垫、咖啡机接水盘。两只杯子（红边马克杯、带碟子的拿铁杯）各占一个。
- * - 点一只杯子：镜头拉近看它（cup:focus）。
- * - 拉近时再点它：端起来喝一口，液面降 1/3，拉花被喝散；三口喝完露出杯底的咖啡渍。
+ * - 点一只杯子：把它端起来，放到镜头跟前（镜头不动），微微朝你倾，能看清拉花。
+ * - 端着时再点它：凑到嘴边喝一口，液面降 1/3，拉花被喝散；三口喝完露出杯底的咖啡渍，杯子自动放回原处。
+ * - 点旁边 / ESC / 返回：把杯子放回原处。
  * - 点桌上的空杯：和咖啡机下的杯子对调——满的端到桌上，空的放回咖啡机下。
  * - 点咖啡机上的按钮：机器下的杯子是空的，就打一杯新的（两道咖啡流下来、液面升满、浮出拉花）。
  *
- * 发出 cup:focus {p: [x,y,z]} / cup:blur（镜头和景深跟着走）、cup:state {msg}（HTML 层显示提示）。
+ * 发出 cup:focus {p: [x,y,z]}（端起杯子，景深对焦到杯子）/ cup:blur（放下）、cup:state {msg}（HTML 层显示提示）。
  */
 type Slot = 'desk' | 'machine';
 const SLOT_POS: Record<Slot, THREE.Vector3> = {
@@ -79,7 +80,7 @@ const innerR = (prof: [number, number][], h: number) => {
   return prof[prof.length - 1][0];
 };
 
-export const cups: SceneObject = ({ scene, tier, bus, pick }) => {
+export const cups: SceneObject = ({ scene, camera, tier, bus, pick }) => {
   const bin = new Bin();
   const group = new THREE.Group();
   const high = tier === 'high';
@@ -175,71 +176,97 @@ export const cups: SceneObject = ({ scene, tier, bus, pick }) => {
   const BREW = 3.2;
 
   // ---- 状态和提示 ----
-  let focused: Cup | null = null;
+  let held: Cup | null = null;
   const say = (msg: string | null) => emit(bus, 'cup:state', msg ? { msg } : null);
   const hint = (c: Cup) => {
     if (c.level > 0) return `点杯子喝一口 · 还剩 ${['', '三分之一', '三分之二', '满满一杯'][c.level]}`;
-    return c.slot === 'desk' ? '喝完了 · 点这只空杯，和咖啡机下的那杯换一下' : '喝完了 · 点咖啡机上的按钮再打一杯';
+    return c.slot === 'desk' ? '喝完了 · 点桌上的空杯，和咖啡机下的那杯换一下' : '喝完了 · 点咖啡机上的按钮再打一杯';
   };
   const surfaceY = (c: Cup, lv: number) => c.empty + (c.full - c.empty) * (lv / 3);
-  const focusOn = (c: Cup) => {
-    focused = c;
-    const p = c.to.clone(); p.y += (c.full + c.empty) / 2;
-    emit(bus, 'cup:focus', { p: p.toArray(), front: c.slot === 'machine' }); // 机器下的杯子从正前方看，不然被机头挡住
+  // 端在眼前的位置（相机坐标系）：略偏右下，离镜头 0.3 米；竖屏离远一点免得出画
+  const HOLD = new THREE.Vector3(0.03, -0.085, -0.3), TILT = 0.55;
+  const holdPose = (c: Cup, k: number, pos: THREE.Vector3, quat: THREE.Quaternion) => {
+    const far = Math.max(1, 0.75 / camera.aspect);
+    // 喝一口（k 从 0 到 1 再回 0）：往镜头凑、往上抬、杯口朝你倾得更厉害
+    pos.set(HOLD.x, HOLD.y + k * 0.035, HOLD.z * far + k * 0.1).applyMatrix4(camera.matrixWorld);
+    quat.copy(camera.quaternion).multiply(tmpQ.setFromEuler(tmpE.set(TILT + k * 0.75, -0.5, 0, 'YXZ')));
+    void c;
+  };
+  const tmpQ = new THREE.Quaternion(), tmpE = new THREE.Euler(), want = new THREE.Vector3(), wantQ = new THREE.Quaternion(), ident = new THREE.Quaternion();
+  const hold = (c: Cup) => {
+    held = c;
+    camera.updateMatrixWorld();
+    holdPose(c, 0, want, wantQ);
+    emit(bus, 'cup:focus', { p: want.toArray() });
     say(hint(c));
   };
+  const putDown = () => { if (held) { held = null; emit(bus, 'cup:blur'); } };
   const onCupClick = (c: Cup) => {
     if (brewing > 0 && c.slot === 'machine') return;
-    if (c.level === 0 && c.slot === 'desk') { swap(); return; }
-    if (focused !== c) { focusOn(c); return; }
-    if (c.level > 0 && c.sip === 0) {
-      c.sip = 0.0001; // 端起来喝的动画（frame 里推进），喝到一半时液面降一格
-    }
+    if (c.move < 1) return;
+    if (c.level === 0 && c.slot === 'desk' && held !== c) { swap(); return; }
+    if (c.level === 0) { putDown(); say(hint(c)); return; }
+    if (held !== c) { if (held) putDown(); hold(c); return; }
+    if (c.sip === 0) c.sip = 0.0001; // 喝一口的动画在 frame 里推进，喝到一半时液面降一格
   };
   const swap = () => {
     const other = all.find((x) => x.slot === 'machine')!, empty = all.find((x) => x.slot === 'desk')!;
     if (!other || !empty || brewing > 0) return;
+    putDown();
     for (const [c, s] of [[other, 'desk'], [empty, 'machine']] as const) { c.slot = s; c.from.copy(c.root.position); c.to.copy(SLOT_POS[s]); c.move = 0; }
-    focused = null; emit(bus, 'cup:blur'); say(null);
+    say(null);
   };
   const brew = () => {
     const c = all.find((x) => x.slot === 'machine');
     press = 1;
     if (!c || brewing > 0) return;
-    if (c.level > 0) { say('机器下的杯子还没喝完'); setTimeout(() => focused || say(null), 1800); return; }
+    if (held === c) putDown();
+    if (c.level > 0) { say('机器下的杯子还没喝完'); setTimeout(() => held || say(null), 1800); return; }
     brewing = BREW; c.surfMat.map = tex.crema; c.surfMat.needsUpdate = true;
-    if (focused) say('正在出咖啡…');
+    say('正在出咖啡…');
   };
   const off = [
-    on(bus, 'cup:blur', () => { focused = null; say(null); }),
-    on(bus, 'monitor:focus', () => { focused = null; say(null); }),
-    on(bus, 'window:focus', () => { focused = null; say(null); }),
+    on(bus, 'cup:blur', () => { held = null; say(null); }),
+    on(bus, 'monitor:focus', () => { putDown(); say(null); }),
+    on(bus, 'window:focus', () => { putDown(); say(null); }),
   ];
 
   return {
     frame(dt, t) {
+      camera.updateMatrixWorld();
       for (const c of all) {
-        // 换位置：沿一条抬起来的弧线飞过去
-        if (c.move < 1) {
-          c.move = Math.min(1, c.move + dt / 0.9);
-          const k = c.move < 0.5 ? 2 * c.move * c.move : 1 - Math.pow(-2 * c.move + 2, 2) / 2;
-          c.root.position.lerpVectors(c.from, c.to, k);
-          c.root.position.y += Math.sin(k * Math.PI) * 0.16;
-        }
-        // 喝一口：端起来、往嘴边倾，喝到一半液面降一格，再放下
+        // 喝一口：0 → 1，喝到一半时液面降一格
+        let k = 0;
         if (c.sip > 0) {
           const before = c.sip;
           c.sip += dt / 1.3;
           if (before < 0.5 && c.sip >= 0.5) {
             c.level--;
             if (c.level > 0) { c.surfMat.map = tex.sipped; c.surfMat.needsUpdate = true; }
-            if (focused === c) say(hint(c));
+            say(hint(c));
           }
-          if (c.sip >= 1) c.sip = 0;
-          const k = Math.sin(Math.min(1, c.sip) * Math.PI);
-          c.body.position.set(0, k * 0.07, k * 0.05);
-          c.body.rotation.x = k * 0.45;
-        } else { c.body.position.set(0, 0, 0); c.body.rotation.x = 0; }
+          if (c.sip >= 1) {
+            c.sip = 0;
+            // 喝完了：放回原处，提示留几秒
+            if (c.level === 0 && held === c) { putDown(); say(hint(c)); setTimeout(() => held || say(null), 4000); }
+          }
+          k = Math.sin(Math.min(1, c.sip) * Math.PI);
+        }
+        if (c.move < 1) {
+          // 对调：沿一条抬起来的弧线飞过去
+          c.move = Math.min(1, c.move + dt / 0.9);
+          const e = c.move < 0.5 ? 2 * c.move * c.move : 1 - Math.pow(-2 * c.move + 2, 2) / 2;
+          c.root.position.lerpVectors(c.from, c.to, e);
+          c.root.position.y += Math.sin(e * Math.PI) * 0.16;
+          c.root.quaternion.slerp(ident, 1 - Math.exp(-8 * dt));
+        } else {
+          // 端在眼前，或者放在杯位上；两者之间平滑地飞过去
+          if (held === c) holdPose(c, k, want, wantQ); else { want.copy(SLOT_POS[c.slot]); wantQ.identity(); }
+          const f = 1 - Math.exp(-(held === c ? 9 : 7) * dt);
+          const lift = held !== c ? Math.min(0.12, c.root.position.distanceTo(want) * 0.4) : 0; // 放回去时先抬一点再落下
+          c.root.position.lerp(want.setY(want.y + lift), f);
+          c.root.quaternion.slerp(wantQ, f);
+        }
         c.root.userData.level = c.level; c.root.userData.slot = c.slot; // 给调试和测试看
         // 液面：位置和半径跟着内壁走；空了就换成杯底的咖啡渍
         c.shown = damp(c.shown, c.level, 6, dt);
@@ -251,7 +278,8 @@ export const cups: SceneObject = ({ scene, tier, bus, pick }) => {
         for (const p of c.steam) {
           p.life = (p.life + dt * 0.25) % 1;
           const k = p.life;
-          p.s.position.set(c.root.position.x + Math.sin(p.seed + k * 4 + t * 0.3) * 0.01 * (1 + k * 2), c.root.position.y + c.full + 0.012 + k * 0.08, c.root.position.z + Math.cos(p.seed * 2 + k * 3) * 0.008);
+          c.root.localToWorld(p.s.position.set(0, c.full + 0.012, 0));
+          p.s.position.x += Math.sin(p.seed + k * 4 + t * 0.3) * 0.01 * (1 + k * 2); p.s.position.y += k * 0.08; p.s.position.z += Math.cos(p.seed * 2 + k * 3) * 0.008;
           p.s.scale.set(0.025 + k * 0.035, 0.035 + k * 0.045, 1);
           p.m.opacity = hot ? Math.sin(k * Math.PI) * 0.22 : damp(p.m.opacity, 0, 5, dt);
         }
@@ -269,7 +297,7 @@ export const cups: SceneObject = ({ scene, tier, bus, pick }) => {
         if (brewing <= 0) {
           c.level = 3; c.shown = 3; c.surfMat.map = c.art; c.surfMat.needsUpdate = true;
           for (const s of streams) s.visible = false;
-          if (focused === c) say(hint(c)); else say(null);
+          say(null);
         }
       }
       // 按钮：按下去弹回来；有空杯等着的时候绿灯一闪一闪

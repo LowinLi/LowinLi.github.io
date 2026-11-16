@@ -12,9 +12,7 @@ const AZ_MAX = 1.1, EL_MIN = -0.07, EL_MAX = 0.8;
  * monitor：推近到显示器；book：稍微靠向书架；window：走到窗前看菜园。
  */
 export const cameraRig: SceneObject = ({ camera, bus }) => {
-  let mode: 'home' | 'monitor' | 'book' | 'window' | 'cup' = 'home';
-  const cupAt = new THREE.Vector3();
-  let cupFront = false;
+  let mode: 'home' | 'monitor' | 'book' | 'window' = 'home';
   let px = 0, py = 0, aspect = camera.aspect, first = true;
   let az = 0, el = 0, zoom = 1;
   const pos = new THREE.Vector3(), look = new THREE.Vector3();
@@ -27,22 +25,13 @@ export const cameraRig: SceneObject = ({ camera, bus }) => {
     on(bus, 'window:focus', () => { mode = 'window'; }),
     on(bus, 'window:blur', () => { if (mode === 'window') mode = 'home'; }),
     on(bus, 'view:reset', () => { az = 0; el = 0; }),
-    on<{ p: number[]; front?: boolean }>(bus, 'cup:focus', ({ p, front }) => { mode = 'cup'; cupAt.fromArray(p); cupFront = !!front; }),
-    on(bus, 'cup:blur', () => { if (mode === 'cup') mode = 'home'; }),
   ];
   const smooth = THREE.MathUtils.smoothstep, lerp = THREE.MathUtils.lerp;
   return {
     frame(dt) {
       const tan = Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2);
       const m = L.monitor;
-      if (mode === 'cup') {
-        // 从斜上方俯看杯子，能看清液面和拉花；竖屏离远一点
-        // 咖啡机下的杯子：从正前方稍高一点看，能同时看到杯子、咖啡流和按钮
-        const d = (cupFront ? 0.46 : 0.36) * Math.max(1, 0.95 / aspect);
-        tl.set(cupAt.x + px * 0.01, cupAt.y + (cupFront ? 0.07 : 0), cupAt.z);
-        if (cupFront) tp.set(cupAt.x + px * 0.04, cupAt.y + 0.07 + d * 0.3, cupAt.z + d * 0.95);
-        else tp.set(cupAt.x + px * 0.04, cupAt.y + d * 0.78, cupAt.z + d * 0.62);
-      } else if (mode === 'window') {
+      if (mode === 'window') {
         // 走到窗前、探出窗外（越过窗棂，不让格子挡住视线），朝着日出的方向看；指针可以带着视线左右、上下看一点
         tp.set(px * 0.1, 0.92 + py * 0.04, L.wallZ - 0.32);
         tl.set(tp.x + SUN_DIR.x * 10 + px * 1.8, tp.y - 0.35 + py * 0.9, tp.z + SUN_DIR.z * 10);
