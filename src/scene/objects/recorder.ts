@@ -3,6 +3,8 @@ import { Bin, emit, on, type SceneObject } from '../types';
 import { L } from '../layout';
 import { damp } from '../tween';
 import { playTrack } from '../music';
+import { createRadio, type RadioState } from '../radio';
+import { STATIONS, FM_MIN, FM_MAX } from '../../stations';
 import { Batch, blob, canvasTex, contactMaterial, rbox, speckle } from '../util';
 
 const SERIF = '"Songti SC","Noto Serif CJK SC","SimSun",serif';
@@ -61,7 +63,8 @@ export const recorder: SceneObject = ({ scene, tier, data, bus, pick, audio }) =
   batch.add(grille, new THREE.CircleGeometry(R, 40), [sx0, sy, D / 2 + 0.0035]);
   batch.add(chrome, new THREE.TorusGeometry(R, 0.004, 8, 40), [sx0, sy, D / 2 + 0.004]);
   // 顶上的调频刻度条和品牌字
-  const dial = std({ roughness: 0.4, bumpScale: 0, map: bin.add(canvasTex(512, 64, (c, w, h) => {
+  const fx = (f: number) => 50 + (f - 88) / 4 * 83; // 刻度条上频率 → 像素
+  const dial = std({ roughness: 0.4, bumpScale: 0, emissive: 0xffb24a, emissiveIntensity: 0, map: bin.add(canvasTex(512, 64, (c, w, h) => {
     c.fillStyle = '#e9e4d6'; c.fillRect(0, 0, w, h);
     c.fillStyle = '#26221c'; c.font = `bold 15px ${SANS}`; c.textBaseline = 'middle';
     c.fillText('FM', 10, 18); c.fillText('AM', 10, 46);
@@ -69,9 +72,18 @@ export const recorder: SceneObject = ({ scene, tier, data, bus, pick, audio }) =
     c.font = `12px ${SANS}`; c.textAlign = 'center';
     [88, 92, 96, 100, 104, 108].forEach((v, i) => c.fillText(String(v), 50 + i * 83, 12));
     [53, 70, 90, 120, 140, 160].forEach((v, i) => c.fillText(String(v), 50 + i * 83, 54));
-    c.fillStyle = '#c8281e'; c.fillRect(300, 4, 2.5, h - 8); // 指针
+    c.fillStyle = '#c8281e'; for (const st of STATIONS) { c.beginPath(); c.arc(fx(st.mhz), 30, 2.2, 0, 7); c.fill(); } // 能收到的台点个小红点
   })) });
-  batch.add(dial, new THREE.PlaneGeometry(W - 0.07, 0.026), [0, y0 + H - 0.02, D / 2 + 0.0012]);
+  dial.emissiveMap = dial.map;
+  const DW = W - 0.07, dialY = y0 + H - 0.02;
+  const dialMesh = new THREE.Mesh(bin.add(new THREE.PlaneGeometry(DW, 0.026)), dial);
+  dialMesh.position.set(0, dialY, D / 2 + 0.0012);
+  body.add(dialMesh);
+  // 指针：一根红线，随频率在刻度条上滑
+  const needle = new THREE.Mesh(bin.add(new THREE.PlaneGeometry(0.0013, 0.024)), bin.add(new THREE.MeshBasicMaterial({ color: 0xd0261a })));
+  const needleX = (f: number) => (fx(f) / 512 - 0.5) * DW;
+  needle.position.set(needleX(100.6), dialY, D / 2 + 0.002);
+  body.add(needle);
   const badge = std({ roughness: 0.3, metalness: 0.8, bumpScale: 0, map: bin.add(canvasTex(256, 48, (c, w, h) => {
     c.fillStyle = '#c9ccd0'; c.fillRect(0, 0, w, h);
     c.fillStyle = '#1b1c1f'; c.font = `bold 26px ${SERIF}`; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('晨光 · 收录机', w / 2, h / 2 + 1);
@@ -82,7 +94,32 @@ export const recorder: SceneObject = ({ scene, tier, data, bus, pick, audio }) =
   batch.add(std({ color: 0x0b0b0c, roughness: 0.8 }), new THREE.PlaneGeometry(TW + 0.014, TH + 0.014), [doorX, doorY, D / 2 + 0.0034]);
   for (const [w2, h2, dx, dy] of [[TW + 0.026, 0.006, 0, TH / 2 + 0.01], [TW + 0.026, 0.006, 0, -TH / 2 - 0.01], [0.006, TH + 0.026, TW / 2 + 0.01, 0], [0.006, TH + 0.026, -TW / 2 - 0.01, 0]]) batch.add(chrome, new THREE.BoxGeometry(w2, h2, 0.012), [doorX + dx, doorY + dy, D / 2 + 0.007]);
   // 两只旋钮（音量、调台）
-  for (const [dx, dy] of [[-0.01, 0.066], [0.03, 0.066]]) batch.add(chrome, new THREE.CylinderGeometry(0.011, 0.011, 0.012, 16), [doorX + dx + 0.105, y0 + H - 0.02, D / 2 + 0.006 - dy * 0], [Math.PI / 2, 0, 0]);
+  // 左边是波段旋钮（磁带 ↔ 收音机），右边是调台旋钮。旋钮很小，各配一个看不见的大点击区
+  // 两只旋钮在卡带仓右边上下排着，下面各有一行小字
+  const knobGeo = bin.add(new THREE.CylinderGeometry(0.0125, 0.0135, 0.013, 24).rotateX(Math.PI / 2));
+  const tick = bin.add(new THREE.BoxGeometry(0.0018, 0.008, 0.001));
+  const hitGeo = bin.add(new THREE.SphereGeometry(0.025, 8, 6));
+  const KX = doorX + 0.083, KY = [doorY + 0.024, doorY - 0.03];
+  const knobLabel = (txt: string) => std({ transparent: true, bumpScale: 0, roughness: 0.6, map: bin.add(canvasTex(128, 48, (c, w, h) => {
+    c.fillStyle = '#d9dbde'; c.font = `bold 34px ${SANS}`; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(txt, w / 2, h / 2 + 2);
+  })) });
+  batch.add(knobLabel('波段'), new THREE.PlaneGeometry(0.03, 0.0112), [KX, KY[0] + 0.0205, D / 2 + 0.0036]); // 字在旋钮上方
+  batch.add(knobLabel('调谐'), new THREE.PlaneGeometry(0.03, 0.0112), [KX, KY[1] + 0.0205, D / 2 + 0.0036]);
+  const hitMat = bin.add(new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false }));
+  const knobs = KY.map((ky) => {
+    const k = new THREE.Group();
+    k.position.set(KX, ky, D / 2 + 0.0095); k.name = 'knob';
+    const m = new THREE.Mesh(knobGeo, chrome); m.castShadow = high;
+    const t = new THREE.Mesh(tick, black); t.position.set(0, 0.006, 0.0066);
+    const hit = new THREE.Mesh(hitGeo, hitMat);
+    k.add(m, t, hit); body.add(k);
+    return k;
+  });
+  // 收音机开着时亮的小灯
+  const lampMat = bin.add(new THREE.MeshBasicMaterial({ color: 0x3a1a10 }));
+  const lamp = new THREE.Mesh(bin.add(new THREE.SphereGeometry(0.0028, 10, 8)), lampMat);
+  lamp.position.set(KX + 0.015, KY[0] + 0.012, D / 2 + 0.002);
+  body.add(lamp);
   // 提手和天线
   const handle = new THREE.CatmullRomCurve3([new THREE.Vector3(-W / 2 + 0.03, y0 + H - 0.01, -0.02), new THREE.Vector3(-W / 2 + 0.03, y0 + H + 0.05, -0.03), new THREE.Vector3(W / 2 - 0.03, y0 + H + 0.05, -0.03), new THREE.Vector3(W / 2 - 0.03, y0 + H - 0.01, -0.02)], false, 'catmullrom', 0.05);
   batch.add(black, new THREE.TubeGeometry(handle, 24, 0.007, 8));
@@ -134,7 +171,9 @@ export const recorder: SceneObject = ({ scene, tier, data, bus, pick, audio }) =
   const props = new Batch();
   props.add(contactMaterial(bin, high ? 0.3 : 0.5), blob(0.24, 0.1), [L.tapes.x + 0.125, 0.0006, L.tapes.z + 0.02]);
   props.build(group, bin, {});
-  pick(body, { click() { if (current) emit(bus, 'disc:stop'); } });
+  pick(body, { click() { if (current) emit(bus, 'disc:stop'); else if (radio) emit(bus, 'radio:off'); } });
+  pick(knobs[0], { click() { emit(bus, radio ? 'radio:off' : 'radio:on'); } });
+  pick(knobs[1], { click() { emit(bus, radio ? 'radio:seek' : 'radio:on', { dir: 1 }); } });
 
   // 喇叭里飘出的音符
   const noteTex = bin.add(canvasTex(64, 64, (c) => { c.fillStyle = '#fff'; c.font = '52px serif'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('♪', 32, 34); }));
@@ -147,17 +186,44 @@ export const recorder: SceneObject = ({ scene, tier, data, bus, pick, audio }) =
 
   scene.add(group);
 
+  // ---- 收音机 ----
+  let radio: ReturnType<typeof createRadio> | null = null;
+  let rstate: RadioState | null = null;
+  let mhz = 100.6, goal = 100.6;
+  try { const v = Number(localStorage.getItem('radio:mhz')); if (v >= FM_MIN && v <= FM_MAX) mhz = goal = v; } catch { /* 无痕模式 */ }
+  needle.position.x = needleX(mhz);
+  const radioOff = () => {
+    if (!radio) return;
+    radio.stop(); radio = null; rstate = null;
+    emit(bus, 'radio:state', null);
+  };
+  const save = () => { try { localStorage.setItem('radio:mhz', String(goal)); } catch { /* 无痕模式 */ } };
   let stopMusic: (() => void) | null = null;
   let spinning = false;
   const halt = () => { stopMusic?.(); stopMusic = null; spinning = false; };
   const off = [
     on<{ id: string }>(bus, 'disc:play', ({ id }) => {
       const d = tapes.find((x) => x.id === id); if (!d || d === current) return;
-      halt();
+      halt(); radioOff();
       current = d;
       audio(); // 在点击手势里先把 AudioContext 建好
     }),
     on(bus, 'disc:stop', () => { if (!current) return; halt(); current = null; emit(bus, 'music:state', null); }),
+    on(bus, 'radio:on', () => {
+      if (radio) return;
+      if (current) emit(bus, 'disc:stop');
+      radio = createRadio(audio(), (s) => { rstate = s; emit(bus, 'radio:state', s); }); // 在点击手势里创建，浏览器才让出声
+      radio.tune(mhz);
+    }),
+    on(bus, 'radio:off', radioOff),
+    // 调到某个频率（滑杆，立刻到）或者往某个方向搜下一个台（指针扫过去，沿路是沙沙声）
+    on<{ mhz: number }>(bus, 'radio:tune', ({ mhz: f }) => { if (!radio) return; mhz = goal = Math.min(FM_MAX, Math.max(FM_MIN, f)); radio.tune(mhz); save(); }),
+    on<{ dir?: number }>(bus, 'radio:seek', ({ dir = 1 } = {}) => {
+      if (!radio) return;
+      const from = goal;
+      const list = dir > 0 ? STATIONS.filter((s) => s.mhz > from + 0.05) : STATIONS.filter((s) => s.mhz < from - 0.05).reverse();
+      goal = (list[0] ?? (dir > 0 ? STATIONS[0] : STATIONS[STATIONS.length - 1])).mhz;
+    }),
   ];
 
   const target = new THREE.Vector3();
@@ -180,16 +246,31 @@ export const recorder: SceneObject = ({ scene, tier, data, bus, pick, audio }) =
         }
         if (playing && spinning) for (const hb of d.hubs) hb.rotation.z -= dt * 2.4;
       }
+      // 搜台：指针以每秒 8 MHz 扫向目标，到了存一下
+      if (radio && Math.abs(goal - mhz) > 0.001) {
+        const step = Math.sign(goal - mhz) * Math.min(Math.abs(goal - mhz), dt * 8);
+        const before = Math.round(mhz * 10);
+        mhz += step;
+        if (Math.abs(goal - mhz) < 0.001) { mhz = goal; save(); }
+        if (Math.round(mhz * 10) !== before) radio.tune(mhz);
+      }
+      needle.position.x = damp(needle.position.x, needleX(mhz), 18, dt);
+      knobs[1].rotation.z = -(mhz - FM_MIN) * 0.6;
+      knobs[0].rotation.z = damp(knobs[0].rotation.z, radio ? -1.2 : 0, 10, dt);
+      const on = !!radio, clear = rstate?.status === 'playing' && !!rstate.station;
+      dial.emissiveIntensity = damp(dial.emissiveIntensity, on ? 0.9 : 0, 6, dt);
+      lampMat.color.setHex(!on ? 0x3a1a10 : clear ? 0x5dff6a : rstate?.status === 'loading' ? ((t * 3) % 1 < 0.5 ? 0xffb030 : 0x3a2a10) : 0xff4a20);
+      const sounding = spinning || clear;
       playKey.position.y = damp(playKey.position.y, keyY - (spinning ? 0.007 : 0), 14, dt);
       for (const n of notes) {
         n.life += dt * 0.3;
         if (n.life > 1) { n.life = 0; n.seed += 1.3; }
         const k = n.life;
         n.s.position.set(mouth.x + Math.sin(n.seed + k * 5) * 0.05 - k * 0.06, mouth.y + k * 0.36, mouth.z + k * 0.08);
-        n.mat.opacity = spinning ? Math.sin(k * Math.PI) * 0.9 : damp(n.mat.opacity, 0, 6, dt);
+        n.mat.opacity = sounding ? Math.sin(k * Math.PI) * 0.9 : damp(n.mat.opacity, 0, 6, dt);
         n.mat.rotation = Math.sin(n.seed + k * 4) * 0.4;
       }
     },
-    stop() { halt(); off.forEach((f) => f()); scene.remove(group); bin.dispose(); },
+    stop() { halt(); radioOff(); off.forEach((f) => f()); scene.remove(group); bin.dispose(); },
   };
 };

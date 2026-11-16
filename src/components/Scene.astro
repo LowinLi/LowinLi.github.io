@@ -30,6 +30,7 @@ const pct = (n: number) => `${(n * 100).toFixed(2)}%`;
       <a href="#" data-action="window" data-webgl-only>看窗外</a>
       <a href="#" data-action="search" data-webgl-only>搜索</a>
       <a href="#" data-action="music" data-webgl-only>音乐</a>
+      <a href="#" data-action="radio" data-webgl-only>收音机</a>
     </nav>
     <div class="zoom" data-webgl-only role="group" aria-label="视角">
       <button type="button" data-zoom="1" aria-label="拉近">＋</button>
@@ -37,7 +38,16 @@ const pct = (n: number) => `${(n * 100).toFixed(2)}%`;
       <button type="button" data-zoom="0" aria-label="复位视角">⟲</button>
     </div>
     <p class="cup-hint" aria-live="polite" hidden></p>
-    <p class="hint"><span class="wide">拖动旋转 · 滚轮缩放 · 点窗外看菜园 · 点书、磁带、咖啡、盆栽、显示器</span><span class="narrow">拖动旋转 · 双指缩放 · 点一点桌上的东西</span></p>
+    <div class="radio" role="group" aria-label="收音机" hidden>
+      <button type="button" data-seek="-1" aria-label="上一个台">◀</button>
+      <div class="dial">
+        <p><b class="freq">FM 100.6</b> <span class="station"></span></p>
+        <input type="range" min="87.5" max="108" step="0.1" value="100.6" aria-label="调频频率" />
+      </div>
+      <button type="button" data-seek="1" aria-label="下一个台">▶</button>
+      <button type="button" class="radio-off" aria-label="关掉收音机">✕</button>
+    </div>
+    <p class="hint"><span class="wide">拖动旋转 · 滚轮缩放 · 点窗外看菜园 · 点书、磁带、咖啡、盆栽、显示器 · 录音机上的「波段」旋钮切收音机</span><span class="narrow">拖动旋转 · 双指缩放 · 点一点桌上的东西</span></p>
   </div>
 
   <!-- 镜头推到显示器时，真正的输入框叠在屏幕上画的搜索框上 -->
@@ -177,6 +187,22 @@ const pct = (n: number) => `${(n * 100).toFixed(2)}%`;
   });
   playing.addEventListener('click', () => emit('disc:stop'));
 
+  // ---- 收音机（录音机的另一个波段）----
+  const radioUi = $<HTMLDivElement>('.radio');
+  const slider = radioUi.querySelector<HTMLInputElement>('input')!;
+  const STATUS = { static: '沙沙……', loading: '正在连接…', playing: '', nosignal: '收不到这个台' } as const;
+  let radioOn = false;
+  on<{ mhz: number; station: { name: string } | null; status: keyof typeof STATUS } | null>('radio:state', (s) => {
+    radioOn = !!s; radioUi.hidden = !s;
+    if (!s) return;
+    radioUi.querySelector('.freq')!.textContent = `FM ${s.mhz.toFixed(1)}`;
+    radioUi.querySelector('.station')!.textContent = s.station ? `${s.station.name}${STATUS[s.status] ? ' · ' + STATUS[s.status] : ''}` : STATUS.static;
+    if (document.activeElement !== slider) slider.value = String(s.mhz);
+  });
+  slider.addEventListener('input', () => emit('radio:tune', { mhz: Number(slider.value) }));
+  radioUi.querySelectorAll<HTMLButtonElement>('[data-seek]').forEach((b) => b.addEventListener('click', () => emit('radio:seek', { dir: Number(b.dataset.seek) })));
+  radioUi.querySelector('.radio-off')!.addEventListener('click', () => emit('radio:off'));
+
   addEventListener('keydown', (e) => {
     if (e.key === 'Escape') { emit('book:close'); emit('monitor:blur'); emit('window:blur'); emit('cup:blur'); }
     if (open && e.key === 'ArrowRight') turn(open.classList.contains('classic') ? -1 : 1);
@@ -196,6 +222,7 @@ const pct = (n: number) => `${(n * 100).toFixed(2)}%`;
         const dir = Number(b.dataset.zoom);
         if (dir) emit('view:zoom', { dir }); else emit('view:reset');
       }));
+      $('[data-action="radio"]').addEventListener('click', (e) => { e.preventDefault(); emit(radioOn ? 'radio:off' : 'radio:on'); });
       $('[data-action="music"]').addEventListener('click', (e) => {
         e.preventDefault();
         const ids: string[] = data.tracks.map((t: { id: string }) => t.id);
@@ -232,7 +259,7 @@ const pct = (n: number) => `${(n * 100).toFixed(2)}%`;
   .overlay { position: absolute; inset: 0; pointer-events: none; padding: 16px; display: flex; flex-direction: column;
     background: radial-gradient(ellipse 60% 45% at 0 0, #0b1c3a80, transparent 70%); }
   /* 覆盖层本身不拦点击：只有按钮和链接接收，其余位置的点击和拖动都落到 3D 画面上 */
-  .overlay :is(a, button) { pointer-events: auto; }
+  .overlay :is(a, button), .overlay .radio { pointer-events: auto; }
   .intro { max-width: 520px; transition: opacity .4s; pointer-events: none; text-shadow: 0 1px 12px #0b1c3a99, 0 0 2px #0b1c3a66; }
   .intro h1 { margin: 28px 0 4px; font-size: clamp(28px, 5vw, 44px); letter-spacing: .02em; }
   .intro p { margin: 0; opacity: .92; }
@@ -258,12 +285,26 @@ const pct = (n: number) => `${(n * 100).toFixed(2)}%`;
   .zoom button:focus-visible { outline: 2px solid #ffd27a; outline-offset: 2px; }
   .scene:not([data-mode='']) .zoom { display: none; }
   /* 窄屏上底部那行按钮会排满整行：缩放按钮挪到它们上方，免得互相压住 */
-  @media (max-width: 700px) { .zoom { bottom: 124px; } }
+  @media (max-width: 700px) { .zoom { bottom: 170px; } }
   .cup-hint {
     position: absolute; left: 50%; bottom: 28px; transform: translateX(-50%); margin: 0; padding: 8px 16px; white-space: nowrap;
     font-size: 15px; color: #fff; background: #10203acc; border: 1px solid #ffffff40; border-radius: 999px; backdrop-filter: blur(6px);
   }
   .cup-hint[hidden] { display: none; }
+  .radio {
+    position: absolute; left: 50%; top: 20px; transform: translateX(-50%); width: min(460px, calc(100% - 32px)); box-sizing: border-box;
+    display: flex; align-items: center; gap: 8px; padding: 8px 10px; color: #fff;
+    background: #10203acc; border: 1px solid #ffffff40; border-radius: 14px; backdrop-filter: blur(6px);
+  }
+  .radio[hidden], .scene:is([data-mode='monitor'], [data-mode='window'], [data-mode='cup']) .radio { display: none; }
+  .radio button { flex: none; width: 32px; height: 32px; border: 0; border-radius: 50%; color: #fff; background: #ffffff1a; cursor: pointer; font-size: 13px; }
+  .radio button:hover { background: #1b3560; }
+  .radio button:focus-visible, .radio input:focus-visible { outline: 2px solid #ffd27a; outline-offset: 2px; }
+  .radio .dial { flex: 1; min-width: 0; }
+  .radio p { margin: 0 0 2px; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .radio .freq { font: 600 15px ui-monospace, monospace; color: #ffd27a; margin-right: 4px; }
+  .radio input { width: 100%; margin: 0; accent-color: #ffb24a; }
+  @media (max-width: 700px) { .radio { top: 124px; } }
   .hint { margin: 10px 0 0; font-size: 13px; opacity: .85; text-shadow: 0 1px 6px #000a; transition: opacity .4s; }
   .hint .narrow { display: none; }
   @media (max-aspect-ratio: 11/10) { .hint .wide { display: none; } .hint .narrow { display: inline; } }

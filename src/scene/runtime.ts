@@ -196,7 +196,9 @@ export function start(canvas: HTMLCanvasElement, tier: Exclude<Tier, 'low'>, dat
   });
 
   // 暴露给 QA / 截图脚本读取的诊断信息
-  (window as any).__scene = { tier, level: 0, info: renderer.info, scene, camera, bus, emit: (type: string, d?: unknown) => emit(bus, type, d) };
+  (window as any).__scene = { tier, level: 0, info: renderer.info, scene, camera, bus, emit: (type: string, d?: unknown) => emit(bus, type, d),
+    // 调试：屏幕上某一点点下去会命中谁（命中的网格和它的点击归属）
+    pickAt: (x: number, y: number) => { const r = cast({ clientX: x, clientY: y } as PointerEvent); return r && { hit: r.hit.object.type + ':' + (r.hit.object as THREE.Mesh).geometry?.type, owner: r.owner.type + ':' + r.owner.name, uuid: r.owner.uuid }; } };
   // 调试：?level=1|2 直接从某一档开始（比如想看降档后的画面）
   for (let i = Math.min(2, Number(new URLSearchParams(location.search).get('level')) || 0); i > 0; i--) degrade();
 
