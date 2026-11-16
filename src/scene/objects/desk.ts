@@ -66,14 +66,7 @@ export const desk: SceneObject = ({ scene, tier, bus, pick }) => {
 
   // 咖啡杯：旋转成型，有壁厚；软木杯垫
   const mx = -0.47, mz = 0.29;
-  const ceramic = std({ color: 0xfaf8f3, roughness: 0.16 });
-  const cup = new THREE.LatheGeometry([
-    [0, 0], [0.033, 0], [0.036, 0.004], [0.041, 0.085], [0.042, 0.092], [0.039, 0.092], [0.037, 0.085], [0.033, 0.012], [0, 0.012],
-  ].map(([x, y]) => new THREE.Vector2(x, y)), 36);
-  batch.add(ceramic, cup, [mx, 0.006, mz]);
-  batch.add(ceramic, new THREE.TorusGeometry(0.024, 0.006, 10, 20, Math.PI), [mx + 0.04, 0.055, mz], [0, 0, -Math.PI / 2]);
-  batch.add(std({ color: 0x9b3d2c, roughness: 0.3 }), new THREE.CylinderGeometry(0.0412, 0.0405, 0.012, 36, 1, true), [mx, 0.072, mz]);
-  batch.add(std({ color: 0x2b170c, roughness: 0.15 }), new THREE.CircleGeometry(0.037, 32).rotateX(-Math.PI / 2), [mx, 0.088, mz]);
+  // 杯子本身在 cups.ts（能拿起来喝、能和咖啡机下的杯子对调），这里只留杯垫
   const cork = std({ roughness: 1, map: bin.add(canvasTex(64, 64, (g, w, h) => { g.fillStyle = '#b98e5e'; g.fillRect(0, 0, w, h); speckle(g, w, h, 14, 900, '60,35,10', 0.3); })) });
   batch.add(cork, new THREE.CylinderGeometry(0.055, 0.055, 0.006, 32), [mx, 0.003, mz]);
 
@@ -152,19 +145,6 @@ export const desk: SceneObject = ({ scene, tier, bus, pick }) => {
 
   batch.build(group, bin, { cast: high, receive: high, noCast: [contact, felt] });
 
-  // 咖啡的热气
-  const steamTex = bin.add(canvasTex(64, 64, (g) => {
-    const grad = g.createRadialGradient(32, 32, 0, 32, 32, 32);
-    grad.addColorStop(0, 'rgba(255,255,255,.9)'); grad.addColorStop(1, 'rgba(255,255,255,0)');
-    g.fillStyle = grad; g.fillRect(0, 0, 64, 64);
-  }));
-  const steam = Array.from({ length: high ? 5 : 3 }, (_, i) => {
-    const mat = bin.add(new THREE.SpriteMaterial({ map: steamTex, transparent: true, opacity: 0, depthWrite: false, color: 0xfff3e2 }));
-    const s = new THREE.Sprite(mat);
-    group.add(s);
-    return { s, mat, life: i / 5, seed: i * 1.7 };
-  });
-
   scene.add(group);
   return {
     frame(dt, t) {
@@ -172,13 +152,6 @@ export const desk: SceneObject = ({ scene, tier, bus, pick }) => {
       noteLift = damp(noteLift, noteOpen ? 1 : noteHover ? 0.3 : 0, 8, dt);
       note.position.y = noteLift * 0.035;
       note.rotation.x = -noteLift * 0.12;
-      for (const p of steam) {
-        p.life = (p.life + dt * 0.22) % 1;
-        const k = p.life;
-        p.s.position.set(mx + Math.sin(p.seed + k * 4 + t * 0.3) * 0.012 * (1 + k * 2), 0.1 + k * 0.16, mz + Math.cos(p.seed * 2 + k * 3) * 0.01);
-        p.s.scale.set(0.03 + k * 0.05, 0.05 + k * 0.07, 1);
-        p.mat.opacity = Math.sin(k * Math.PI) * 0.22;
-      }
     },
     stop() { offs.forEach((f) => f()); scene.remove(group); keys.dispose(); bin.dispose(); },
   };

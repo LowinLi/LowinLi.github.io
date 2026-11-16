@@ -12,6 +12,7 @@ import { monitor } from './objects/monitor';
 import { bookshelf } from './objects/bookshelf';
 import { recorder } from './objects/recorder';
 import { coffee } from './objects/coffee';
+import { cups } from './objects/cups';
 import { plants } from './objects/plants';
 import { furniture } from './objects/furniture';
 import { mirror } from './objects/mirror';
@@ -19,7 +20,7 @@ import { dust } from './objects/dust';
 import { cameraRig } from './objects/cameraRig';
 
 /** 场景里挂载的物件清单。新物件：在 objects/ 下建文件，然后加到这里。cameraRig 放最后。 */
-const OBJECTS: SceneObject[] = [sky, countryside, animals, room, furniture, mirror, desk, monitor, bookshelf, recorder, coffee, plants, dust, cameraRig];
+const OBJECTS: SceneObject[] = [sky, countryside, animals, room, furniture, mirror, desk, monitor, bookshelf, recorder, coffee, cups, plants, dust, cameraRig];
 
 export function start(canvas: HTMLCanvasElement, tier: Exclude<Tier, 'low'>, data: SiteData, bus: EventTarget) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: tier === 'high', powerPreference: 'high-performance' });
@@ -73,11 +74,11 @@ export function start(canvas: HTMLCanvasElement, tier: Exclude<Tier, 'low'>, dat
   const send = (e: SceneInput) => mounted.forEach((m) => m.input?.(e));
   send({ type: 'resize', width, height });
 
-  let monitorFocused = false, windowFocused = false, bookOpen = false;
+  let monitorFocused = false, windowFocused = false, bookOpen = false, cupFocused = false;
   // 缩放：1 是默认距离。只在自由视角下生效（没在看显示器 / 窗外 / 书）
   const ZOOM_MIN = 0.45, ZOOM_MAX = 2.4;
   let zoomK = 1;
-  const free = () => !monitorFocused && !windowFocused && !bookOpen;
+  const free = () => !monitorFocused && !windowFocused && !bookOpen && !cupFocused;
   const setZoom = (k: number) => {
     const next = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, k));
     if (next === zoomK) return false;
@@ -89,6 +90,8 @@ export function start(canvas: HTMLCanvasElement, tier: Exclude<Tier, 'low'>, dat
     on(bus, 'monitor:blur', () => { monitorFocused = false; }),
     on(bus, 'scene:changed', () => post?.refresh()),
     on(bus, 'book:open', () => { bookOpen = true; }),
+    on<{ p: number[] }>(bus, 'cup:focus', ({ p }) => { cupFocused = true; post?.setFocus(new THREE.Vector3().fromArray(p)); }),
+    on(bus, 'cup:blur', () => { cupFocused = false; post?.setFocus(null); }),
     on(bus, 'book:close', () => { bookOpen = false; }),
     on<{ dir: number }>(bus, 'view:zoom', ({ dir }) => { if (free()) setZoom(zoomK * (dir > 0 ? 0.75 : 1 / 0.75)); }),
     on(bus, 'view:reset', () => setZoom(1)),
@@ -138,6 +141,7 @@ export function start(canvas: HTMLCanvasElement, tier: Exclude<Tier, 'low'>, dat
     // 「点旁边退回」：在窗前时点哪里都回到座位；看显示器时点屏幕以外的地方退出
     if (windowFocused) { emit(bus, 'window:blur'); return; }
     if (monitorFocused && !res?.owner.userData.keepsMonitor) { emit(bus, 'monitor:blur'); return; }
+    if (cupFocused && !res?.owner.userData.keepsCup && !res?.owner.userData.keepsMachine) { emit(bus, 'cup:blur'); return; }
     if (res) pickables.get(res.owner)?.click?.(res.hit);
   };
   const onCancel = (e: PointerEvent) => { downAt = null; touches.delete(e.pointerId); pinchDist = 0; };
@@ -192,7 +196,7 @@ export function start(canvas: HTMLCanvasElement, tier: Exclude<Tier, 'low'>, dat
   });
 
   // 暴露给 QA / 截图脚本读取的诊断信息
-  (window as any).__scene = { tier, level: 0, info: renderer.info, scene, bus, emit: (type: string, d?: unknown) => emit(bus, type, d) };
+  (window as any).__scene = { tier, level: 0, info: renderer.info, scene, camera, bus, emit: (type: string, d?: unknown) => emit(bus, type, d) };
   // 调试：?level=1|2 直接从某一档开始（比如想看降档后的画面）
   for (let i = Math.min(2, Number(new URLSearchParams(location.search).get('level')) || 0); i > 0; i--) degrade();
 

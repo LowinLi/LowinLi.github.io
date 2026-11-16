@@ -6,8 +6,14 @@ import { Batch, blob, canvasTex, contactMaterial, rbox, rng, speckle } from '../
 const SANS = '"PingFang SC","Noto Sans CJK SC","Microsoft YaHei",system-ui,sans-serif';
 
 /**
- * 咖啡角：桌子右端一台意式咖啡机，出水口下面是一杯刚打出来、带拉花的拿铁（冒着热气），旁边一袋皮爷咖啡豆和几颗散落的豆子。
+ * 咖啡角：桌子右端一台意式咖啡机，旁边一袋皮爷咖啡豆和几颗散落的豆子。机器下面的杯子和出咖啡按钮在 cups.ts。
  */
+/** 咖啡机的几处关键位置（cups.ts 要用：接水盘上的杯位、出水嘴、按钮） */
+export const MACHINE = (() => {
+  const { x, z } = L.coffee, W = 0.2, H = 0.3, D = 0.24;
+  return { W, H, D, trayY: 0.058, cupZ: z + D * 0.2, spoutY: H - 0.08 - 0.063, panelZ: z + D / 2, buttonX: x + 0.065, buttonY: H - 0.04 };
+})();
+
 export const coffee: SceneObject = ({ scene, tier }) => {
   const bin = new Bin();
   const group = new THREE.Group();
@@ -41,10 +47,11 @@ export const coffee: SceneObject = ({ scene, tier }) => {
   const fz = cz + D / 2;
   batch.add(steel, new THREE.CylinderGeometry(0.03, 0.03, 0.008, 24), [cx, H - 0.04, fz + 0.003], [Math.PI / 2, 0, 0]);
   batch.add(gauge, new THREE.CircleGeometry(0.026, 24), [cx, H - 0.04, fz + 0.0075]);
-  for (const dx of [-0.065, 0.065]) batch.add(dark, new THREE.CylinderGeometry(0.014, 0.016, 0.02, 16), [cx + dx, H - 0.04, fz + 0.01], [Math.PI / 2, 0, 0]);
+  batch.add(dark, new THREE.CylinderGeometry(0.014, 0.016, 0.02, 16), [cx - 0.065, H - 0.04, fz + 0.01], [Math.PI / 2, 0, 0]); // 右边是出咖啡的按钮，在 cups.ts
   batch.add(bin.add(new THREE.MeshBasicMaterial({ color: 0x8dffa0 })), new THREE.CircleGeometry(0.003, 10), [cx + 0.085, H - 0.012, fz + 0.001]);
   // 冲煮头、手柄（带黑色握把）和两个出水嘴
-  const gy = H - 0.1, gz = cz + D * 0.2;
+  // 冲煮头比机头底面低一截；留出 0.1 米左右的净高，马克杯也放得下
+  const gy = H - 0.08, gz = cz + D * 0.2;
   batch.add(steel, new THREE.CylinderGeometry(0.036, 0.036, 0.02, 24), [cx, gy - 0.01, gz]);
   batch.add(steel, new THREE.CylinderGeometry(0.033, 0.03, 0.026, 24), [cx, gy - 0.033, gz]);
   batch.add(dark, new THREE.CylinderGeometry(0.009, 0.011, 0.11, 10), [cx + 0.045, gy - 0.04, gz + 0.065], [Math.PI / 2 - 0.15, 0.6, 0]);
@@ -55,29 +62,7 @@ export const coffee: SceneObject = ({ scene, tier }) => {
   const contact = contactMaterial(bin, high ? 0.32 : 0.55);
   batch.add(contact, blob(0.15, 0.17), [cx, 0.0007, cz]);
 
-  // ---- 拿铁：白瓷杯和碟子，放在接水盘上、出水嘴正下方；杯面是奶泡拉出的叶子 ----
-  const ly = 0.058, lz = gz;
-  batch.add(white, new THREE.LatheGeometry([[0, 0], [0.036, 0], [0.05, 0.004], [0.052, 0.008], [0.03, 0.008]].map(([x, y]) => new THREE.Vector2(x, y)), 32), [cx, ly, lz]); // 碟子
-  batch.add(white, new THREE.LatheGeometry([[0, 0], [0.022, 0], [0.027, 0.006], [0.04, 0.05], [0.041, 0.056], [0.0385, 0.056], [0.036, 0.05], [0.024, 0.012], [0, 0.012]].map(([x, y]) => new THREE.Vector2(x, y)), 36), [cx, ly + 0.008, lz]);
-  batch.add(white, new THREE.TorusGeometry(0.016, 0.0045, 8, 16, Math.PI), [cx + 0.04, ly + 0.04, lz], [0, 0, -Math.PI / 2]);
-  const art = std({ roughness: 0.35, bumpScale: 0, map: bin.add(canvasTex(256, 256, (g, w) => {
-    const c = w / 2;
-    const crema = g.createRadialGradient(c, c, 10, c, c, c);
-    crema.addColorStop(0, '#b9773f'); crema.addColorStop(0.75, '#a4622f'); crema.addColorStop(1, '#7a4420');
-    g.fillStyle = crema; g.fillRect(0, 0, w, w);
-    speckle(g, w, w, 71, 500, '70,35,10', 0.25);
-    // 拉花：一层层往上叠的奶泡叶片，中间一道茎，顶上一颗心
-    g.strokeStyle = '#fbf3e4'; g.lineCap = 'round';
-    for (let i = 0; i < 6; i++) {
-      const y = 196 - i * 23, half = 62 - i * 5;
-      g.lineWidth = 11 - i * 0.8;
-      g.beginPath(); g.moveTo(c - half, y - 16); g.quadraticCurveTo(c, y + 22, c + half, y - 16); g.stroke();
-    }
-    g.fillStyle = '#fbf3e4';
-    g.beginPath(); g.moveTo(c, 78); g.bezierCurveTo(c - 34, 52, c - 20, 26, c, 44); g.bezierCurveTo(c + 20, 26, c + 34, 52, c, 78); g.fill();
-    g.strokeStyle = '#a4622f'; g.lineWidth = 3; g.beginPath(); g.moveTo(c, 214); g.lineTo(c, 60); g.stroke();
-  })) });
-  batch.add(art, new THREE.CircleGeometry(0.0375, 32).rotateX(-Math.PI / 2), [cx, ly + 0.008 + 0.053, lz], [0, 0.4, 0]);
+  // 机器下面的杯子在 cups.ts（能拿起来喝、能打新的）
 
   // ---- 皮爷咖啡豆：一袋立着的咖啡豆，顶上折了两折用夹条封住 ----
   const bx = cx + 0.02, bz = cz + 0.36, BW = 0.13, BH = 0.2, BD = 0.07;
@@ -115,29 +100,9 @@ export const coffee: SceneObject = ({ scene, tier }) => {
 
   batch.build(group, bin, { cast: high, receive: high, noCast: [contact] });
 
-  // 拿铁的热气
-  const steamTex = bin.add(canvasTex(64, 64, (g) => {
-    const grad = g.createRadialGradient(32, 32, 0, 32, 32, 32);
-    grad.addColorStop(0, 'rgba(255,255,255,.9)'); grad.addColorStop(1, 'rgba(255,255,255,0)');
-    g.fillStyle = grad; g.fillRect(0, 0, 64, 64);
-  }));
-  const steam = Array.from({ length: high ? 4 : 2 }, (_, i) => {
-    const mat = bin.add(new THREE.SpriteMaterial({ map: steamTex, transparent: true, opacity: 0, depthWrite: false, color: 0xfff3e2 }));
-    const s = new THREE.Sprite(mat); group.add(s);
-    return { s, mat, life: i / 4, seed: i * 1.9 };
-  });
-
   scene.add(group);
   return {
-    frame(dt, t) {
-      for (const p of steam) {
-        p.life = (p.life + dt * 0.25) % 1;
-        const k = p.life;
-        p.s.position.set(cx + Math.sin(p.seed + k * 4 + t * 0.3) * 0.01 * (1 + k * 2), ly + 0.07 + k * 0.07, lz + 0.015 + k * 0.03);
-        p.s.scale.set(0.025 + k * 0.035, 0.035 + k * 0.045, 1);
-        p.mat.opacity = Math.sin(k * Math.PI) * 0.22;
-      }
-    },
+    frame() {},
     stop() { scene.remove(group); bin.dispose(); },
   };
 };

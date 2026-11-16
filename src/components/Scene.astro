@@ -36,7 +36,8 @@ const pct = (n: number) => `${(n * 100).toFixed(2)}%`;
       <button type="button" data-zoom="-1" aria-label="拉远">－</button>
       <button type="button" data-zoom="0" aria-label="复位视角">⟲</button>
     </div>
-    <p class="hint"><span class="wide">拖动旋转 · 滚轮缩放 · 点窗外看菜园 · 点书、磁带、盆栽、显示器</span><span class="narrow">拖动旋转 · 双指缩放 · 点一点桌上的东西</span></p>
+    <p class="cup-hint" aria-live="polite" hidden></p>
+    <p class="hint"><span class="wide">拖动旋转 · 滚轮缩放 · 点窗外看菜园 · 点书、磁带、咖啡、盆栽、显示器</span><span class="narrow">拖动旋转 · 双指缩放 · 点一点桌上的东西</span></p>
   </div>
 
   <!-- 镜头推到显示器时，真正的输入框叠在屏幕上画的搜索框上 -->
@@ -141,7 +142,20 @@ const pct = (n: number) => `${(n * 100).toFixed(2)}%`;
     if (!r) return;
     Object.assign(screenUi.style, { left: `${r.x}px`, top: `${r.y}px`, width: `${r.w}px`, height: `${r.h}px`, fontSize: `${r.h * 0.017}px` });
   });
-  back.addEventListener('click', () => { emit('monitor:blur'); emit('window:blur'); });
+  back.addEventListener('click', () => { emit('monitor:blur'); emit('window:blur'); emit('cup:blur'); });
+
+  // ---- 拉近看咖啡 ----
+  const cupHint = $<HTMLParagraphElement>('.cup-hint');
+  on('cup:focus', () => {
+    if (root.dataset.mode === 'monitor') emit('monitor:blur');
+    if (root.dataset.mode === 'window') emit('window:blur');
+    root.dataset.mode = 'cup'; back.hidden = false;
+  });
+  on('cup:blur', () => {
+    if (root.dataset.mode !== 'cup') return;
+    root.dataset.mode = ''; back.hidden = true;
+  });
+  on<{ msg: string } | null>('cup:state', (s) => { cupHint.hidden = !s; if (s) cupHint.textContent = s.msg; });
 
   // ---- 走到窗前看菜园 ----
   on('window:focus', () => {
@@ -164,7 +178,7 @@ const pct = (n: number) => `${(n * 100).toFixed(2)}%`;
   playing.addEventListener('click', () => emit('disc:stop'));
 
   addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') { emit('book:close'); emit('monitor:blur'); emit('window:blur'); }
+    if (e.key === 'Escape') { emit('book:close'); emit('monitor:blur'); emit('window:blur'); emit('cup:blur'); }
     if (open && e.key === 'ArrowRight') turn(open.classList.contains('classic') ? -1 : 1);
     if (open && e.key === 'ArrowLeft') turn(open.classList.contains('classic') ? 1 : -1);
   });
@@ -224,7 +238,7 @@ const pct = (n: number) => `${(n * 100).toFixed(2)}%`;
   .intro p { margin: 0; opacity: .92; }
   .scene:not([data-mode='']) .intro, .scene:not([data-mode='']) .hint { opacity: 0; }
   .scene:not([data-mode='']) .overlay { background: none; }
-  .scene:is([data-mode='monitor'], [data-mode='window']) .chips { display: none; }
+  .scene:is([data-mode='monitor'], [data-mode='window'], [data-mode='cup']) .chips { display: none; }
   .top-right { position: absolute; top: 16px; right: 16px; display: flex; gap: 8px; }
   .top-right button, .chips a {
     font: inherit; font-size: 14px; color: #fff; text-decoration: none; cursor: pointer;
@@ -245,6 +259,11 @@ const pct = (n: number) => `${(n * 100).toFixed(2)}%`;
   .scene:not([data-mode='']) .zoom { display: none; }
   /* 窄屏上底部那行按钮会排满整行：缩放按钮挪到它们上方，免得互相压住 */
   @media (max-width: 700px) { .zoom { bottom: 124px; } }
+  .cup-hint {
+    position: absolute; left: 50%; bottom: 28px; transform: translateX(-50%); margin: 0; padding: 8px 16px; white-space: nowrap;
+    font-size: 15px; color: #fff; background: #10203acc; border: 1px solid #ffffff40; border-radius: 999px; backdrop-filter: blur(6px);
+  }
+  .cup-hint[hidden] { display: none; }
   .hint { margin: 10px 0 0; font-size: 13px; opacity: .85; text-shadow: 0 1px 6px #000a; transition: opacity .4s; }
   .hint .narrow { display: none; }
   @media (max-aspect-ratio: 11/10) { .hint .wide { display: none; } .hint .narrow { display: inline; } }

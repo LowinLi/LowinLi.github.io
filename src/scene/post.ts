@@ -113,11 +113,13 @@ export function createPost(renderer: THREE.WebGLRenderer, scene: THREE.Scene, ca
   composer.addPass(new OutputPass());
 
   const sunWorld = new THREE.Vector3(), v = new THREE.Vector3(), dir = new THREE.Vector3();
-  const focusAt = new THREE.Vector3(L.monitor.x, L.monitor.cy, L.monitor.z);
+  const monitorAt = new THREE.Vector3(L.monitor.x, L.monitor.cy, L.monitor.z), focusAt = monitorAt.clone();
   let farBlur = 1, lite = false;
   return {
     /** 场景里后来才加进来的东西（异步加载的模型）要重新收集一次 */
     refresh() { skip = null; },
+    /** 景深的焦点：默认在显示器上；拉近看咖啡时对焦到杯子 */
+    setFocus(p: THREE.Vector3 | null) { focusAt.copy(p ?? monitorAt); },
     /** 帧率不够时降级：关掉环境光遮蔽（它要把场景重画一遍）、景深和太阳光束，只留泛光、暗角和色调映射 */
     setLite(on: boolean) { gtao.enabled = !on; dof.enabled = !on; lite = on; },
     /** 走到窗前看风景时关掉远景虚化，远处的稻田和山要是清楚的 */
