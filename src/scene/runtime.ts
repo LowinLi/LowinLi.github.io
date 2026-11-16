@@ -14,11 +14,12 @@ import { recorder } from './objects/recorder';
 import { coffee } from './objects/coffee';
 import { plants } from './objects/plants';
 import { furniture } from './objects/furniture';
+import { mirror } from './objects/mirror';
 import { dust } from './objects/dust';
 import { cameraRig } from './objects/cameraRig';
 
 /** 场景里挂载的物件清单。新物件：在 objects/ 下建文件，然后加到这里。cameraRig 放最后。 */
-const OBJECTS: SceneObject[] = [sky, countryside, animals, room, furniture, desk, monitor, bookshelf, recorder, coffee, plants, dust, cameraRig];
+const OBJECTS: SceneObject[] = [sky, countryside, animals, room, furniture, mirror, desk, monitor, bookshelf, recorder, coffee, plants, dust, cameraRig];
 
 export function start(canvas: HTMLCanvasElement, tier: Exclude<Tier, 'low'>, data: SiteData, bus: EventTarget) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: tier === 'high', powerPreference: 'high-performance' });
