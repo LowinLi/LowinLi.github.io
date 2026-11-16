@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { asset } from '../util';
+import { addFace, addFur } from '../animalDetail';
 import { Bin, type SceneObject } from '../types';
 import { L } from '../layout';
 
@@ -96,6 +97,15 @@ export const animals: SceneObject = ({ scene, tier }) => {
   const cat = build({ kind: 'cat', len: 0.42, legLen: 0.16, bodyR: 0.09, headR: 0.075, coat: 0xd98a3a, stripe: 0xa85e20, belly: 0xf3ead8, ear: 0xc9772c, nose: 0xd98a8a, speed: 0.85 });
   const dog = build({ kind: 'dog', len: 0.62, legLen: 0.3, bodyR: 0.14, headR: 0.11, coat: 0xc9a15a, stripe: 0xc9a15a, belly: 0xe6d3a4, ear: 0x8f6a34, nose: 0x1c1a18, speed: 1.25 });
   cat.timer = 3; dog.timer = 14;
+  // 调试：?pets=1 把猫狗放到书桌上、面朝镜头一直站着，方便近距离看五官和毛色
+  const debugPets = new URLSearchParams(location.search).has('pets');
+  const baseY = debugPets ? 0 : gy;
+  if (debugPets) {
+    for (const [a, x] of [[cat, -0.3], [dog, 0.32]] as const) {
+      a.state = 'pause'; a.timer = 1e9; a.dir = 0; a.paused = true;
+      a.root.position.set(x, 0, 0.42); a.root.rotation.y = 0; a.root.visible = true;
+    }
+  }
 
   // ---------- 带骨骼动画的模型 ----------
   // 屋外的东西不吃室内的灯：材质换成以自发光为主的 Lambert，只留一点受光，好让身体有明暗
@@ -108,8 +118,10 @@ export const animals: SceneObject = ({ scene, tier }) => {
       if (!m.isMesh) return;
       const swap = (old: THREE.Material) => {
         const c = new THREE.Color(recolor[old.name] ?? (old as THREE.MeshStandardMaterial).color.getHex());
+        const mm = bin.add(new THREE.MeshLambertMaterial({ color: c.clone().multiplyScalar(0.5), emissive: c.clone().multiplyScalar(0.62), flatShading: true }));
+        mm.name = old.name;
         old.dispose();
-        return bin.add(new THREE.MeshLambertMaterial({ color: c.clone().multiplyScalar(0.5), emissive: c.clone().multiplyScalar(0.62), flatShading: true }));
+        return mm;
       };
       m.material = Array.isArray(m.material) ? m.material.map(swap) : swap(m.material);
       m.frustumCulled = false; // 蒙皮网格的包围盒不跟着骨骼动
@@ -119,10 +131,32 @@ export const animals: SceneObject = ({ scene, tier }) => {
     model.scale.multiplyScalar(height / (box.max.y - box.min.y));
     return model;
   };
+  const blinks: ((dt: number) => void)[] = [];
+  /** 毛发花纹：先在静止姿态下量出模型的长、高、宽各是哪根轴，以及脚和头顶的高度 */
+  const furUp = (model: THREE.Object3D, kind: 'cat' | 'dog', coat: string[]) => {
+    const skinned = model.getObjectByProperty('isSkinnedMesh', true) as THREE.SkinnedMesh | undefined;
+    if (!skinned) return;
+    skinned.geometry.computeBoundingBox();
+    const size = skinned.geometry.boundingBox!.getSize(new THREE.Vector3());
+    const order = (['x', 'y', 'z'] as const).slice().sort((p, q) => size[q] - size[p]); // 最长 = 身长，其次 = 高，最短 = 宽
+    model.updateMatrixWorld(true);
+    const at = (n: string) => { const b = model.getObjectByName(n); return b ? skinned.worldToLocal(b.getWorldPosition(new THREE.Vector3())) : null; };
+    const headP = at('Bone003'), footP = at('Bone016');
+    if (!headP || !footP) return;
+    const U = order[1];
+    const mats = Array.isArray(skinned.material) ? skinned.material : [skinned.material];
+    for (const mm of mats as THREE.MeshLambertMaterial[]) {
+      if (mm.name === 'Pink') continue;
+      addFur(mm, { kind, axes: { L: order[0], U, W: order[2] }, foot: footP[U], head: headP[U] + (headP[U] - footP[U]) * 0.15, main: coat.includes(mm.name) });
+    }
+  };
   const useAnimal = (a: typeof cat, file: string, recolor: Record<string, number>, height: number) => {
     loader.loadAsync(asset(`models/animals/${file}.glb`)).then((gltf) => {
       if (stopped) return;
       const model = prepare(gltf.scene, recolor, height);
+      const kind = a.spec.kind;
+      furUp(model, kind, kind === 'cat' ? ['Grey'] : ['Dog']);
+      blinks.push(addFace(bin, model, kind));
       model.rotation.y = -Math.PI / 2; // 模型的头朝 +x，转到朝 +z（和代码拼的版本一致）
       a.root.children.forEach((c) => { c.visible = false; });
       a.root.add(model);
@@ -227,6 +261,7 @@ export const animals: SceneObject = ({ scene, tier }) => {
   return {
     frame(dt, t) {
       for (const m of mixers) m.update(dt);
+      for (const b of blinks) b(dt);
       for (const a of [cat, dog]) {
         const isCat = a.spec.kind === 'cat';
         if (a.state === 'wait') {
@@ -256,7 +291,7 @@ export const animals: SceneObject = ({ scene, tier }) => {
         a.head.rotation.y += (look - a.head.rotation.y) * Math.min(1, dt * 3);
         a.head.rotation.x = Math.sin(a.phase * 2) * 0.05 * a.stride + (a.state === 'pause' ? -0.1 : 0);
         for (const l of a.legs) l.m.rotation.x = Math.sin(a.phase + l.phase) * 0.55 * a.stride;
-        a.root.position.y = gy + (a.mixer ? 0 : Math.abs(Math.sin(a.phase)) * 0.008 * a.stride);
+        a.root.position.y = baseY + (a.mixer ? 0 : Math.abs(Math.sin(a.phase)) * 0.008 * a.stride);
         if (a.mixer) {
           // 走和站两套动作按步幅混合；停下来时身子朝屋里侧过来一点
           a.walk?.setEffectiveWeight(a.stride); a.idle?.setEffectiveWeight(1 - a.stride);
