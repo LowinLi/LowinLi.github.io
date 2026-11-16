@@ -36,7 +36,7 @@ const pct = (n: number) => `${(n * 100).toFixed(2)}%`;
       <button type="button" data-zoom="-1" aria-label="拉远">－</button>
       <button type="button" data-zoom="0" aria-label="复位视角">⟲</button>
     </div>
-    <p class="hint"><span class="wide">拖动旋转 · 滚轮缩放 · 点窗外看菜园 · 点书、唱片、盆栽、显示器</span><span class="narrow">拖动旋转 · 双指缩放 · 点一点桌上的东西</span></p>
+    <p class="hint"><span class="wide">拖动旋转 · 滚轮缩放 · 点窗外看菜园 · 点书、磁带、盆栽、显示器</span><span class="narrow">拖动旋转 · 双指缩放 · 点一点桌上的东西</span></p>
   </div>
 
   <!-- 镜头推到显示器时，真正的输入框叠在屏幕上画的搜索框上 -->
@@ -139,7 +139,7 @@ const pct = (n: number) => `${(n * 100).toFixed(2)}%`;
   });
   on<{ x: number; y: number; w: number; h: number } | null>('monitor:rect', (r) => {
     if (!r) return;
-    Object.assign(screenUi.style, { left: `${r.x}px`, top: `${r.y}px`, width: `${r.w}px`, height: `${r.h}px`, fontSize: `${r.h * 0.034}px` });
+    Object.assign(screenUi.style, { left: `${r.x}px`, top: `${r.y}px`, width: `${r.w}px`, height: `${r.h}px`, fontSize: `${r.h * 0.017}px` });
   });
   back.addEventListener('click', () => { emit('monitor:blur'); emit('window:blur'); });
 
@@ -254,7 +254,8 @@ const pct = (n: number) => `${(n * 100).toFixed(2)}%`;
   .screen-ui[hidden] { display: none; }
   @keyframes appear { to { opacity: 1; } }
   .screen-ui input, .screen-ui button { position: absolute; box-sizing: border-box; border: 0; background: transparent; outline: 0; font: inherit; }
-  .screen-ui input { padding: 0 1.2em; color: #222; font-size: 1em; font-family: system-ui, "PingFang SC", sans-serif; border-radius: .7em 0 0 .7em; }
+  /* 输入的字靠搜索框的上沿（和真实页面一样），所以底部留出一截 */
+  .screen-ui input { padding: 0 1.2em 3.3em; color: #222; font-size: 1em; font-family: system-ui, "PingFang SC", sans-serif; border-radius: .7em 0 0 .7em; }
   .screen-ui input::placeholder { color: #9195a3; }
   .screen-ui button { cursor: pointer; }
   .screen-ui button:focus-visible { outline: 2px solid #ffd27a; }

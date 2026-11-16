@@ -8,8 +8,9 @@ export const L = {
   win: { x0: -1.3, x1: 1.3, y0: 0.14, y1: 1.85 },
   monitor: { x: 0, z: -0.2, w: 0.64, h: 0.37, cy: 0.37 },
   books: { x0: -0.9, z: -0.27 },
-  gramophone: { x: 0.8, z: -0.2 },
-  discs: { x: 0.6, z: 0.27 },
+  recorder: { x: 0.66, z: -0.22 },
+  tapes: { x: 0.56, z: 0.28 },
+  coffee: { x: 1.0, z: -0.22 },
   cam: { pos: [0, 0.86, 2.5], look: [0, 0.55, -0.2] },
   /** 屋外地面：比室内地面低一个台阶 */
   groundY: -0.95,

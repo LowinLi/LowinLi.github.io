@@ -5,7 +5,7 @@ import { asset, Batch, canvasTex, rbox, rng, speckle, usePhotoTexture, woodGrain
 
 const SERIF = '"Kaiti SC","STKaiti","KaiTi","Songti SC","Noto Serif CJK SC","SimSun",serif';
 
-/** 房间：带大窗的墙、中式木格窗和竹帘、方砖地面、墙上的挂轴，以及晨光。 */
+/** 房间：带大窗的墙、中式木格窗和竹帘、方砖地面、墙上倒贴的「福」字，以及晨光。 */
 export const room: SceneObject = ({ scene, camera, tier, bus, pick }) => {
   const bin = new Bin();
   const group = new THREE.Group();
@@ -89,23 +89,20 @@ export const room: SceneObject = ({ scene, camera, tier, bus, pick }) => {
   usePhotoTexture(bin, floorMat, 'large_grey_tiles', { repeat: [6.5, 5.7], color: [1.12, 1.14, 1.16] });
   batch.add(floorMat, new THREE.BoxGeometry((RX + th) * 2, 0.25, sideLen), [0, floorY - 0.125, (RZ + wallZ - th) / 2]);
 
-  // ---- 墙上的挂轴 ----
-  const rodMat = std({ color: 0x1b1b1d, roughness: 0.35, metalness: 0.8 });
-  const scrollMat = std({ roughness: 0.9, map: bin.add(canvasTex(256, 768, (g, w, h) => {
-    g.fillStyle = '#b89a6a'; g.fillRect(0, 0, w, h);                       // 绫边
-    speckle(g, w, h, 6, 3000, '255,240,200', 0.12);
-    g.fillStyle = '#f1e7cf'; g.fillRect(26, 70, w - 52, h - 150);          // 画心
-    speckle(g, w, h, 7, 1500, '120,90,40', 0.06);
-    g.fillStyle = '#1b1814'; g.font = `bold 118px ${SERIF}`; g.textAlign = 'center'; g.textBaseline = 'middle';
-    [...'宁静致远'].forEach((ch, i) => g.fillText(ch, w / 2, 150 + i * 134));
-    g.fillStyle = '#b3261e'; g.fillRect(40, h - 150, 40, 40);              // 印章
-    g.fillStyle = '#f1e7cf'; g.font = `bold 15px ${SERIF}`; g.fillText('晨', 51, h - 139); g.fillText('读', 70, h - 121);
+  // ---- 墙上的「福」字 ----
+  // 倒贴的「福」字（福「到」了）：一张斜着贴成菱形的大红纸，金边，黑字
+  const scrollMat = std({ roughness: 0.85, bumpScale: 0, map: bin.add(canvasTex(512, 512, (g, w, h) => {
+    g.fillStyle = '#c8201a'; g.fillRect(0, 0, w, h);
+    speckle(g, w, h, 6, 4000, '255,200,120', 0.08); speckle(g, w, h, 7, 3000, '90,0,0', 0.12);
+    g.strokeStyle = '#e9c46a'; g.lineWidth = 10; g.strokeRect(22, 22, w - 44, h - 44);
+    g.lineWidth = 3; g.strokeRect(40, 40, w - 80, h - 80);
+    // 纸是转了 45° 贴的，所以字在画布上先转 135°，贴上墙后正好是整个倒过来
+    g.translate(w / 2, h / 2); g.rotate(-Math.PI * 0.75);
+    g.fillStyle = '#17120e'; g.font = `bold 300px ${SERIF}`; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillText('福', 0, 12);
   })) });
-  const sx = 1.84, sy = 1.02;
-  batch.add(scrollMat, new THREE.PlaneGeometry(0.32, 0.96), [sx, sy, wallZ + 0.012]);
-  const darkWood = std({ color: 0x3a2416, roughness: 0.5 });
-  for (const y of [sy + 0.49, sy - 0.49]) batch.add(darkWood, new THREE.CylinderGeometry(0.013, 0.013, 0.38, 12), [sx, y, wallZ + 0.02], [0, 0, Math.PI / 2]);
-  batch.add(rodMat, new THREE.CylinderGeometry(0.004, 0.004, 0.03, 6), [sx, sy + 0.6, wallZ + 0.012]);
+  const sx = 1.9, sy = 1.08;
+  batch.add(scrollMat, new THREE.PlaneGeometry(0.5, 0.5), [sx, sy, wallZ + 0.012], [0, 0, Math.PI / 4]);
 
   const built = batch.build(group, bin, { cast: high, receive: high, noCast: [floorMat, scrollMat, trim, blind] });
   const meshOf = (m: THREE.Material) => built.find((x) => x.material === m)!;
@@ -163,7 +160,7 @@ export const room: SceneObject = ({ scene, camera, tier, bus, pick }) => {
   group.add(pane);
 
   // ---- 整扇窗是一个看不见的点击区：点一下走到窗前看海，再点一下回来 ----
-  // 它在所有桌面物件的后面，所以点显示器、书、留声机时不会误触
+  // 它在所有桌面物件的后面，所以点显示器、书、录音机时不会误触
   const viewArea = new THREE.Mesh(pane.geometry, bin.add(new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false })));
   viewArea.position.set(0, wy, fz - 0.03);
   group.add(viewArea);

@@ -116,7 +116,7 @@ export const plants: SceneObject = ({ scene, tier, pick, bus }) => {
 
   // ---- 2. 显示器右边：石莲花。陶盆 + 托盘，肥厚的叶片一圈圈排成莲座，叶尖带粉 ----
   {
-    const p = make([0.44, 0, -0.3], 0.058, 120, 1);
+    const p = make([0.39, 0, -0.32], 0.058, 120, 1);
     const terracotta = std({ roughness: 0.85, map: bin.add(canvasTex(64, 64, (g, w, h) => { g.fillStyle = '#c56f49'; g.fillRect(0, 0, w, h); speckle(g, w, h, 72, 600, '80,30,10', 0.2); })) });
     p.statics.add(terracotta, potGeo(0.05, 0.036, 0.062, 0.006, 0.005), [0, 0.006, 0]);
     p.statics.add(terracotta, new THREE.CylinderGeometry(0.052, 0.046, 0.007, 32), [0, 0.0035, 0]);

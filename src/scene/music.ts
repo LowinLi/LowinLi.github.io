@@ -1,4 +1,4 @@
-/** 唱片的音乐：全部用 WebAudio 实时合成。playTrack 返回停止函数。 */
+/** 磁带的音乐：全部用 WebAudio 实时合成。playTrack 返回停止函数。 */
 const mtof = (m: number) => 440 * Math.pow(2, (m - 69) / 12);
 const pick = <T>(a: T[]) => a[Math.floor(Math.random() * a.length)];
 
@@ -43,7 +43,7 @@ export function playTrack(ac: AudioContext, id: string): () => void {
   };
   const piano = (t: number, m: number, v: number) => { tone('triangle', mtof(m), t, v, 0.006, 2.2); tone('sine', mtof(m) * 2, t, v * 0.22, 0.004, 1.1); };
 
-  // 留声机的底噪
+  // 磁带的底噪
   const hiss = ac.createBufferSource(); hiss.buffer = noiseBuffer(ac); hiss.loop = true;
   const hp = ac.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 1800;
   const hg = ac.createGain(); hg.gain.value = 0.012;

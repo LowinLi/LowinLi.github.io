@@ -57,54 +57,79 @@ export const monitor: SceneObject = ({ scene, camera, renderer, tier, bus, pick 
 
   let focused = false;
   const rr = (x: number, y: number, w: number, h: number, r: number | number[]) => { ctx.beginPath(); ctx.roundRect(x, y, w, h, r); };
+  // 版式照着真实的百度首页（用户给的截图，2000 像素宽）画：下面的坐标都是截图上的像素，乘 k 换算到画布
   const draw = () => {
+    const k = W / 2000, X = (v: number) => v * k;
+    const font = (px: number, bold = false, family = SANS) => { ctx.font = `${bold ? 'bold ' : ''}${Math.round(px * k * 10) / 10}px ${family}`; };
+    const text = (t: string, x: number, y: number, color: string, px: number, bold = false, align: CanvasTextAlign = 'left') => { font(px, bold); ctx.fillStyle = color; ctx.textAlign = align; ctx.fillText(t, X(x), X(y)); };
+    const pill = (x: number, y: number, w: number, h: number, rad: number) => { ctx.beginPath(); ctx.roundRect(X(x), X(y), X(w), X(h), X(rad)); };
     ctx.textBaseline = 'middle';
-    // 浏览器外框：标签栏 + 地址栏
-    ctx.fillStyle = '#dee1e6'; ctx.fillRect(0, 0, W, 44);
-    for (const [i, c] of ['#ff5f57', '#febc2e', '#28c840'].entries()) { ctx.fillStyle = c; ctx.beginPath(); ctx.arc(26 + i * 24, 22, 7.5, 0, 7); ctx.fill(); }
-    rr(104, 8, 250, 36, [10, 10, 0, 0]); ctx.fillStyle = '#fff'; ctx.fill();
-    ctx.fillStyle = '#2932e1'; ctx.beginPath(); ctx.arc(126, 26, 8, 0, 7); ctx.fill();
-    ctx.fillStyle = '#3c4043'; ctx.font = `15px ${SANS}`; ctx.textAlign = 'left'; ctx.fillText('百度一下，你就知道', 144, 27);
-    ctx.fillStyle = '#80868b'; ctx.fillText('×', 330, 26); ctx.font = `22px ${SANS}`; ctx.fillText('+', 368, 26);
-    ctx.fillStyle = '#fff'; ctx.fillRect(0, 44, W, 46);
-    ctx.fillStyle = '#5f6368'; ctx.font = `20px ${SANS}`; ctx.fillText('←   →   ↻', 22, 67);
-    rr(150, 52, W - 250, 30, 15); ctx.fillStyle = '#f1f3f4'; ctx.fill();
-    ctx.fillStyle = '#202124'; ctx.font = `15px ${SANS}`; ctx.fillText('🔒  https://www.baidu.com', 168, 68);
-    ctx.fillStyle = '#e8eaed'; ctx.fillRect(0, 89, W, 1);
-    // 页面
-    ctx.fillStyle = '#fff'; ctx.fillRect(0, 90, W, H - 90);
-    ctx.fillStyle = '#222'; ctx.font = `19px ${SANS}`;
-    ['新闻', 'hao123', '地图', '贴吧', '视频', '图片', '网盘', '文库', '更多'].reduce((x, s) => { ctx.fillText(s, x, 128); return x + ctx.measureText(s).width + 34; }, 36);
-    ctx.textAlign = 'right'; ctx.fillText('设置', W - 150, 128);
-    rr(W - 122, 110, 86, 36, 8); ctx.fillStyle = '#4e6ef2'; ctx.fill();
-    ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.fillText('登录', W - 79, 129);
-    // 标志
-    const cx = W / 2, cy = 300;
-    ctx.font = `bold 92px Arial, sans-serif`; ctx.fillStyle = '#e10602'; ctx.textAlign = 'right'; ctx.fillText('Bai', cx - 62, cy);
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H);
+    // ---- 浏览器外框：深色的标签栏、地址栏、书签栏 ----
+    ctx.fillStyle = '#1d1b30'; ctx.fillRect(0, 0, W, X(46));
+    ctx.fillStyle = '#2c2a42'; ctx.fillRect(0, X(46), W, X(56));
+    pill(16, 16, 172, 30, 8); ctx.fillStyle = '#2c2a42'; ctx.fill();
+    ctx.fillStyle = '#2932e1'; ctx.beginPath(); ctx.arc(X(29), X(31), X(6), 0, 7); ctx.fill();
+    text('百度一下，你就知道', 40, 31, '#e8e6f2', 11); text('×', 172, 31, '#b9b6cc', 13); text('+', 197, 31, '#b9b6cc', 16);
+    text('←   →   ↻', 52, 63, '#c9c6da', 14);
+    pill(218, 51, 1570, 25, 12.5); ctx.fillStyle = '#3b3954'; ctx.fill();
+    text('www.baidu.com', 246, 64, '#e8e6f2', 11.5);
+    ['常用', '工作', '文档', '博客', '笔记', '工具'].reduce((x, t) => { ctx.strokeStyle = '#b9b6cc'; ctx.lineWidth = 1; ctx.strokeRect(X(x), X(85), X(11), X(9)); text(t, x + 16, 90, '#d6d3e6', 10.5); return x + 70; }, 90);
+    // ---- 顶部导航 ----
+    ['新闻', 'hao123', '地图', '贴吧', '视频', '图片', '网盘', '库库AI', '文心', '百度搭子', '更多'].reduce((x, t) => { text(t, x, 137, '#222', 15.5); return x + ctx.measureText(t).width / k + 24; }, 41);
+    text('设置', 1844, 139, '#222', 15.5, false, 'center');
+    pill(1897, 122, 66, 34, 17); ctx.fillStyle = '#4e6ef2'; ctx.fill();
+    text('登录', 1930, 139, '#fff', 15.5, false, 'center');
+    // ---- 标志 ----
+    const cx = 1000, cy = 282;
+    font(64, true, 'Arial, sans-serif'); ctx.fillStyle = '#e10602'; ctx.textAlign = 'right'; ctx.fillText('Bai', X(cx - 36), X(cy + 8));
     ctx.fillStyle = '#2932e1';
-    ctx.beginPath(); ctx.ellipse(cx, cy + 12, 50, 42, 0, 0, Math.PI * 2); ctx.fill();
-    for (const [dx, dy, r, a] of [[-46, -30, 14, -0.4], [-17, -50, 15, -0.12], [17, -50, 15, 0.12], [46, -30, 14, 0.4]]) { ctx.beginPath(); ctx.ellipse(cx + dx, cy + dy, r * 0.78, r, a, 0, Math.PI * 2); ctx.fill(); }
-    ctx.fillStyle = '#fff'; ctx.font = `bold 46px Arial, sans-serif`; ctx.textAlign = 'center'; ctx.fillText('du', cx, cy + 16);
-    ctx.fillStyle = '#e10602'; ctx.font = `bold 80px ${SANS}`; ctx.textAlign = 'left'; ctx.fillText('百度', cx + 66, cy + 2);
-    // 搜索框和按钮
-    const bx = SEARCH.x * W, by = SEARCH.y * H, bw = SEARCH.w * W, bh = SEARCH.h * H, btn = SEARCH.btn * W;
-    rr(bx, by, bw + btn, bh, 16); ctx.fillStyle = '#fff'; ctx.fill();
-    ctx.lineWidth = 3; ctx.strokeStyle = focused ? '#4e6ef2' : '#c4c7ce'; ctx.stroke();
-    rr(bx + bw, by, btn, bh, [0, 16, 16, 0]); ctx.fillStyle = '#4e6ef2'; ctx.fill();
-    ctx.fillStyle = '#fff'; ctx.font = `28px ${SANS}`; ctx.textAlign = 'center'; ctx.fillText('百度一下', bx + bw + btn / 2, by + bh / 2 + 1);
-    if (!focused) { ctx.fillStyle = '#9195a3'; ctx.font = `25px ${SANS}`; ctx.textAlign = 'left'; ctx.fillText('点击屏幕开始搜索', bx + 30, by + bh / 2 + 1); }
-    // 热搜（内容是和这间屋子有关的玩笑，不是真的热搜）
-    const hot = ['白菜什么时候种最好', '座钟多久上一次弦', '虎尾兰多久浇一次水', '论语十则', '线装书怎么保存', '水稻几月收割'];
-    const hx = bx, hy = by + bh + 70;
-    ctx.fillStyle = '#222'; ctx.font = `bold 24px ${SANS}`; ctx.textAlign = 'left'; ctx.fillText('百度热搜 ›', hx, hy);
-    ctx.fillStyle = '#626675'; ctx.font = `20px ${SANS}`; ctx.textAlign = 'right'; ctx.fillText('↻ 换一换', bx + bw + btn, hy);
-    hot.forEach((s, i) => {
-      const x = hx + (i % 2) * (bw + btn) / 2, y = hy + 52 + Math.floor(i / 2) * 46;
-      ctx.textAlign = 'left'; ctx.font = `bold 22px Arial`; ctx.fillStyle = ['#fe2d46', '#ff6600', '#faa90e', '#9195a3', '#9195a3', '#9195a3'][i]; ctx.fillText(String(i + 1), x, y);
-      ctx.font = `22px ${SANS}`; ctx.fillStyle = '#222'; ctx.fillText(s, x + 30, y);
+    ctx.beginPath(); ctx.ellipse(X(cx), X(cy + 14), X(31), X(26), 0, 0, 7); ctx.fill();
+    for (const [dx, dy, r, a] of [[-29, -12, 9.5, -0.4], [-11, -27, 10.5, -0.12], [11, -27, 10.5, 0.12], [29, -12, 9.5, 0.4]]) { ctx.beginPath(); ctx.ellipse(X(cx + dx), X(cy + dy), X(r * 0.78), X(r), a, 0, 7); ctx.fill(); }
+    font(31, true, 'Arial, sans-serif'); ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.fillText('du', X(cx), X(cy + 17));
+    font(52, true); ctx.fillStyle = '#e10602'; ctx.textAlign = 'left'; ctx.fillText('百度', X(cx + 40), X(cy + 10));
+    // ---- 搜索框：蓝紫渐变的细边，框里右下角是麦克风、加号和「百度一下」----
+    const bx = SEARCH.x * 2000, by = (SEARCH.y * H) / k, bw = (SEARCH.w + SEARCH.btn) * 2000, bh = (SEARCH.h * H) / k;
+    const edge = ctx.createLinearGradient(X(bx), 0, X(bx + bw), 0);
+    edge.addColorStop(0, '#4e6ef2'); edge.addColorStop(0.6, '#8a6cf5'); edge.addColorStop(1, '#e58bd8');
+    pill(bx, by, bw, bh, 24); ctx.fillStyle = '#fff'; ctx.fill(); ctx.lineWidth = focused ? X(3) : X(2); ctx.strokeStyle = edge; ctx.stroke();
+    if (!focused) text('点击屏幕开始搜索', bx + 20, by + 26, '#9195a3', 18);
+    const iy = by + bh - 37;
+    ctx.strokeStyle = '#222'; ctx.lineWidth = X(1.8); ctx.lineCap = 'round';
+    pill(bx + bw - 214, iy - 11, 9, 15, 4.5); ctx.stroke();                                              // 麦克风
+    ctx.beginPath(); ctx.arc(X(bx + bw - 209.5), X(iy - 1), X(8), 0.15 * Math.PI, 0.85 * Math.PI); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(X(bx + bw - 209.5), X(iy + 7)); ctx.lineTo(X(bx + bw - 209.5), X(iy + 11)); ctx.stroke();
+    ctx.beginPath(); ctx.arc(X(bx + bw - 169), X(iy), X(10), 0, 7); ctx.stroke();                         // 加号
+    ctx.beginPath(); ctx.moveTo(X(bx + bw - 174), X(iy)); ctx.lineTo(X(bx + bw - 164), X(iy)); ctx.moveTo(X(bx + bw - 169), X(iy - 5)); ctx.lineTo(X(bx + bw - 169), X(iy + 5)); ctx.stroke();
+    const btn = ctx.createLinearGradient(X(bx + bw - 137), 0, X(bx + bw - 12), 0);
+    btn.addColorStop(0, '#4e6ef2'); btn.addColorStop(1, '#6f63f6');
+    pill(bx + bw - 137, by + bh - 62, 125, 50, 16); ctx.fillStyle = btn; ctx.fill();
+    text('百度一下', bx + bw - 74.5, by + bh - 36, '#fff', 19, false, 'center');
+    // ---- 文心助手的提示条 ----
+    pill(770, 505, 465, 44, 22); ctx.fillStyle = '#f5f6fa'; ctx.fill();
+    ctx.strokeStyle = '#3d6bf2'; ctx.lineWidth = X(2.5); ctx.beginPath(); ctx.arc(X(792), X(527), X(8), 0, 7); ctx.stroke();
+    text('文心', 805, 527, '#3d6bf2', 18, true);
+    text('复杂问题就找文心助手，深入思考回答更优  ›', 851, 527, '#222', 18);
+    // ---- 热搜（内容是和这间屋子有关的玩笑，不是真的热搜）----
+    text('百度', 566, 635, '#222', 17, true); text('热搜', 600, 635, '#f73131', 17, true); text('›', 638, 634, '#626675', 18);
+    text('↻ 换一换', 1438, 636, '#626675', 16, false, 'right');
+    const hot = ['白菜什么时候种最好', '磁带怎么保存不发霉', '手冲和意式有什么区别', '虎尾兰多久浇一次水', '水稻几月收割', '拿铁拉花新手教程', '座钟多久上一次弦', '线装书怎么保存', '橘猫为什么都很胖', '论语十则'];
+    const rankColor = ['#f73131', '#f73131', '#ff6600', '#faa90e'];
+    hot.forEach((t, i) => {
+      const col = i < 5 ? 0 : 1, x = col ? 1013 : 566, y = 691 + (i % 5) * 41.7;
+      if (i === 0) { // 置顶的小箭头
+        ctx.strokeStyle = '#f73131'; ctx.lineWidth = X(2); ctx.beginPath(); ctx.moveTo(X(568), X(y - 7)); ctx.lineTo(X(580), X(y - 7)); ctx.moveTo(X(574), X(y + 8)); ctx.lineTo(X(574), X(y - 3)); ctx.moveTo(X(569), X(y + 1)); ctx.lineTo(X(574), X(y - 4)); ctx.lineTo(X(579), X(y + 1)); ctx.stroke();
+      } else text(String(i), x + 6, y + 1, rankColor[i] ?? '#9195a3', 18, i < 4, 'center');
+      text(t, x + 31, y, '#222', 18.5);
+      const tag = i === 1 ? '热' : i === 2 || i === 5 ? '新' : '';
+      if (tag) { const tx = x + 31 + ctx.measureText(t).width / k + 8; pill(tx, y - 9, 18, 18, 4); ctx.fillStyle = tag === '热' ? '#ff6600' : '#f73131'; ctx.fill(); text(tag, tx + 9, y + 0.5, '#fff', 11.5, false, 'center'); }
     });
-    ctx.fillStyle = '#9195a3'; ctx.font = `18px ${SANS}`; ctx.textAlign = 'center';
-    ctx.fillText('这是画在屏幕上的示意页面 · 搜索会在新标签页打开 baidu.com', W / 2, H - 30);
+    // ---- 右下角的浮动按钮和页脚 ----
+    pill(1913, 918, 50, 156, 10); ctx.fillStyle = '#fff'; ctx.fill(); ctx.strokeStyle = '#eceef2'; ctx.lineWidth = 1; ctx.stroke();
+    ctx.strokeStyle = '#222'; ctx.lineWidth = X(1.6);
+    pill(1930, 938, 16, 20, 4); ctx.stroke(); ctx.beginPath(); ctx.arc(X(1938), X(1021), X(9), 0, 7); ctx.stroke();
+    text('下载', 1938, 974, '#222', 12.5, false, 'center'); text('辅助', 1938, 1047, '#222', 12.5, false, 'center');
+    text('关于百度   About Baidu   使用百度前必读   帮助中心   企业推广   ·   这是画在屏幕上的示意页面，搜索会在新标签页打开 baidu.com', 1000, 1105, '#9195a3', 13, false, 'center');
     tex.needsUpdate = true;
   };
   draw();
