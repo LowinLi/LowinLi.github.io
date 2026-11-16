@@ -112,6 +112,7 @@ export const monitor: SceneObject = ({ scene, camera, renderer, tier, bus, pick 
   pick(screen, { click() { if (!focused) emit(bus, 'monitor:focus'); } });
   const off = [
     on(bus, 'monitor:focus', () => { focused = true; draw(); }),
+    on(bus, 'quality:nopost', () => { screenMat.color.setScalar(1); }), // 后期处理关掉后不再需要提前调亮
     on(bus, 'monitor:blur', () => { if (!focused) return; focused = false; draw(); emit(bus, 'monitor:rect', null); }),
   ];
   scene.add(group);

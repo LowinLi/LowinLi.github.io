@@ -29,5 +29,7 @@ export function detectTier(): Tier {
 
   const weakGpu = /mali-[gt]?[0-7]\d|adreno \(tm\) [3-5]\d\d|powervr|intel.*hd graphics [2-5]\d\d/.test(renderer);
   if (weakGpu || mem <= 4) return 'mid';
+  // 手机和平板一律用 mid：屏幕小，后期效果看不太出来，但每帧要多画好几遍场景，又热又卡
+  if (matchMedia('(pointer: coarse)').matches) return 'mid';
   return 'high';
 }

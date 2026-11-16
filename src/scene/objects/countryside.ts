@@ -45,9 +45,10 @@ export const countryside: SceneObject = ({ scene, tier }) => {
   /** 地上的一片影子：太阳在正前方偏低，影子朝屋子这边（+z）拖长 */
   const shade = (x: number, z: number, rx: number, len: number, y = gy + 0.012) =>
     shadows.add(shadowMat, new THREE.CircleGeometry(1, 10).rotateX(-Math.PI / 2), [x + len * 0.1, y, z + len * 0.8], [0, 0, 0], [rx, 1, len]);
-  const leaf = (len: number, width: number, bend = 0.6, fold = 0.2, segs = 4) => leafGeo({ len, width, bend, fold, segs });
+  // 面数预算：屋外的叶子横向只分 2 列、纵向 2–3 段。几百棵菜乘起来，细分是最大的开销
+  const leaf = (len: number, width: number, bend = 0.6, fold = 0.2, segs = 3) => leafGeo({ cols: 2, len, width, bend, fold, segs: Math.min(segs, 3) });
   const pick = <T>(a: T[]) => a[Math.floor(r() * a.length)];
-  const skip = () => !high && r() < 0.2; // mid 档少种一些
+  const skip = () => !high && r() < 0.25; // mid 档少种一些
   const hazeAt = (z: number) => Math.min(0.75, Math.max(0, (-z - 30) / 420));
   /** 一团凹凸不平的树冠 */
   const lump = (rad: number, seed: number, detail = 1) => {
@@ -92,22 +93,22 @@ export const countryside: SceneObject = ({ scene, tier }) => {
     cabbage(x: number, z: number, s = 1, light = false) {
       const c = light ? [0x86bf5a, 0x9bcc66, 0x78b24f] : [0x4f9240, 0x5fa24a, 0x437f36];
       // 外圈摊开的老叶 + 里圈抱着的嫩叶，叶柄发白
-      for (let i = 0; i < 7; i++) put(leaf(0.3 * s, 0.17 * s, 1.0, 0.22, 5), pick(c), [x, by, z], [0.95 + r() * 0.35, (i / 7) * 6.28 + r() * 0.5, 0], 1, { leaf: true, base: 0xdbe8c0, rib: true });
-      for (let i = 0; i < 6; i++) put(leaf(0.2 * s, 0.14 * s, light ? 0.3 : -0.5, 0.3, 4), light ? 0xa9d672 : 0x8cc660, [x, by + 0.01, z], [0.25 + r() * 0.3, (i / 6) * 6.28 + r() * 0.5, 0], 1, { leaf: true, base: 0xf0f5dc, rib: true });
-      if (!light) put(new THREE.SphereGeometry(0.055 * s, 8, 6), 0xc8e496, [x, by + 0.08, z], [0, 0, 0], [1, 1.25, 1]);
+      for (let i = 0; i < 6; i++) put(leaf(0.3 * s, 0.17 * s, 1.0, 0.22, 3), pick(c), [x, by, z], [0.95 + r() * 0.35, (i / 6) * 6.28 + r() * 0.5, 0], 1, { leaf: true, base: 0xdbe8c0, rib: true });
+      for (let i = 0; i < 5; i++) put(leaf(0.2 * s, 0.14 * s, light ? 0.3 : -0.5, 0.3, 2), light ? 0xa9d672 : 0x8cc660, [x, by + 0.01, z], [0.25 + r() * 0.3, (i / 5) * 6.28 + r() * 0.5, 0], 1, { leaf: true, base: 0xf0f5dc, rib: true });
+      if (!light) put(new THREE.SphereGeometry(0.055 * s, 6, 4), 0xc8e496, [x, by + 0.08, z], [0, 0, 0], [1, 1.25, 1]);
       shade(x, z, 0.2 * s, 0.24 * s, by + 0.004);
     },
     scallion(x: number, z: number) {
-      for (let i = 0; i < 6; i++) put(leafGeo({ len: 0.28 + r() * 0.14, width: 0.008, bend: 0.25 + r() * 0.6, fold: 0.6, segs: 3 }), pick([0x3f8f45, 0x4a9a4c]), [x + (r() - 0.5) * 0.03, by, z + (r() - 0.5) * 0.03], [0.1 + r() * 0.35, r() * 6.28, 0], 1, { leaf: true, base: 0xf2f4e6 });
+      for (let i = 0; i < 5; i++) put(leafGeo({ cols: 2, len: 0.28 + r() * 0.14, width: 0.008, bend: 0.25 + r() * 0.6, fold: 0.6, segs: 2 }), pick([0x3f8f45, 0x4a9a4c]), [x + (r() - 0.5) * 0.03, by, z + (r() - 0.5) * 0.03], [0.1 + r() * 0.35, r() * 6.28, 0], 1, { leaf: true, base: 0xf2f4e6 });
     },
     bush(x: number, z: number, fruit: 'chili' | 'eggplant') {
       const big = fruit === 'eggplant', hgt = big ? 0.55 : 0.42;
       put(new THREE.CylinderGeometry(0.008, 0.013, hgt, 5), 0x5a6b34, [x, by + hgt / 2, z]);
       for (let i = 0; i < 3; i++) { const a = r() * 6.28; put(new THREE.CylinderGeometry(0.004, 0.007, 0.2, 4), 0x5a6b34, [x + Math.sin(a) * 0.06, by + hgt * 0.7, z + Math.cos(a) * 0.06], [0.7, a, 0]); }
-      for (let i = 0; i < (big ? 15 : 18); i++) put(leaf(big ? 0.16 : 0.09, big ? 0.085 : 0.036, 0.5, 0.2, 3), pick(big ? [0x3f6f3a, 0x4a7d40, 0x356338] : GREEN), [x + (r() - 0.5) * 0.14, by + 0.1 + r() * (hgt - 0.05), z + (r() - 0.5) * 0.14], [0.7 + r() * 0.7, r() * 6.28, 0], 1, { leaf: true, rib: true });
+      for (let i = 0; i < (big ? 11 : 13); i++) put(leaf(big ? 0.16 : 0.09, big ? 0.085 : 0.036, 0.5, 0.2, 3), pick(big ? [0x3f6f3a, 0x4a7d40, 0x356338] : GREEN), [x + (r() - 0.5) * 0.14, by + 0.1 + r() * (hgt - 0.05), z + (r() - 0.5) * 0.14], [0.7 + r() * 0.7, r() * 6.28, 0], 1, { leaf: true, rib: true });
       for (let i = 0; i < (big ? 3 : 6); i++) {
         const a = r() * 6.28, d = 0.07 + r() * 0.07, y = by + 0.12 + r() * 0.18;
-        if (big) { put(new THREE.SphereGeometry(0.032, 7, 6), 0x4b2a66, [x + Math.cos(a) * d, y, z + Math.sin(a) * d], [0.3, a, 0], [1, 2.6, 1]); put(new THREE.ConeGeometry(0.02, 0.03, 5), 0x4a7d40, [x + Math.cos(a) * d, y + 0.08, z + Math.sin(a) * d]); }
+        if (big) { put(new THREE.SphereGeometry(0.032, 5, 4), 0x4b2a66, [x + Math.cos(a) * d, y, z + Math.sin(a) * d], [0.3, a, 0], [1, 2.6, 1]); put(new THREE.ConeGeometry(0.02, 0.03, 5), 0x4a7d40, [x + Math.cos(a) * d, y + 0.08, z + Math.sin(a) * d]); }
         else put(new THREE.ConeGeometry(0.011, 0.075, 5), r() < 0.7 ? 0xc8281e : 0x3f8f3a, [x + Math.cos(a) * d, y, z + Math.sin(a) * d], [Math.PI + (r() - 0.5) * 0.4, 0, (r() - 0.5) * 0.4]);
       }
       shade(x, z, 0.16, 0.3, by + 0.004);
@@ -115,10 +116,10 @@ export const countryside: SceneObject = ({ scene, tier }) => {
     tomato(x: number, z: number) {
       put(new THREE.CylinderGeometry(0.01, 0.011, 1.4, 5), 0xb9a36a, [x, by + 0.7, z], [0.03, 0, 0.03]);
       put(new THREE.CylinderGeometry(0.007, 0.01, 1.15, 5), 0x4f7a34, [x + 0.02, by + 0.58, z], [0.02, 0, -0.03]);
-      for (let i = 0; i < 20; i++) put(leaf(0.14, 0.055, 0.7, 0.2, 3), pick(GREEN), [x + (r() - 0.5) * 0.1, by + 0.15 + r() * 1.0, z + (r() - 0.5) * 0.1], [0.8 + r() * 0.6, r() * 6.28, 0], 1, { leaf: true, rib: true });
+      for (let i = 0; i < 14; i++) put(leaf(0.14, 0.055, 0.7, 0.2, 3), pick(GREEN), [x + (r() - 0.5) * 0.1, by + 0.15 + r() * 1.0, z + (r() - 0.5) * 0.1], [0.8 + r() * 0.6, r() * 6.28, 0], 1, { leaf: true, rib: true });
       for (let i = 0; i < 3; i++) { // 一串一串的果
         const a = r() * 6.28, y = by + 0.3 + r() * 0.6, cx = x + Math.cos(a) * 0.09, cz = z + Math.sin(a) * 0.09;
-        for (let j = 0; j < 3; j++) put(new THREE.SphereGeometry(0.028, 7, 6), r() < 0.7 ? 0xd9301f : r() < 0.5 ? 0xe88a2a : 0x8fae3a, [cx + (r() - 0.5) * 0.05, y - j * 0.04, cz + (r() - 0.5) * 0.05]);
+        for (let j = 0; j < 3; j++) put(new THREE.SphereGeometry(0.028, 5, 4), r() < 0.7 ? 0xd9301f : r() < 0.5 ? 0xe88a2a : 0x8fae3a, [cx + (r() - 0.5) * 0.05, y - j * 0.04, cz + (r() - 0.5) * 0.05]);
       }
       shade(x, z, 0.14, 0.9, by + 0.004);
     },
@@ -126,15 +127,15 @@ export const countryside: SceneObject = ({ scene, tier }) => {
     bean(x: number, z: number) {
       for (const s of [-1, 1]) {
         put(new THREE.CylinderGeometry(0.011, 0.013, 1.95, 5), 0xc2ab6c, [x + s * 0.14, by + 0.93, z], [0, 0, s * 0.3]);
-        for (let i = 0; i < 16; i++) { const t = 0.12 + r() * 0.85; put(leaf(0.1, 0.09, 0.4, 0.15, 3), pick(GREEN), [x + s * (0.28 - t * 0.28) + (r() - 0.5) * 0.14, by + t * 1.8, z + (r() - 0.5) * 0.36], [0.9 + r() * 0.8, r() * 6.28, 0], 1, { leaf: true, rib: true }); }
+        for (let i = 0; i < 11; i++) { const t = 0.12 + r() * 0.85; put(leaf(0.1, 0.09, 0.4, 0.15, 3), pick(GREEN), [x + s * (0.28 - t * 0.28) + (r() - 0.5) * 0.14, by + t * 1.8, z + (r() - 0.5) * 0.36], [0.9 + r() * 0.8, r() * 6.28, 0], 1, { leaf: true, rib: true }); }
         for (let i = 0; i < 4; i++) put(new THREE.CylinderGeometry(0.006, 0.004, 0.24 + r() * 0.14, 4), 0x6fae4a, [x + s * 0.1 + (r() - 0.5) * 0.12, by + 0.55 + r() * 0.9, z + (r() - 0.5) * 0.25], [(r() - 0.5) * 0.2, 0, (r() - 0.5) * 0.2]);
       }
       shade(x, z, 0.3, 1.2, by + 0.004);
     },
     pumpkin(x: number, z: number) {
-      for (let i = 0; i < 7; i++) put(leafGeo({ len: 0.22, width: 0.21, bend: 0.3, fold: 0.1, segs: 3, shape: (t) => Math.sin(Math.PI * Math.pow(t, 0.6)) }), pick([0x4a8a3c, 0x3f7a35, 0x5a9a44]), [x + (r() - 0.5) * 0.55, by + r() * 0.1, z + (r() - 0.5) * 0.55], [1.15 + r() * 0.35, r() * 6.28, 0], 1, { leaf: true, rib: true });
+      for (let i = 0; i < 7; i++) put(leafGeo({ cols: 2, len: 0.22, width: 0.21, bend: 0.3, fold: 0.1, segs: 3, shape: (t) => Math.sin(Math.PI * Math.pow(t, 0.6)) }), pick([0x4a8a3c, 0x3f7a35, 0x5a9a44]), [x + (r() - 0.5) * 0.55, by + r() * 0.1, z + (r() - 0.5) * 0.55], [1.15 + r() * 0.35, r() * 6.28, 0], 1, { leaf: true, rib: true });
       if (r() < 0.65) { // 带棱的南瓜
-        const g = new THREE.SphereGeometry(0.16, 16, 8), p = g.attributes.position;
+        const g = new THREE.SphereGeometry(0.16, 12, 6), p = g.attributes.position;
         for (let i = 0; i < p.count; i++) { const a = Math.atan2(p.getZ(i), p.getX(i)), f = 1 - 0.09 * Math.abs(Math.sin(a * 4)); p.setX(i, p.getX(i) * f); p.setZ(i, p.getZ(i) * f); }
         g.computeVertexNormals();
         const px = x + (r() - 0.5) * 0.3, pz = z + (r() - 0.5) * 0.3;
@@ -146,8 +147,8 @@ export const countryside: SceneObject = ({ scene, tier }) => {
     corn(x: number, z: number) {
       const hgt = 1.6 + r() * 0.4;
       put(new THREE.CylinderGeometry(0.012, 0.02, hgt, 6), 0x6f9a3c, [x, by + hgt / 2, z], [0.03, 0, 0.02]);
-      for (let i = 0; i < 9; i++) put(leafGeo({ len: 0.55 + r() * 0.2, width: 0.045, bend: 1.3 + r() * 0.5, fold: 0.35, segs: 6, shape: (t) => (0.5 + 0.5 * Math.sin(Math.PI * Math.pow(t, 0.5))) * (1 - Math.pow(t, 4)) }), pick([0x5a9a3a, 0x6aa846, 0x4f8a34]), [x, by + 0.25 + (i / 9) * (hgt - 0.4), z], [0.5 + r() * 0.3, i * 2.4 + r(), 0], 1, { leaf: true, rib: true });
-      for (let i = 0; i < 2; i++) { const a = r() * 6.28; put(new THREE.SphereGeometry(0.035, 7, 6), 0xb9c95a, [x + Math.sin(a) * 0.05, by + hgt * (0.45 + i * 0.12), z + Math.cos(a) * 0.05], [0.35, a, 0], [1, 3, 1]); }
+      for (let i = 0; i < 7; i++) put(leafGeo({ cols: 2, len: 0.55 + r() * 0.2, width: 0.045, bend: 1.3 + r() * 0.5, fold: 0.35, segs: 4, shape: (t) => (0.5 + 0.5 * Math.sin(Math.PI * Math.pow(t, 0.5))) * (1 - Math.pow(t, 4)) }), pick([0x5a9a3a, 0x6aa846, 0x4f8a34]), [x, by + 0.25 + (i / 7) * (hgt - 0.4), z], [0.5 + r() * 0.3, i * 2.4 + r(), 0], 1, { leaf: true, rib: true });
+      for (let i = 0; i < 2; i++) { const a = r() * 6.28; put(new THREE.SphereGeometry(0.035, 5, 4), 0xb9c95a, [x + Math.sin(a) * 0.05, by + hgt * (0.45 + i * 0.12), z + Math.cos(a) * 0.05], [0.35, a, 0], [1, 3, 1]); }
       put(new THREE.ConeGeometry(0.05, 0.22, 5), 0xd8c070, [x, by + hgt + 0.1, z]); // 顶上的天花
       shade(x, z, 0.2, 1.3, by + 0.004);
     },
@@ -156,7 +157,7 @@ export const countryside: SceneObject = ({ scene, tier }) => {
     const len = band.z1 - band.z0, zc = (band.z0 + band.z1) / 2;
     bedX.forEach((x, bi) => {
       const crop = band.crops[bi];
-      put(rbox(0.86, 0.12, len + 0.15, 0.05, 2), 0x5c4630, [x, gy + 0.06, zc], [0, 0, 0], 1, { k: 1.12 }); // 垄
+      put(rbox(0.86, 0.12, len + 0.15, 0.05, 1), 0x5c4630, [x, gy + 0.06, zc], [0, 0, 0], 1, { k: 1.12 }); // 垄
       const step = crop === 'scallion' ? 0.16 : crop === 'cabbage' || crop === 'lettuce' ? 0.38 : crop === 'bean' ? 0.6 : crop === 'pumpkin' ? 0.7 : crop === 'corn' ? 0.42 : 0.5;
       const rowsX = crop === 'scallion' ? [-0.2, 0, 0.2] : crop === 'cabbage' || crop === 'lettuce' ? [-0.18, 0.18] : crop === 'corn' ? [-0.17, 0.17] : [0];
       for (const dx of rowsX) for (let z = band.z0 + 0.2; z < band.z1 - 0.1; z += step) {
@@ -178,7 +179,7 @@ export const countryside: SceneObject = ({ scene, tier }) => {
     const len = Math.hypot(x1 - x0, z1 - z0), n = Math.round(len / 0.2), ang = Math.atan2(x1 - x0, z1 - z0);
     for (let i = 0; i <= n; i++) {
       const t = i / n, post = i % 10 === 0, hh = post ? 1.15 : 0.92 + r() * 0.14;
-      put(new THREE.CylinderGeometry(post ? 0.028 : 0.011, post ? 0.032 : 0.013, hh, post ? 7 : 5), post ? 0x8a744a : pick(BAMBOO), [x0 + (x1 - x0) * t, gy + hh / 2, z0 + (z1 - z0) * t], [(r() - 0.5) * 0.08, 0, (r() - 0.5) * 0.08]);
+      put(new THREE.CylinderGeometry(post ? 0.028 : 0.011, post ? 0.032 : 0.013, hh, post ? 6 : 4, 1, !post), post ? 0x8a744a : pick(BAMBOO), [x0 + (x1 - x0) * t, gy + hh / 2, z0 + (z1 - z0) * t], [(r() - 0.5) * 0.08, 0, (r() - 0.5) * 0.08]);
     }
     for (const y of [0.28, 0.74]) for (const off of [-0.014, 0.014]) put(new THREE.CylinderGeometry(0.011, 0.011, len, 5), 0x9c8850, [(x0 + x1) / 2 + Math.cos(ang) * off, gy + y, (z0 + z1) / 2 - Math.sin(ang) * off], [Math.PI / 2, ang, 0]);
     shadows.add(shadowMat, new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), [(x0 + x1) / 2 + 0.15, gy + 0.011, (z0 + z1) / 2 + 1.2], [0, Math.abs(x1 - x0) > 0.1 ? 0 : 0, 0], [Math.abs(x1 - x0) + 0.3, 1, Math.abs(z1 - z0) + 2.4]);
@@ -192,7 +193,7 @@ export const countryside: SceneObject = ({ scene, tier }) => {
     if (x > -0.9 && x < 1.9) continue;
     const sx = x + (r() - 0.5) * 0.3, sz = -13.45 + (r() - 0.5) * 0.15, hgt = 1.5 + r() * 0.5, tilt = 0.25 + r() * 0.3, yaw = (r() - 0.5) * 0.8;
     put(new THREE.CylinderGeometry(0.014, 0.022, hgt, 6), 0x5f8a3a, [sx, gy + hgt / 2, sz], [0.04, 0, (r() - 0.5) * 0.06]);
-    for (let i = 0; i < 7; i++) put(leafGeo({ len: 0.24, width: 0.17, bend: 0.8, fold: 0.15, segs: 4 }), pick(GREEN), [sx, gy + 0.3 + (i / 7) * (hgt - 0.5), sz], [0.9 + r() * 0.4, i * 2.4, 0], 1, { leaf: true, rib: true });
+    for (let i = 0; i < 7; i++) put(leafGeo({ cols: 2, len: 0.24, width: 0.17, bend: 0.8, fold: 0.15, segs: 4 }), pick(GREEN), [sx, gy + 0.3 + (i / 7) * (hgt - 0.5), sz], [0.9 + r() * 0.4, i * 2.4, 0], 1, { leaf: true, rib: true });
     // 花盘朝着屋子这边微微低头
     const hy = gy + hgt + 0.02, hz2 = sz + 0.05;
     put(new THREE.RingGeometry(0.1, 0.24, 18, 1), 0xf2c21a, [sx, hy, hz2], [-tilt, yaw, 0], 1, { leaf: true, k: 1.15 });
@@ -208,7 +209,7 @@ export const countryside: SceneObject = ({ scene, tier }) => {
   put(new THREE.CircleGeometry(0.25, 20).rotateX(-Math.PI / 2), 0x6f8f96, [3.4, gy + 0.6, -2.3]);
   shade(3.4, -2.3, 0.36, 0.5);
   const wx = -3.7, wz = -2.5; // 水井：一圈石头井台 + 井绳架 + 木桶
-  for (let i = 0; i < 12; i++) { const a = (i / 12) * 6.28; put(rbox(0.26, 0.42, 0.2, 0.04, 2), pick([0x8d8a84, 0x9a968e, 0x7f7c76]), [wx + Math.cos(a) * 0.5, gy + 0.21, wz + Math.sin(a) * 0.5], [0, -a + Math.PI / 2, 0]); }
+  for (let i = 0; i < 12; i++) { const a = (i / 12) * 6.28; put(rbox(0.26, 0.42, 0.2, 0.04, 1), pick([0x8d8a84, 0x9a968e, 0x7f7c76]), [wx + Math.cos(a) * 0.5, gy + 0.21, wz + Math.sin(a) * 0.5], [0, -a + Math.PI / 2, 0]); }
   put(new THREE.CircleGeometry(0.42, 20).rotateX(-Math.PI / 2), 0x1f2a2c, [wx, gy + 0.2, wz]);
   for (const s of [-1, 1]) put(new THREE.CylinderGeometry(0.035, 0.04, 1.3, 6), 0x6a5236, [wx + s * 0.62, gy + 0.65, wz]);
   put(new THREE.CylinderGeometry(0.05, 0.05, 1.4, 8), 0x7a5e3c, [wx, gy + 1.25, wz], [0, 0, Math.PI / 2]);
@@ -228,27 +229,27 @@ export const countryside: SceneObject = ({ scene, tier }) => {
       for (let i = 0; i < 7; i++) {
         const cx = x + (r() - 0.5) * 2.2 * s, cz = z + (r() - 0.5) * 1.6 * s, hh = (5.5 + r() * 3) * s, lean = (r() - 0.5) * 0.14;
         put(new THREE.CylinderGeometry(0.03 * s, 0.05 * s, hh, 5), 0x7fa04a, [cx, gy + hh / 2, cz], [lean, 0, lean], 1, o);
-        for (let j = 0; j < 4; j++) put(lump(0.7 * s, i + j), pick([0x6f9a40, 0x86ae4a, 0x5f8a38]), [cx + lean * hh * 0.4 + (r() - 0.5) * 0.9, gy + hh * (0.62 + j * 0.11), cz + (r() - 0.5) * 0.9], [r(), r(), 0], [1, 0.5, 1], { haze: hz, jitter: 0.3 });
+        for (let j = 0; j < 3; j++) put(lump(0.7 * s, i + j, z > -90 ? 1 : 0), pick([0x6f9a40, 0x86ae4a, 0x5f8a38]), [cx + lean * hh * 0.4 + (r() - 0.5) * 0.9, gy + hh * (0.62 + j * 0.11), cz + (r() - 0.5) * 0.9], [r(), r(), 0], [1, 0.5, 1], { haze: hz, jitter: 0.3 });
       }
       shade(x, z, 1.6 * s, 7 * s);
       return;
     }
-    const tall = kind === 'poplar', th = (tall ? 3 : 2.2) * s, near = z > -90, det = near ? 2 : 1, foliage = { haze: hz, jitter: near ? 0.34 : 0.22 };
+    const tall = kind === 'poplar', th = (tall ? 3 : 2.2) * s, near = z > -90, det = 1, foliage = { haze: hz, jitter: near ? 0.34 : 0.22 };
     put(new THREE.CylinderGeometry(0.11 * s, 0.2 * s, th, 7), 0x4a3a2c, [x, gy + th / 2, z], [(r() - 0.5) * 0.08, 0, (r() - 0.5) * 0.08], 1, o);
     if (tall) {
       // 杨树：一整条瘦高的树冠，再贴两团小的打破轮廓
       put(lump(1, x, det), 0x4f8240, [x, gy + th * 0.7 + 3.4 * s, z], [0, r() * 6, 0], [0.85 * s, 3.5 * s, 0.85 * s], foliage);
-      for (let i = 0; i < 3; i++) put(lump(0.6 * s, x + i, 1), pick([0x5a8f44, 0x437a38]), [x + (r() - 0.5) * 0.7 * s, gy + th + (0.6 + i * 1.9) * s, z + (r() - 0.5) * 0.7 * s], [0, r() * 6, 0], [1, 1.6, 1], foliage);
+      for (let i = 0; i < 2; i++) put(lump(0.6 * s, x + i, 0), pick([0x5a8f44, 0x437a38]), [x + (r() - 0.5) * 0.7 * s, gy + th + (0.6 + i * 1.9) * s, z + (r() - 0.5) * 0.7 * s], [0, r() * 6, 0], [1, 1.6, 1], foliage);
     } else {
-      const n = kind === 'persimmon' ? 7 : near ? 13 : 9;
+      const n = kind === 'persimmon' ? 7 : near ? 10 : 6;
       for (let i = 0; i < n; i++) {
         // 树冠由一圈圈小团组成：越靠上越小、越亮
         const up = r(), spread = (1 - up * 0.6) * 1.35 * s, a2 = r() * 6.28;
         const lx = Math.cos(a2) * spread * Math.sqrt(r()), lz = Math.sin(a2) * spread * Math.sqrt(r()), ly = th + (0.2 + up * 2.2) * s, rad = (0.95 - up * 0.3 + r() * 0.25) * s;
         const hex = kind === 'persimmon' ? pick([0x6a8a3a, 0x8a983a, 0xa8983a]) : up > 0.65 ? pick([0x7a9e46, 0x86a84a]) : up > 0.3 ? pick([0x4f7f3c, 0x5a8a40]) : pick([0x35633a, 0x3f6f3a]);
         if (i < 4) put(new THREE.CylinderGeometry(0.03 * s, 0.07 * s, 1.6 * s, 5), 0x4a3a2c, [x + lx * 0.4, gy + th + 0.3 * s, z + lz * 0.4], [Math.atan2(Math.hypot(lx, lz), 1.2 * s), Math.atan2(lx, lz), 0], 1, o);
-        put(lump(rad, i * 1.7 + x, det), hex, [x + lx, gy + ly, z + lz], [r(), r(), 0], [1, 0.8, 1], foliage);
-        if (kind === 'persimmon') for (let j = 0; j < 4; j++) put(new THREE.SphereGeometry(0.055, 8, 6), 0xe8742a, [x + lx + (r() - 0.5) * rad * 1.8, gy + ly - rad * 0.6 - r() * 0.2, z + lz + (r() - 0.5) * rad * 1.8], [0, 0, 0], [1, 0.85, 1]);
+        put(lump(rad, i * 1.7 + x, near ? 1 : 0), hex, [x + lx, gy + ly, z + lz], [r(), r(), 0], [1, 0.8, 1], foliage);
+        if (kind === 'persimmon') for (let j = 0; j < 4; j++) put(new THREE.SphereGeometry(0.055, 5, 4), 0xe8742a, [x + lx + (r() - 0.5) * rad * 1.8, gy + ly - rad * 0.6 - r() * 0.2, z + lz + (r() - 0.5) * rad * 1.8], [0, 0, 0], [1, 0.85, 1]);
       }
     }
     shade(x, z, (tall ? 0.8 : 1.7) * s, (tall ? 9 : 5) * s);
@@ -301,7 +302,7 @@ export const countryside: SceneObject = ({ scene, tier }) => {
     for (let i = 0; i < 3; i++) tree(hx + (r() - 0.5) * 18, hz2 - 5 - r() * 6, 1.3 + r() * 0.8, 'round');
     if (r() < 0.7) haystack(hx + 8 + r() * 3, hz2 + 4);
   }
-  for (let i = 0; i < (high ? 60 : 30); i++) {
+  for (let i = 0; i < (high ? 44 : 28); i++) {
     const z = -62 - r() * 250, x = (r() - 0.5) * (170 + -z * 1.4);
     tree(x, z, 1.1 + r() * 1.3, 'round');
     if (r() < 0.45) tree(x + 2.5 + r() * 2, z + r() * 3, 0.9 + r(), 'round');
@@ -310,7 +311,7 @@ export const countryside: SceneObject = ({ scene, tier }) => {
   for (let i = 0; i < 18; i++) { const x = -100 + i * 11 + r() * 3, z = -76 - i * 2.4; tree(x, z, 0.85 + r() * 0.3, 'poplar'); }
 
   // ---------- 稻田里：田埂、稻草人、锄地的农人和一头水牛 ----------
-  const dike = (x0: number, z0: number, x1: number, z1: number) => put(rbox(Math.abs(x1 - x0) + 0.5, 0.22, Math.abs(z1 - z0) + 0.5, 0.1, 2), 0x7a7a44, [(x0 + x1) / 2, gy + 0.05, (z0 + z1) / 2]);
+  const dike = (x0: number, z0: number, x1: number, z1: number) => put(rbox(Math.abs(x1 - x0) + 0.5, 0.22, Math.abs(z1 - z0) + 0.5, 0.1, 1), 0x7a7a44, [(x0 + x1) / 2, gy + 0.05, (z0 + z1) / 2]);
   dike(-60, -15.2, 60, -15.2); dike(-60, -46, 60, -46); dike(-9.5, -15.2, -9.5, -46); dike(12, -15.2, 12, -46);
   const sx = -11.5, sz = -27; // 稻草人：草帽、破布衫、稻草的手
   put(new THREE.CylinderGeometry(0.03, 0.03, 2.0, 5), 0x8a744a, [sx, gy + 1.0, sz]);
@@ -421,8 +422,8 @@ export const countryside: SceneObject = ({ scene, tier }) => {
     return bin.add(g);
   };
   const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), s3 = new THREE.Vector3(), p3 = new THREE.Vector3(), ic = new THREE.Color();
-  const stepX = high ? 0.5 : 0.85, stepZ = high ? 0.55 : 0.95;
-  const riceGeo = bladeGeo(9, 0.72, true);
+  const stepX = high ? 0.62 : 0.85, stepZ = high ? 0.7 : 0.95;
+  const riceGeo = bladeGeo(7, 0.72, true);
   const spots: [number, number][] = [];
   for (let x = -30; x < 30; x += stepX) for (let z = -15.7; z > -45.4; z -= stepZ) if (Math.abs(x + 9.5) > 0.45 && Math.abs(x - 12) > 0.45) spots.push([x, z]);
   const rice = new THREE.InstancedMesh(riceGeo, mat, spots.length);
@@ -438,7 +439,7 @@ export const countryside: SceneObject = ({ scene, tier }) => {
   group.add(rice);
 
   // 篱笆脚下、路边、田埂上的杂草（实例化）
-  const weedGeo = bladeGeo(6, 0.2, false);
+  const weedGeo = bladeGeo(4, 0.2, false);
   const weedSpots: V3[] = [];
   const along = (x0: number, z0: number, x1: number, z1: number, n: number, spread: number) => { for (let i = 0; i < n; i++) { const t = r(); weedSpots.push([x0 + (x1 - x0) * t + (r() - 0.5) * spread, gy, z0 + (z1 - z0) * t + (r() - 0.5) * spread]); } };
   const wn = high ? 1 : 0.5;

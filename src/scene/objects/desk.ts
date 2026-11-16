@@ -43,7 +43,7 @@ export const desk: SceneObject = ({ scene, tier, bus, pick }) => {
     [2.25, ...Array(10).fill(1), 2.75],
     [1.25, 1.25, 1.25, 6.25, 1.25, 1.25, 1.25, 1.25],
   ];
-  const keyGeo = bin.add(rbox(u - 0.002, 0.006, u - 0.002, 0.0022, 2));
+  const keyGeo = bin.add(rbox(u - 0.002, 0.006, u - 0.002, 0.0022, 1));
   const keyMat = std({ color: 0xf4f4f2, roughness: 0.55 });
   const keys = new THREE.InstancedMesh(keyGeo, keyMat, rows.reduce((n, r) => n + r.length, 0));
   const m4 = new THREE.Matrix4();

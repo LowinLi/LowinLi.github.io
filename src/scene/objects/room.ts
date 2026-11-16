@@ -42,7 +42,8 @@ export const room: SceneObject = ({ scene, camera, tier, bus, pick }) => {
   // ---- 中式木格窗：深色实木窗框，三扇；上面一条横披是回纹格子，下面每扇套一圈细棂，中间留空好看风景 ----
   const winWood = std({ roughness: 0.5, map: bin.add(canvasTex(256, 256, (g, w, h) => woodGrain(g, 0, 0, w, h, '#4a2618', '14,6,3', 21, 120))) });
   const ww = win.x1 - win.x0, wh = win.y1 - win.y0, wy = (win.y0 + win.y1) / 2, fz = wallZ - 0.11, fw = 0.06;
-  const bar = (w: number, h: number, x: number, y: number, d = 0.035, z = fz) => batch.add(winWood, rbox(w, h, d, 0.004), [x, y, z]);
+  // 窗棂用普通盒子：圆角盒子一根就是几百个三角形，七十多根加起来四万多
+  const bar = (w: number, h: number, x: number, y: number, d = 0.035, z = fz) => batch.add(winWood, new THREE.BoxGeometry(w, h, d), [x, y, z]);
   bar(ww, fw, 0, win.y1 - fw / 2, 0.08); bar(ww, fw, 0, win.y0 + fw / 2, 0.08);
   for (const x of [win.x0 + fw / 2, win.x1 - fw / 2]) bar(fw, wh, x, wy, 0.08);
   for (const x of [-ww / 6, ww / 6]) bar(0.065, wh - fw, x, wy, 0.07);
@@ -177,7 +178,7 @@ export const room: SceneObject = ({ scene, camera, tier, bus, pick }) => {
   if (high) {
     const d = new THREE.DirectionalLight(0xffbe82, 3.6);
     d.castShadow = true;
-    d.shadow.mapSize.set(4096, 4096);
+    d.shadow.mapSize.set(2048, 2048);
     const c = d.shadow.camera; c.left = -4; c.right = 4; c.top = 4.2; c.bottom = -3.2; c.near = 2; c.far = 30;
     d.shadow.bias = -0.0004; d.shadow.normalBias = 0.015; d.shadow.radius = 4;
     sun = d;

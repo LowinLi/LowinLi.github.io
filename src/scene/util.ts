@@ -6,7 +6,7 @@ import type { Bin } from './types';
 export type V3 = [number, number, number];
 
 /** 带倒角的盒子 */
-export const rbox = (w: number, h: number, d: number, r = 0.004, seg = 3) => new RoundedBoxGeometry(w, h, d, seg, Math.min(r, w / 2, h / 2, d / 2));
+export const rbox = (w: number, h: number, d: number, r = 0.004, seg = 2) => new RoundedBoxGeometry(w, h, d, seg, Math.min(r, w / 2, h / 2, d / 2));
 
 /** 可复现的随机数，保证每次加载画面一致 */
 export function rng(seed: number) {
@@ -111,8 +111,8 @@ export const blob = (rx: number, rz: number) => new THREE.PlaneGeometry(rx * 2, 
  * 叶片：从原点沿 +y 伸出，叶面朝 +z，向 +z 方向弯垂。
  * shape(t) 给出 t∈[0,1] 处的半宽比例；fold 是沿中脉的 V 形折角；twist 是沿长度的扭转。
  */
-export function leafGeo(o: { len: number; width: number; bend?: number; fold?: number; twist?: number; segs?: number; shape?: (t: number) => number }) {
-  const segs = o.segs ?? 10, cols = 4, bend = o.bend ?? 0.5, fold = o.fold ?? 0.2, twist = o.twist ?? 0;
+export function leafGeo(o: { len: number; width: number; bend?: number; fold?: number; twist?: number; segs?: number; cols?: number; shape?: (t: number) => number }) {
+  const segs = o.segs ?? 10, cols = o.cols ?? 4, bend = o.bend ?? 0.5, fold = o.fold ?? 0.2, twist = o.twist ?? 0;
   const shape = o.shape ?? ((t: number) => Math.pow(Math.sin(Math.PI * Math.pow(t, 0.7)), 0.75));
   const pos: number[] = [], uv: number[] = [], idx: number[] = [];
   for (let i = 0; i <= segs; i++) {

@@ -21,12 +21,14 @@ const OBJECTS: SceneObject[] = [sky, countryside, animals, room, furniture, desk
 
 export function start(canvas: HTMLCanvasElement, tier: Exclude<Tier, 'low'>, data: SiteData, bus: EventTarget) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: tier === 'high', powerPreference: 'high-performance' });
-  renderer.setPixelRatio(Math.min(devicePixelRatio, BUDGETS.maxPixelRatio[tier]));
+  const basePR = Math.min(devicePixelRatio, BUDGETS.maxPixelRatio[tier]);
+  renderer.setPixelRatio(basePR);
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 0.96;
   if (tier === 'high') {
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.shadowMap.autoUpdate = false; // 场景基本是静止的：阴影贴图隔几帧更新一次就够（见渲染循环）
   }
 
   const scene = new THREE.Scene();
@@ -154,18 +156,43 @@ export function start(canvas: HTMLCanvasElement, tier: Exclude<Tier, 'low'>, dat
   const io = new IntersectionObserver(([e]) => { visible = e.isIntersecting; });
   io.observe(canvas);
 
+  // ---- 自动降档 ----
+  // 没法预知访客的显卡：开头几秒量帧率，持续低于 30 帧就降一档，最多降两档，不再升回去。
+  //   high：1 = 关掉遮蔽 / 景深 / 光束，像素比 1.25；2 = 关掉全部后期和阴影更新，像素比 1
+  //   mid ：1 = 像素比 1；2 = 像素比 0.75
+  let level = 0, frames = 0, acc = 0, warm = 0, usePost = !!post, shadowEvery = 2, tick = 0;
+  const degrade = () => {
+    level++;
+    if (tier === 'high') {
+      if (level === 1) { post?.setLite(true); renderer.setPixelRatio(Math.min(basePR, 1.25)); shadowEvery = 4; }
+      else { usePost = false; shadowEvery = 0; renderer.setPixelRatio(Math.min(basePR, 1)); emit(bus, 'quality:nopost'); }
+    } else renderer.setPixelRatio(Math.min(basePR, level === 1 ? 1 : 0.75));
+    onResize();
+    (window as any).__scene.level = level;
+    console.info(`[scene] 帧率偏低，自动降到第 ${level} 档`);
+  };
+
   const clock = new THREE.Clock();
   renderer.setAnimationLoop(() => {
-    const dt = Math.min(clock.getDelta(), 0.1);
-    if (!visible || document.hidden) return;
+    const raw = clock.getDelta(), dt = Math.min(raw, 0.1);
+    if (!visible || document.hidden) { frames = 0; acc = 0; return; }
     const t = clock.elapsedTime;
     for (const m of mounted) m.frame(dt, t);
     renderer.info.reset();
-    if (post) post.render(dt); else renderer.render(scene, camera);
+    if (tier === 'high') renderer.shadowMap.needsUpdate = tick < 120 || (shadowEvery > 0 && tick % shadowEvery === 0); // 开头连续更新，等模型都加载进来
+    tick++;
+    if (post && usePost) post.render(dt); else renderer.render(scene, camera);
+    // 量帧率：跳过开头 3 秒（加载、编译着色器），之后每 90 帧看一次平均值；单帧超过半秒的卡顿（切标签页回来）不算
+    if (level < 2 && raw < 0.5) {
+      warm += raw;
+      if (warm > 3) { frames++; acc += raw; if (frames >= 90) { if (frames / acc < 30) degrade(); frames = 0; acc = 0; } }
+    }
   });
 
   // 暴露给 QA / 截图脚本读取的诊断信息
-  (window as any).__scene = { tier, info: renderer.info, bus, emit: (type: string, d?: unknown) => emit(bus, type, d) };
+  (window as any).__scene = { tier, level: 0, info: renderer.info, scene, bus, emit: (type: string, d?: unknown) => emit(bus, type, d) };
+  // 调试：?level=1|2 直接从某一档开始（比如想看降档后的画面）
+  for (let i = Math.min(2, Number(new URLSearchParams(location.search).get('level')) || 0); i > 0; i--) degrade();
 
   return () => {
     renderer.setAnimationLoop(null);

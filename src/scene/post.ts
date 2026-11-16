@@ -14,12 +14,12 @@ const VERT = 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionM
  * 渲染 → 环境光遮蔽（物体交界处变暗）→ 景深（焦点跟着显示器）→ 泛光 → 太阳光束 + 暗角 → 色调映射
  */
 export function createPost(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.PerspectiveCamera) {
-  const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 4 }));
+  const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 2 }));
   composer.addPass(new RenderPass(scene, camera));
 
   const gtao = new GTAOPass(scene, camera, 1, 1);
-  gtao.updateGtaoMaterial({ radius: 0.2, distanceExponent: 1.4, thickness: 1.2, scale: 1.15, samples: 12, distanceFallOff: 1, screenSpaceRadius: false });
-  gtao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples: 12 });
+  gtao.updateGtaoMaterial({ radius: 0.2, distanceExponent: 1.4, thickness: 1.2, scale: 1.15, samples: 8, distanceFallOff: 1, screenSpaceRadius: false });
+  gtao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples: 8 });
   gtao.blendIntensity = 0.95;
   // 遮蔽通道用法线材质重画一遍场景：精灵、接触阴影、玻璃这类半透明的东西不该参与，先藏起来
   // 镂空贴图的叶片（userData.noAO）也跳过：法线材质不认镂空，会在叶子周围留一圈黑边
@@ -64,8 +64,8 @@ export function createPost(renderer: THREE.WebGLRenderer, scene: THREE.Scene, ca
         float c = coc(vUv);
         vec4 acc = texture2D(tDiffuse, vUv); float w = 1.;
         if (c > .02) {
-          for (int i = 1; i <= 18; i++) {
-            float a = float(i) * 2.39996, r = sqrt(float(i) / 18.) * c * uMax;
+          for (int i = 1; i <= 12; i++) {
+            float a = float(i) * 2.39996, r = sqrt(float(i) / 12.) * c * uMax;
             vec2 uv = vUv + vec2(cos(a), sin(a)) * r * uTexel;
             float k = .25 + coc(uv);       // 清晰的像素少往模糊区里渗
             acc += texture2D(tDiffuse, uv) * k; w += k;
@@ -92,16 +92,16 @@ export function createPost(renderer: THREE.WebGLRenderer, scene: THREE.Scene, ca
         if (uStrength > .001) {
           // 每个像素的起点错开一点，避免采样步长形成一圈圈的条纹
           float jitter = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453);
-          vec2 delta = (vUv - uSun) * (.9 / 40.), uv = vUv - delta * jitter; float decay = 1.; vec3 acc = vec3(0.);
-          for (int i = 0; i < 40; i++) {
+          vec2 delta = (vUv - uSun) * (.9 / 24.), uv = vUv - delta * jitter; float decay = 1.; vec3 acc = vec3(0.);
+          for (int i = 0; i < 24; i++) {
             uv -= delta;
             vec3 s = texture2D(tDiffuse, uv).rgb;
             // 只让太阳周围那片天空发光束：喇叭高光、浮尘这些远离太阳的亮点不算
             float nearSun = smoothstep(.2, .03, distance(uv, uSun));
             acc += s * clamp(dot(s, vec3(.3, .6, .1)) - 1.7, 0., 2.) * decay * nearSun;
-            decay *= .965;
+            decay *= .94;
           }
-          c.rgb += acc * (uStrength / 40.);
+          c.rgb += acc * (uStrength / 24.);
         }
         vec2 p = vUv - .5;
         c.rgb *= 1. - dot(p, p) * .5;
@@ -114,10 +114,12 @@ export function createPost(renderer: THREE.WebGLRenderer, scene: THREE.Scene, ca
 
   const sunWorld = new THREE.Vector3(), v = new THREE.Vector3(), dir = new THREE.Vector3();
   const focusAt = new THREE.Vector3(L.monitor.x, L.monitor.cy, L.monitor.z);
-  let farBlur = 1;
+  let farBlur = 1, lite = false;
   return {
     /** 场景里后来才加进来的东西（异步加载的模型）要重新收集一次 */
     refresh() { skip = null; },
+    /** 帧率不够时降级：关掉环境光遮蔽（它要把场景重画一遍）、景深和太阳光束，只留泛光、暗角和色调映射 */
+    setLite(on: boolean) { gtao.enabled = !on; dof.enabled = !on; lite = on; },
     /** 走到窗前看风景时关掉远景虚化，远处的稻田和山要是清楚的 */
     setFarBlur(on: boolean) { farBlur = on ? 1 : 0; },
     setSize(w: number, h: number) {
@@ -139,7 +141,7 @@ export function createPost(renderer: THREE.WebGLRenderer, scene: THREE.Scene, ca
       const facing = camera.getWorldDirection(dir).dot(SUN_DIR);
       const inView = THREE.MathUtils.smoothstep(1.6 - Math.max(Math.abs(v.x), Math.abs(v.y)), 0, 0.6);
       rays.uniforms.uSun.value.set(v.x * 0.5 + 0.5, v.y * 0.5 + 0.5);
-      rays.uniforms.uStrength.value = facing > 0 ? 0.2 * inView : 0;
+      rays.uniforms.uStrength.value = facing > 0 && !lite ? 0.2 * inView : 0;
       composer.render(dt);
     },
     dispose() { composer.dispose(); },
