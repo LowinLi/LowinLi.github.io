@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { Bin, emit, on, type SceneObject } from '../types';
+import { Bin, emit, HIT_LAYER, on, type SceneObject } from '../types';
 import { L, SUN_LIGHT_DIR } from '../layout';
 import { asset, Batch, canvasTex, rbox, rng, speckle, usePhotoTexture, woodGrain } from '../util';
 
@@ -162,7 +162,7 @@ export const room: SceneObject = ({ scene, camera, tier, bus, pick }) => {
   // ---- 整扇窗是一个看不见的点击区：点一下走到窗前看海，再点一下回来 ----
   // 它在所有桌面物件的后面，所以点显示器、书、录音机时不会误触
   const viewArea = new THREE.Mesh(pane.geometry, bin.add(new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false })));
-  viewArea.position.set(0, wy, fz - 0.03);
+  viewArea.position.set(0, wy, fz - 0.03); viewArea.layers.set(HIT_LAYER);
   group.add(viewArea);
   let atWindow = false;
   const off = [on(bus, 'window:focus', () => { atWindow = true; }), on(bus, 'window:blur', () => { atWindow = false; })];

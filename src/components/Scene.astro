@@ -31,6 +31,7 @@ const pct = (n: number) => `${(n * 100).toFixed(2)}%`;
       <a href="#" data-action="search" data-webgl-only>搜索</a>
       <a href="#" data-action="music" data-webgl-only>音乐</a>
       <a href="#" data-action="radio" data-webgl-only>收音机</a>
+      <a href="#" data-action="fridge" data-webgl-only>冰箱</a>
     </nav>
     <div class="zoom" data-webgl-only role="group" aria-label="视角">
       <button type="button" data-zoom="1" aria-label="拉近">＋</button>
@@ -47,7 +48,7 @@ const pct = (n: number) => `${(n * 100).toFixed(2)}%`;
       <button type="button" data-seek="1" aria-label="下一个台">▶</button>
       <button type="button" class="radio-off" aria-label="关掉收音机">✕</button>
     </div>
-    <p class="hint"><span class="wide">拖动旋转 · 滚轮缩放 · 点窗外看菜园 · 点书、磁带、咖啡、饭菜、黄历、盆栽、显示器 · 录音机上的「波段」旋钮切收音机</span><span class="narrow">拖动旋转 · 双指缩放 · 点一点桌上的东西</span></p>
+    <p class="hint"><span class="wide">拖动旋转 · 滚轮缩放 · 点窗外看菜园 · 点书、磁带、咖啡、饭菜、黄历、冰箱、盆栽、显示器 · 录音机上的「波段」旋钮切收音机</span><span class="narrow">拖动旋转 · 双指缩放 · 点一点桌上的东西</span></p>
   </div>
 
   <!-- 镜头推到显示器时，真正的输入框叠在屏幕上画的搜索框上 -->
@@ -164,7 +165,16 @@ const pct = (n: number) => `${(n * 100).toFixed(2)}%`;
     if (!r) return;
     Object.assign(screenUi.style, { left: `${r.x}px`, top: `${r.y}px`, width: `${r.w}px`, height: `${r.h}px`, fontSize: `${r.h * 0.017}px` });
   });
-  back.addEventListener('click', () => { emit('monitor:blur'); emit('window:blur'); emit('cup:blur'); emit('calendar:close'); });
+  back.addEventListener('click', () => { emit('monitor:blur'); emit('window:blur'); emit('cup:blur'); emit('calendar:close'); emit('fridge:close'); });
+  // ---- 冰箱 ----
+  on('fridge:open', () => {
+    for (const t of ['monitor:blur', 'window:blur', 'cup:blur', 'calendar:close']) emit(t);
+    root.dataset.mode = 'fridge'; back.hidden = false;
+  });
+  on('fridge:close', () => {
+    if (root.dataset.mode !== 'fridge') return;
+    root.dataset.mode = ''; back.hidden = true;
+  });
 
   // ---- 拉近看咖啡 ----
   const cupHint = $<HTMLParagraphElement>('.cup-hint');
@@ -289,7 +299,7 @@ const pct = (n: number) => `${(n * 100).toFixed(2)}%`;
   radioUi.querySelector('.radio-off')!.addEventListener('click', () => emit('radio:off'));
 
   addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') { emit('calendar:close'); emit('book:close'); emit('monitor:blur'); emit('window:blur'); emit('cup:blur'); }
+    if (e.key === 'Escape') { emit('calendar:close'); emit('book:close'); emit('monitor:blur'); emit('window:blur'); emit('cup:blur'); emit('fridge:close'); }
     if (open && e.key === 'ArrowRight') turn(open.classList.contains('classic') ? -1 : 1);
     if (open && e.key === 'ArrowLeft') turn(open.classList.contains('classic') ? 1 : -1);
   });
@@ -307,6 +317,7 @@ const pct = (n: number) => `${(n * 100).toFixed(2)}%`;
         const dir = Number(b.dataset.zoom);
         if (dir) emit('view:zoom', { dir }); else emit('view:reset');
       }));
+      $('[data-action="fridge"]').addEventListener('click', (e) => { e.preventDefault(); emit('fridge:open'); });
       $('[data-action="radio"]').addEventListener('click', (e) => { e.preventDefault(); emit(radioOn ? 'radio:off' : 'radio:on'); });
       $('[data-action="music"]').addEventListener('click', (e) => {
         e.preventDefault();
@@ -350,7 +361,7 @@ const pct = (n: number) => `${(n * 100).toFixed(2)}%`;
   .intro p { margin: 0; opacity: .92; }
   .scene:not([data-mode='']) .intro, .scene:not([data-mode='']) .hint { opacity: 0; }
   .scene:not([data-mode='']) .overlay { background: none; }
-  .scene:is([data-mode='monitor'], [data-mode='window'], [data-mode='cup']) .chips { display: none; }
+  .scene:is([data-mode='monitor'], [data-mode='window'], [data-mode='cup'], [data-mode='fridge']) .chips { display: none; }
   .top-right { position: absolute; top: 16px; right: 16px; display: flex; gap: 8px; }
   .top-right button, .chips a {
     font: inherit; font-size: 14px; color: #fff; text-decoration: none; cursor: pointer;

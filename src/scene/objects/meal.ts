@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import { Bin, emit, on, type SceneObject } from '../types';
-import { blob, canvasTex, contactMaterial, rng, speckle } from '../util';
+import { Bin, emit, HIT_LAYER, on, type SceneObject } from '../types';
+import { Batch, blob, canvasTex, contactMaterial, rng, speckle } from '../util';
 
 /**
  * 一碗米饭（青花碗，碗沿上搁着一双筷子）和一盘西红柿炒鸡蛋。用户要的一套小交互，和咖啡杯同一个路数：
@@ -50,8 +50,9 @@ export const meal: SceneObject = ({ scene, camera, tier, bus, pick }) => {
     root.add(body);
     const fn = build(body);
     const sh = new THREE.Mesh(bin.add(blob(hitR * 1.2, hitR * 1.2)), contact); sh.position.y = 0.0006; root.add(sh);
-    body.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh) { m.castShadow = high; m.receiveShadow = high; } });
-    const hit = new THREE.Mesh(bin.add(new THREE.CylinderGeometry(hitR, hitR, hitH, 12)), hitMat); hit.position.y = hitH / 2; root.add(hit);
+    // 只有碗盘本身投影；饭、菜、筷子太小，投影看不出来，却要在阴影和遮蔽通道里多画好几遍
+    body.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh) { m.castShadow = high && m.material === porcelain; m.receiveShadow = high; } });
+    const hit = new THREE.Mesh(bin.add(new THREE.CylinderGeometry(hitR, hitR, hitH, 12)), hitMat); hit.position.y = hitH / 2; hit.layers.set(HIT_LAYER); root.add(hit);
     root.position.set(x, 0, z); root.rotation.y = ry;
     root.userData.keepsCup = true; root.userData.mealId = id;
     group.add(root);
@@ -90,10 +91,12 @@ export const meal: SceneObject = ({ scene, camera, tier, bus, pick }) => {
   }));
   make('rice', 0.75, 0.063, 0.068, 0.09, (body) => {
     body.add(new THREE.Mesh(bin.add(new THREE.LatheGeometry(V2([[0, 0.004], [0.022, 0.004], [0.023, 0], [0.028, 0], [0.029, 0.007], [0.046, 0.022], [0.057, 0.046], [0.0605, 0.062], [0.0592, 0.0635], ...riceProf.slice().reverse().map(([r, y]) => [r, y])]), 48)), porcelain));
-    // 青花：碗沿下一道粗线一道细线，圈足上一道
+    // 青花：碗沿下一道粗线一道细线，圈足上一道（三道合成一个网格）
+    const bands = new Batch();
     for (const [y0, y1, r0, r1] of [[0.052, 0.056, 0.0585, 0.0595], [0.047, 0.0484, 0.0572, 0.0576], [0.003, 0.006, 0.0283, 0.0288]]) {
-      body.add(new THREE.Mesh(bin.add(new THREE.CylinderGeometry(r1 + 0.0004, r0 + 0.0004, y1 - y0, 48, 1, true).translate(0, (y0 + y1) / 2, 0)), blue));
+      bands.add(blue, new THREE.CylinderGeometry(r1 + 0.0004, r0 + 0.0004, y1 - y0, 48, 1, true).translate(0, (y0 + y1) / 2, 0));
     }
+    bands.build(body, bin);
     // 碗底几粒剩饭（吃光了才露出来）
     const crumbs = new THREE.Mesh(bin.add(new THREE.CircleGeometry(0.03, 24).rotateX(-Math.PI / 2)), bin.add(new THREE.MeshStandardMaterial({ map: grainsTex, transparent: true, roughness: 0.6 })));
     crumbs.position.y = 0.0122; crumbs.visible = false; body.add(crumbs);
@@ -119,13 +122,12 @@ export const meal: SceneObject = ({ scene, camera, tier, bus, pick }) => {
     // 筷子：一双红木筷子斜搁在碗沿上
     const wood = bin.add(new THREE.MeshStandardMaterial({ color: 0x5a1e14, roughness: 0.35 }));
     const tipM = bin.add(new THREE.MeshStandardMaterial({ color: 0xd9b26a, roughness: 0.4, metalness: 0.5 }));
-    const sticks = new THREE.Group();
+    const sticks = new THREE.Group(), sb = new Batch();
     for (const dz of [-0.007, 0.007]) {
-      const s = new THREE.Mesh(bin.add(new THREE.CylinderGeometry(0.0017, 0.0028, 0.22, 8).rotateZ(Math.PI / 2)), wood);
-      s.position.set(0.035, 0, dz); sticks.add(s);
-      const band = new THREE.Mesh(bin.add(new THREE.CylinderGeometry(0.0029, 0.0029, 0.012, 8).rotateZ(Math.PI / 2)), tipM);
-      band.position.set(0.14, 0, dz); sticks.add(band);
+      sb.add(wood, new THREE.CylinderGeometry(0.0017, 0.0028, 0.22, 8).rotateZ(Math.PI / 2), [0.035, 0, dz]);
+      sb.add(tipM, new THREE.CylinderGeometry(0.0029, 0.0029, 0.012, 8).rotateZ(Math.PI / 2), [0.14, 0, dz]);
     }
+    sb.build(sticks, bin);
     sticks.position.set(-0.02, 0.066, 0); sticks.rotation.set(0, 0.35, -0.04);
     body.add(sticks);
     const levels = [ // 每一档：饭面底部的高度、隆起的高度
@@ -310,7 +312,7 @@ export const meal: SceneObject = ({ scene, camera, tier, bus, pick }) => {
         }
         d.root.userData.level = d.level; d.root.userData.gone = d.gone >= 1;
         // 热气：还有饭菜、没在吃的时候
-        const hot = d.level > 0 && d.bite === 0;
+        const hot = d.level > 0 && d.bite === 0 && camera.position.distanceTo(d.root.position) < 1.6; // 远了看不清热气，不画
         for (const p of d.steam) {
           p.life = (p.life + dt * 0.22) % 1;
           const kk = p.life;
@@ -318,6 +320,7 @@ export const meal: SceneObject = ({ scene, camera, tier, bus, pick }) => {
           p.s.position.x += Math.sin(p.seed + kk * 4 + t * 0.3) * 0.012 * (1 + kk * 2); p.s.position.y += kk * 0.09; p.s.position.z += Math.cos(p.seed * 2 + kk * 3) * 0.01;
           p.s.scale.set(0.03 + kk * 0.04, 0.04 + kk * 0.05, 1);
           p.m.opacity = hot && d.gone === 0 ? Math.sin(kk * Math.PI) * 0.2 : Math.max(0, p.m.opacity - dt * 2);
+          p.s.visible = p.m.opacity > 0.01; // 全透明的精灵也要占一次 draw call
         }
       }
     },

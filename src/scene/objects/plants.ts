@@ -149,7 +149,7 @@ export const plants: SceneObject = ({ scene, tier, pick, bus }) => {
   // ---- 3. 地上：虎尾兰。哑光陶盆架在三脚木花架上，剑形叶片有横向斑纹和黄边 ----
   {
     const fy = L.floorY, standH = 0.16, potH = 0.3;
-    const p = make([1.72, fy, -0.5], standH + potH - 0.01, 34, 3);
+    const p = make([2.72, fy, -0.62], standH + potH - 0.01, 34, 3); // 原来在 1.72，那里放了冰箱
     const pot = std({ roughness: 0.75, map: bin.add(canvasTex(128, 128, (g, w, h) => { g.fillStyle = '#e9e4da'; g.fillRect(0, 0, w, h); speckle(g, w, h, 73, 900, '80,70,60', 0.25); })) });
     const wood = std({ color: 0x9a6a3e, roughness: 0.5 });
     p.statics.add(pot, potGeo(0.19, 0.15, potH, 0.012, 0.012), [0, standH, 0]);

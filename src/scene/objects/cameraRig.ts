@@ -12,7 +12,7 @@ const AZ_MAX = 1.1, EL_MIN = -0.07, EL_MAX = 0.8;
  * monitor：推近到显示器；book：稍微靠向书架；window：走到窗前看菜园。
  */
 export const cameraRig: SceneObject = ({ camera, bus }) => {
-  let mode: 'home' | 'monitor' | 'book' | 'window' = 'home';
+  let mode: 'home' | 'monitor' | 'book' | 'window' | 'fridge' = 'home';
   let px = 0, py = 0, aspect = camera.aspect, first = true;
   let az = 0, el = 0, zoom = 1;
   const pos = new THREE.Vector3(), look = new THREE.Vector3();
@@ -24,6 +24,8 @@ export const cameraRig: SceneObject = ({ camera, bus }) => {
     on(bus, 'book:close', () => { if (mode === 'book') mode = 'home'; }),
     on(bus, 'window:focus', () => { mode = 'window'; }),
     on(bus, 'window:blur', () => { if (mode === 'window') mode = 'home'; }),
+    on(bus, 'fridge:open', () => { mode = 'fridge'; }),
+    on(bus, 'fridge:close', () => { if (mode === 'fridge') mode = 'home'; }),
     on(bus, 'view:reset', () => { az = 0; el = 0; }),
   ];
   const smooth = THREE.MathUtils.smoothstep, lerp = THREE.MathUtils.lerp;
@@ -35,6 +37,11 @@ export const cameraRig: SceneObject = ({ camera, bus }) => {
         // 走到窗前、探出窗外（越过窗棂，不让格子挡住视线），朝着日出的方向看；指针可以带着视线左右、上下看一点
         tp.set(px * 0.1, 0.92 + py * 0.04, L.wallZ - 0.32);
         tl.set(tp.x + SUN_DIR.x * 10 + px * 1.8, tp.y - 0.35 + py * 0.9, tp.z + SUN_DIR.z * 10);
+      } else if (mode === 'fridge') {
+        // 站到冰箱跟前，整台冰箱和左边的垃圾桶都在画面里；竖屏只顾冰箱
+        const f = L.fridge, dist = Math.max(2.3, 0.45 / (tan * aspect));
+        tl.set(f.x - 0.15 + px * 0.05, L.floorY + 0.7 + py * 0.04, f.z + 0.1);
+        tp.set(f.x - 0.38, L.floorY + 1.05, f.z + f.d / 2 + dist);
       } else if (mode === 'monitor') {
         const dist = Math.max(m.h / 0.78, m.w / 0.92 / aspect) / 2 / tan;
         tl.set(m.x, m.cy, m.z);

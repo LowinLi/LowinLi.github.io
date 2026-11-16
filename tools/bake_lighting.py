@@ -144,8 +144,11 @@ box('books', (-0.63, 0.115, -0.27), (0.52, 0.23, 0.17), m_mid)
 box('gramophone', (0.8, 0.07, -0.2), (0.36, 0.14, 0.36), m_wood)
 bpy.ops.mesh.primitive_uv_sphere_add(radius=0.17, location=bl(0.72, 0.6, -0.1)); bpy.context.object.data.materials.append(m_brass)
 bpy.ops.mesh.primitive_uv_sphere_add(radius=0.13, location=bl(-1.03, 0.24, 0.33)); bpy.context.object.data.materials.append(m_green)
-box('plant_floor_pot', (1.72, FLOOR_Y + 0.31, -0.5), (0.36, 0.3, 0.36), m_cloth)
-box('plant_floor_leaves', (1.72, FLOOR_Y + 0.9, -0.5), (0.3, 0.8, 0.3), m_green)
+box('plant_floor_pot', (2.72, FLOOR_Y + 0.31, -0.62), (0.36, 0.3, 0.36), m_cloth)
+box('plant_floor_leaves', (2.72, FLOOR_Y + 0.9, -0.62), (0.3, 0.8, 0.3), m_green)
+# 冰箱（靠后墙，福字下面）和它左边的垃圾桶：见 layout.ts 的 fridge / trash
+box('fridge', (1.95, FLOOR_Y + 0.71, -0.83), (0.6, 1.42, 0.67), m_cloth)
+box('trash', (1.42, FLOOR_Y + 0.2, -0.9), (0.24, 0.4, 0.24), m_mid)
 # 圈椅（斜着推开）
 box('chair_seat', (0.62, FLOOR_Y + 0.36, 1.42), (0.44, 0.05, 0.42), m_wood, -0.55)
 box('chair_back', (0.62 + 0.2 * math.sin(-0.55), FLOOR_Y + 0.75, 1.42 + 0.2 * math.cos(-0.55)), (0.42, 0.75, 0.04), m_wood, -0.55)

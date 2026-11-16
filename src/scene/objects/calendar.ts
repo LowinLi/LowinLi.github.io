@@ -55,9 +55,18 @@ export const calendar: SceneObject = ({ scene, camera, renderer, tier, bus, pick
     g.fillStyle = '#efe7d6'; g.fillRect(0, 0, w, h);
     for (let i = 0; i < 64; i += 2) { g.fillStyle = `rgba(110,95,70,${0.08 + (i % 6 === 0 ? 0.08 : 0)})`; vertical ? g.fillRect(i, 0, 1, h) : g.fillRect(0, i, w, 1); }
   })) });
-  const side = stripes(true), top = stripes(false), back = std({ color: 0xd9cfbd, roughness: 1 });
+  const side = stripes(true);
   const padY = BH - 0.05 - padH / 2 + padH / 2; // 本子顶在背板头部下面
-  const pad = new THREE.Mesh(bin.add(new THREE.BoxGeometry(PW, padH, T)), [side, side, top, top, back, back]);
+  // 一个材质包住整本：两侧和顶面是一摞纸的边，正面被页面盖住、背面贴着背板看不到——不再分 6 个材质组（6 次 draw call）
+  const padGeo = bin.add(new THREE.BoxGeometry(PW, padH, T));
+  { // 顶面、底面的 uv 转 90°：竖条纹在那里也顺着纸页的方向（一层层平行于正面）
+    const uv = padGeo.attributes.uv, g = padGeo.groups.filter((x) => x.materialIndex === 2 || x.materialIndex === 3);
+    const idx = padGeo.index!;
+    const vs = new Set<number>(); for (const grp of g) for (let i = grp.start; i < grp.start + grp.count; i++) vs.add(idx.getX(i));
+    for (const v of vs) uv.setXY(v, uv.getY(v), uv.getX(v));
+    padGeo.clearGroups();
+  }
+  const pad = new THREE.Mesh(padGeo, side);
   pad.position.set(0, padY - padH / 2 + 0.004, T / 2 + 0.001);
   pad.castShadow = high;
   tilt.add(pad);
@@ -71,7 +80,8 @@ export const calendar: SceneObject = ({ scene, camera, renderer, tier, bus, pick
     g.closePath(); g.fill();
   })) }));
   tb.add(stubs, new THREE.PlaneGeometry(PW - 0.002, 0.006), [0, padTop - BIND - 0.0025, front + 0.0004]);
-  tb.build(tilt, bin, { cast: high, receive: high });
+  // 背板上的贴面、布脊、纸茬贴在背板/本子上，投影看不出来：只让木头部分投影
+  for (const m of tb.build(tilt, bin, { receive: high })) m.castShadow = high && m.material === lacquer;
   batch.add(contactMaterial(bin, high ? 0.32 : 0.55), blob(0.2, 0.13), [0, 0.0007, -0.01]);
   batch.build(group, bin, { cast: high, receive: high });
 

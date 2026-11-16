@@ -1,6 +1,7 @@
 import * as THREE from 'three';
+import { L } from './layout';
 import { BUDGETS } from './budgets';
-import { emit, on, type MountContext, type Mounted, type PickHandlers, type SceneInput, type SceneObject, type SiteData } from './types';
+import { emit, HIT_LAYER, on, type MountContext, type Mounted, type PickHandlers, type SceneInput, type SceneObject, type SiteData } from './types';
 import type { Tier } from './tier';
 import { createPost } from './post';
 import { sky } from './objects/sky';
@@ -12,6 +13,7 @@ import { monitor } from './objects/monitor';
 import { bookshelf } from './objects/bookshelf';
 import { calendar } from './objects/calendar';
 import { meal } from './objects/meal';
+import { fridge } from './objects/fridge';
 import { recorder } from './objects/recorder';
 import { coffee } from './objects/coffee';
 import { cups } from './objects/cups';
@@ -22,7 +24,7 @@ import { dust } from './objects/dust';
 import { cameraRig } from './objects/cameraRig';
 
 /** 场景里挂载的物件清单。新物件：在 objects/ 下建文件，然后加到这里。cameraRig 放最后。 */
-const OBJECTS: SceneObject[] = [sky, countryside, animals, room, furniture, mirror, desk, monitor, bookshelf, recorder, coffee, cups, meal, calendar, plants, dust, cameraRig];
+const OBJECTS: SceneObject[] = [sky, countryside, animals, room, furniture, mirror, desk, monitor, bookshelf, recorder, coffee, cups, meal, calendar, fridge, plants, dust, cameraRig];
 
 export function start(canvas: HTMLCanvasElement, tier: Exclude<Tier, 'low'>, data: SiteData, bus: EventTarget) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: tier === 'high', powerPreference: 'high-performance' });
@@ -55,6 +57,7 @@ export function start(canvas: HTMLCanvasElement, tier: Exclude<Tier, 'low'>, dat
   // ---- 射线拾取 ----
   const pickables = new Map<THREE.Object3D, PickHandlers>();
   const raycaster = new THREE.Raycaster();
+  raycaster.layers.enable(HIT_LAYER); // 看不见的点击区放在这一层：射线测得到，相机不画
   const ndc = new THREE.Vector2();
   let hovered: THREE.Object3D | null = null;
   const findOwner = (o: THREE.Object3D | null) => { while (o && !pickables.has(o)) o = o.parent; return o; };
@@ -72,15 +75,21 @@ export function start(canvas: HTMLCanvasElement, tier: Exclude<Tier, 'low'>, dat
     audio: () => { audioCtx ??= new AudioContext(); if (audioCtx.state === 'suspended') void audioCtx.resume(); return audioCtx; },
     pick: (obj, h) => { pickables.set(obj, h); },
   };
-  const mounted: Mounted[] = OBJECTS.map((o) => o(ctx));
+  // 每个物件挂进场景的东西都标上物件名（调试：数各物件占多少 draw call / 三角形）
+  const mounted: Mounted[] = OBJECTS.map((o, i) => {
+    const before = new Set(scene.children), m = o(ctx);
+    for (const c of scene.children) if (!before.has(c)) c.userData.owner ??= i; // 名字会被压缩，用 OBJECTS 里的序号
+    return m;
+  });
   const send = (e: SceneInput) => mounted.forEach((m) => m.input?.(e));
   send({ type: 'resize', width, height });
 
-  let monitorFocused = false, windowFocused = false, bookOpen = false, cupFocused = false;
+  const fridgeFocus = new THREE.Vector3(L.fridge.x, L.floorY + 0.7, L.fridge.z + L.fridge.d / 2);
+  let monitorFocused = false, windowFocused = false, bookOpen = false, cupFocused = false, fridgeOpen = false;
   // 缩放：1 是默认距离。只在自由视角下生效（没在看显示器 / 窗外 / 书）
   const ZOOM_MIN = 0.45, ZOOM_MAX = 2.4;
   let zoomK = 1;
-  const free = () => !monitorFocused && !windowFocused && !bookOpen && !cupFocused;
+  const free = () => !monitorFocused && !windowFocused && !bookOpen && !cupFocused && !fridgeOpen;
   const setZoom = (k: number) => {
     const next = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, k));
     if (next === zoomK) return false;
@@ -94,6 +103,10 @@ export function start(canvas: HTMLCanvasElement, tier: Exclude<Tier, 'low'>, dat
     on(bus, 'book:open', () => { bookOpen = true; }),
     on<{ p: number[] }>(bus, 'cup:focus', ({ p }) => { cupFocused = true; post?.setFocus(new THREE.Vector3().fromArray(p)); }),
     on(bus, 'cup:blur', () => { cupFocused = false; post?.setFocus(null); }),
+    // 冰箱：开着门时景深对焦在冰箱门口；手里拿着东西时对焦到那样东西
+    on(bus, 'fridge:open', () => { fridgeOpen = true; post?.setFocus(fridgeFocus); }),
+    on(bus, 'fridge:close', () => { fridgeOpen = false; post?.setFocus(null); }),
+    on<{ p: number[] } | null>(bus, 'fridge:hold', (d) => { if (fridgeOpen) post?.setFocus(d ? new THREE.Vector3().fromArray(d.p) : fridgeFocus); }),
     on(bus, 'book:close', () => { bookOpen = false; }),
     on<{ dir: number }>(bus, 'view:zoom', ({ dir }) => { if (free()) setZoom(zoomK * (dir > 0 ? 0.75 : 1 / 0.75)); }),
     on(bus, 'view:reset', () => setZoom(1)),
@@ -143,6 +156,7 @@ export function start(canvas: HTMLCanvasElement, tier: Exclude<Tier, 'low'>, dat
     // 「点旁边退回」：在窗前时点哪里都回到座位；看显示器时点屏幕以外的地方退出
     if (windowFocused) { emit(bus, 'window:blur'); return; }
     if (monitorFocused && !res?.owner.userData.keepsMonitor) { emit(bus, 'monitor:blur'); return; }
+    if (fridgeOpen && !res?.owner.userData.keepsFridge) { emit(bus, 'fridge:close'); return; }
     if (cupFocused && !res?.owner.userData.keepsCup && !res?.owner.userData.keepsMachine) { emit(bus, 'cup:blur'); return; }
     if (res) pickables.get(res.owner)?.click?.(res.hit);
   };

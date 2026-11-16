@@ -65,3 +65,6 @@ export class Bin {
   add<T extends { dispose(): void }>(x: T): T { this.items.push(x); return x; }
   dispose() { this.items.forEach((x) => x.dispose()); this.items = []; }
 }
+
+/** 看不见的点击区所在的层：runtime 的射线会测这一层，相机只画第 0 层，所以它们不占 draw call */
+export const HIT_LAYER = 1;

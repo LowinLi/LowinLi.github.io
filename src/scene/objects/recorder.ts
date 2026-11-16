@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { Bin, emit, on, type SceneObject } from '../types';
+import { Bin, emit, HIT_LAYER, on, type SceneObject } from '../types';
 import { L } from '../layout';
 import { damp } from '../tween';
 import { playTrack } from '../music';
@@ -109,9 +109,9 @@ export const recorder: SceneObject = ({ scene, tier, data, bus, pick, audio }) =
   const knobs = KY.map((ky) => {
     const k = new THREE.Group();
     k.position.set(KX, ky, D / 2 + 0.0095); k.name = 'knob';
-    const m = new THREE.Mesh(knobGeo, chrome); m.castShadow = high;
+    const m = new THREE.Mesh(knobGeo, chrome); // 旋钮很小，不投影
     const t = new THREE.Mesh(tick, black); t.position.set(0, 0.006, 0.0066);
-    const hit = new THREE.Mesh(hitGeo, hitMat);
+    const hit = new THREE.Mesh(hitGeo, hitMat); hit.layers.set(HIT_LAYER);
     k.add(m, t, hit); body.add(k);
     return k;
   });
@@ -268,6 +268,7 @@ export const recorder: SceneObject = ({ scene, tier, data, bus, pick, audio }) =
         const k = n.life;
         n.s.position.set(mouth.x + Math.sin(n.seed + k * 5) * 0.05 - k * 0.06, mouth.y + k * 0.36, mouth.z + k * 0.08);
         n.mat.opacity = sounding ? Math.sin(k * Math.PI) * 0.9 : damp(n.mat.opacity, 0, 6, dt);
+        n.s.visible = n.mat.opacity > 0.01;
         n.mat.rotation = Math.sin(n.seed + k * 4) * 0.4;
       }
     },

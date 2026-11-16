@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { Bin, emit, on, type SceneObject } from '../types';
+import { Bin, emit, HIT_LAYER, on, type SceneObject } from '../types';
 import { L } from '../layout';
 import { damp } from '../tween';
 import { blob, canvasTex, contactMaterial, speckle } from '../util';
@@ -119,7 +119,7 @@ export const cups: SceneObject = ({ scene, camera, tier, bus, pick }) => {
       const s = new THREE.Sprite(m); group.add(s); cup.steam.push({ s, m, life: i / 4, seed: i * 1.9 + id.length });
     }
     // 看不见的点击区：比杯子大一圈、高一截，矮的拿铁杯也好点，点杯口上方也不会穿到后面的笔记本
-    const hit = new THREE.Mesh(hitGeo, hitMat); hit.position.y = 0.055; root.add(hit);
+    const hit = new THREE.Mesh(hitGeo, hitMat); hit.position.y = 0.055; hit.layers.set(HIT_LAYER); root.add(hit);
         pick(root, { click: () => onCupClick(cup) });
     return cup;
   };
@@ -276,7 +276,8 @@ export const cups: SceneObject = ({ scene, camera, tier, bus, pick }) => {
         c.surface.position.y = y; c.surface.scale.set(r, 1, r);
         if (c.shown < 0.04 && c.surfMat.map !== tex.dregs && brewing <= 0) { c.surfMat.map = tex.dregs; c.surfMat.needsUpdate = true; }
         // 热气：有咖啡时才冒
-        const hot = c.level > 0 && c.move >= 1 && c.sip === 0;
+        // 热气只在镜头离得近时画：远处本来就看不清，每缕热气却要一次 draw call
+        const hot = c.level > 0 && c.move >= 1 && c.sip === 0 && camera.position.distanceTo(c.root.position) < 1.6;
         for (const p of c.steam) {
           p.life = (p.life + dt * 0.25) % 1;
           const k = p.life;
@@ -284,6 +285,7 @@ export const cups: SceneObject = ({ scene, camera, tier, bus, pick }) => {
           p.s.position.x += Math.sin(p.seed + k * 4 + t * 0.3) * 0.01 * (1 + k * 2); p.s.position.y += k * 0.08; p.s.position.z += Math.cos(p.seed * 2 + k * 3) * 0.008;
           p.s.scale.set(0.025 + k * 0.035, 0.035 + k * 0.045, 1);
           p.m.opacity = hot ? Math.sin(k * Math.PI) * 0.22 : damp(p.m.opacity, 0, 5, dt);
+          p.s.visible = p.m.opacity > 0.01; // 全透明的精灵也要占一次 draw call
         }
       }
       // 出咖啡：咖啡流落到液面，液面从杯底升满，最后浮出拉花
