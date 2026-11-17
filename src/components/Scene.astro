@@ -32,6 +32,7 @@ const pct = (n: number) => `${(n * 100).toFixed(2)}%`;
       <a href="#" data-action="music" data-webgl-only>音乐</a>
       <a href="#" data-action="radio" data-webgl-only>收音机</a>
       <a href="#" data-action="fridge" data-webgl-only>冰箱</a>
+      <a href="#" data-action="games">游戏</a>
     </nav>
     <div class="zoom" data-webgl-only role="group" aria-label="视角">
       <button type="button" data-zoom="1" aria-label="拉近">＋</button>
@@ -48,7 +49,7 @@ const pct = (n: number) => `${(n * 100).toFixed(2)}%`;
       <button type="button" data-seek="1" aria-label="下一个台">▶</button>
       <button type="button" class="radio-off" aria-label="关掉收音机">✕</button>
     </div>
-    <p class="hint"><span class="wide">拖动旋转 · 滚轮缩放 · 点窗外看菜园 · 点书、磁带、咖啡、饭菜、黄历、冰箱、盆栽、显示器 · 录音机上的「波段」旋钮切收音机</span><span class="narrow">拖动旋转 · 双指缩放 · 点一点桌上的东西</span></p>
+    <p class="hint"><span class="wide">拖动旋转 · 滚轮缩放 · 点窗外看菜园 · 点书、磁带、咖啡、饭菜、黄历、冰箱、书顶上的掌机、盆栽、显示器 · 录音机上的「波段」旋钮切收音机</span><span class="narrow">拖动旋转 · 双指缩放 · 点一点桌上的东西</span></p>
   </div>
 
   <!-- 镜头推到显示器时，真正的输入框叠在屏幕上画的搜索框上 -->
@@ -89,6 +90,35 @@ const pct = (n: number) => `${(n * 100).toFixed(2)}%`;
     </div>
   </div>
   <!-- 点桌上的黄历：放大看这一页，可以前后翻别的日子 -->
+  <div class="handheld" role="dialog" aria-modal="true" aria-label="掌机：贪吃蛇和小飞机" hidden>
+    <div class="hh">
+      <div class="jc jc-l">
+        <span class="mini" aria-hidden="true">−</span>
+        <span class="stick" aria-hidden="true"></span>
+        <div class="dpad">
+          <button type="button" data-k="up" aria-label="上">▲</button>
+          <button type="button" data-k="left" aria-label="左">◀</button>
+          <button type="button" data-k="right" aria-label="右">▶</button>
+          <button type="button" data-k="down" aria-label="下">▼</button>
+        </div>
+        <span class="cap" aria-hidden="true"></span>
+      </div>
+      <div class="hh-body"><canvas width="640" height="360"></canvas></div>
+      <div class="jc jc-r">
+        <span class="mini" aria-hidden="true">＋</span>
+        <div class="abxy">
+          <span class="x" aria-hidden="true">X</span>
+          <button type="button" data-k="b" class="b" aria-label="B（返回）">B</button>
+          <button type="button" data-k="a" class="a" aria-label="A（确定 / 飞）">A</button>
+          <span class="y" aria-hidden="true">Y</span>
+        </div>
+        <span class="stick" aria-hidden="true"></span>
+        <button type="button" data-k="home" class="home" aria-label="HOME（回到主页）">⌂</button>
+      </div>
+    </div>
+    <p class="hh-tip">方向键 · 空格 / A · H 回主页 · ESC 放下</p>
+    <button type="button" class="hh-close">放下 <kbd>ESC</kbd></button>
+  </div>
   <div class="almanac" role="dialog" aria-modal="true" aria-label="黄历" hidden>
     <div class="almanac-card">
       <canvas width="600" height="840" aria-hidden="true"></canvas>
@@ -282,6 +312,63 @@ const pct = (n: number) => `${(n * 100).toFixed(2)}%`;
     void showDay(n && almDay ? new Date(almDay.getFullYear(), almDay.getMonth(), almDay.getDate() + n) : today());
   }));
 
+  // ---- 掌机（书架上那台；游戏在 src/games/handheld.ts，打开时才加载）----
+  const hhUi = $<HTMLDivElement>('.handheld');
+  const hhBox = hhUi.querySelector<HTMLDivElement>('.hh')!;
+  const hhCanvas = hhUi.querySelector<HTMLCanvasElement>('canvas')!;
+  let hh: { start(): void; stop(): void; key(k: string): void } | null = null, hhFrom: Rect | null = null, hhBusy = false, has3d = false;
+  /** 大掌机的屏幕对准 3D 掌机屏幕在画面上的位置：以屏幕中心为变换原点，平移 + 等比缩放 */
+  const hhFly = (r: Rect) => {
+    const c = hhCanvas.getBoundingClientRect(), b = hhBox.getBoundingClientRect();
+    hhBox.style.transformOrigin = `${c.left - b.left + c.width / 2}px ${c.top - b.top + c.height / 2}px`;
+    return `translate(${r.left + r.width / 2 - (c.left + c.width / 2)}px, ${r.top + r.height / 2 - (c.top + c.height / 2)}px) scale(${r.width / c.width})`;
+  };
+  on<{ rect?: Rect }>('handheld:open', async (d) => {
+    if (!hhUi.hidden || hhBusy) return;
+    hhBusy = true;
+    for (const t of ['monitor:blur', 'window:blur', 'cup:blur', 'calendar:close', 'fridge:close']) emit(t);
+    hhUi.hidden = false; root.dataset.mode = 'handheld';
+    hhFrom = d?.rect ?? null;
+    const anim = hhFrom && !still.matches ? hhBox.animate([{ transform: hhFly(hhFrom) }, { transform: 'none' }], { duration: 600, easing: EASE }) : null;
+    hhUi.animate([{ backgroundColor: 'rgba(11,20,36,0)' }, {}], { duration: 500 });
+    try {
+      if (!hh) { const { createHandheld } = await import('../games/handheld'); hh = createHandheld(hhCanvas); }
+      hh.start();
+    } catch (err) { console.error('[handheld] 游戏加载失败', err); }
+    await anim?.finished.catch(() => {});
+    emit('handheld:shown'); // 大掌机已经盖住 3D 那台：3D 的可以藏起来
+    hhUi.querySelector<HTMLButtonElement>('[data-k="a"]')!.focus({ preventScroll: true });
+    hhBusy = false;
+  });
+  on('handheld:close', async () => {
+    if (hhUi.hidden || hhBusy) return;
+    hhBusy = true;
+    if (hhFrom && !still.matches) {
+      emit('handheld:closing');
+      const a = hhBox.animate([{}, { transform: hhFly(hhFrom) }], { duration: 420, easing: 'cubic-bezier(.5,0,.75,.4)', fill: 'forwards' });
+      hhUi.animate([{}, { backgroundColor: 'rgba(11,20,36,0)' }], { duration: 420, fill: 'forwards' });
+      await a.finished.catch(() => {});
+    }
+    hh?.stop();
+    hhUi.hidden = true;
+    for (const el of [hhBox, hhUi]) el.getAnimations().forEach((x) => x.cancel());
+    if (root.dataset.mode === 'handheld') root.dataset.mode = '';
+    emit('handheld:closed'); // 3D 那台重新出来、放回书顶上
+    hhBusy = false;
+  });
+  hhUi.addEventListener('click', (e) => { if (e.target === hhUi) emit('handheld:close'); });
+  hhUi.querySelector('.hh-close')!.addEventListener('click', () => emit('handheld:close'));
+  // 手柄上的键：按下就算（小飞机要跟手），不等抬起
+  hhUi.querySelectorAll<HTMLButtonElement>('[data-k]').forEach((b) => b.addEventListener('pointerdown', (e) => { e.preventDefault(); hh?.key(b.dataset.k!); }));
+  hhUi.querySelectorAll<HTMLButtonElement>('[data-k]').forEach((b) => b.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); hh?.key(b.dataset.k!); } }));
+  const HH_KEYS: Record<string, string> = { ArrowUp: 'up', w: 'up', W: 'up', ArrowDown: 'down', s: 'down', S: 'down', ArrowLeft: 'left', a: 'left', A: 'left', ArrowRight: 'right', d: 'right', D: 'right', ' ': 'a', Enter: 'a', j: 'a', J: 'a', z: 'a', Z: 'a', k: 'b', K: 'b', x: 'b', X: 'b', Backspace: 'b', h: 'home', H: 'home', Home: 'home' };
+  addEventListener('keydown', (e) => {
+    if (hhUi.hidden) return;
+    const k = HH_KEYS[e.key];
+    if (k) { e.preventDefault(); e.stopImmediatePropagation(); if (!e.repeat || k !== 'a') hh?.key(k); }
+  }, true);
+  $('[data-action="games"]').addEventListener('click', (e) => { e.preventDefault(); emit(has3d ? 'handheld:pick' : 'handheld:open', {}); });
+
   // ---- 收音机（录音机的另一个波段）----
   const radioUi = $<HTMLDivElement>('.radio');
   const slider = radioUi.querySelector<HTMLInputElement>('input')!;
@@ -299,7 +386,7 @@ const pct = (n: number) => `${(n * 100).toFixed(2)}%`;
   radioUi.querySelector('.radio-off')!.addEventListener('click', () => emit('radio:off'));
 
   addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') { emit('calendar:close'); emit('book:close'); emit('monitor:blur'); emit('window:blur'); emit('cup:blur'); emit('fridge:close'); }
+    if (e.key === 'Escape') { emit('handheld:close'); emit('calendar:close'); emit('book:close'); emit('monitor:blur'); emit('window:blur'); emit('cup:blur'); emit('fridge:close'); }
     if (open && e.key === 'ArrowRight') turn(open.classList.contains('classic') ? -1 : 1);
     if (open && e.key === 'ArrowLeft') turn(open.classList.contains('classic') ? 1 : -1);
   });
@@ -310,7 +397,7 @@ const pct = (n: number) => `${(n * 100).toFixed(2)}%`;
   if (tier !== 'low') {
     import('../scene/runtime').then(({ start }) => {
       start(root.querySelector('canvas')!, tier, data, bus);
-      root.dataset.ready = 'true';
+      root.dataset.ready = 'true'; has3d = true;
       $('[data-action="search"]').addEventListener('click', (e) => { e.preventDefault(); emit('monitor:focus'); });
       $('[data-action="window"]').addEventListener('click', (e) => { e.preventDefault(); emit('window:focus'); });
       root.querySelectorAll<HTMLButtonElement>('[data-zoom]').forEach((b) => b.addEventListener('click', () => {
@@ -349,7 +436,7 @@ const pct = (n: number) => `${(n * 100).toFixed(2)}%`;
     background: repeating-linear-gradient(90deg, #ffffff10 0 3px, transparent 3px 14px), repeating-linear-gradient(#0000000d 0 2px, transparent 2px 22px); }
   .mullion { position: absolute; top: 0; bottom: 0; width: 8px; background: #4a2618; }
   .scene[data-ready='true'] .fallback { opacity: 0; pointer-events: none; }
-  .scene[data-tier='low'] canvas { display: none; }
+  .scene[data-tier='low'] > canvas { display: none; }
   .scene[data-tier='low'] [data-webgl-only], .scene[data-tier='low'] .hint { display: none; }
 
   .overlay { position: absolute; inset: 0; pointer-events: none; padding: 16px; display: flex; flex-direction: column;
@@ -387,6 +474,30 @@ const pct = (n: number) => `${(n * 100).toFixed(2)}%`;
     font-size: 15px; color: #fff; background: #10203acc; border: 1px solid #ffffff40; border-radius: 999px; backdrop-filter: blur(6px);
   }
   .cup-hint[hidden] { display: none; }
+  /* 掌机：左蓝右红两个手柄夹着屏幕；整台按宽度缩放，竖屏时也放得下 */
+  .handheld { position: absolute; inset: 0; z-index: 6; display: grid; place-content: center; justify-items: center; gap: 12px; padding: 16px; background: #0b1424c4; backdrop-filter: blur(3px); }
+  .handheld[hidden] { display: none; }
+  .hh { --u: min(9.4px, (100vw - 32px) / 96, (100dvh - 150px) / 41); display: flex; height: calc(var(--u) * 41); filter: drop-shadow(0 18px 40px #0009); }
+  .hh-body { width: calc(var(--u) * 69); padding: calc(var(--u) * 2.2) calc(var(--u) * 3); box-sizing: border-box; background: #2a2b2e; display: grid; place-items: center; }
+  .hh-body canvas { position: static; inset: auto; width: 100%; height: auto; aspect-ratio: 16 / 9; border-radius: 3px; background: #08090b; box-shadow: 0 0 0 calc(var(--u) * 1) #0a0a0b; touch-action: none; cursor: pointer; }
+  .jc { position: relative; width: calc(var(--u) * 14); display: flex; flex-direction: column; align-items: center; justify-content: space-around; padding: calc(var(--u) * 2) 0; box-sizing: border-box; }
+  .jc-l { background: linear-gradient(160deg, #3fd0f2, #0ea5d4); border-radius: calc(var(--u) * 7) 6px 6px calc(var(--u) * 7); }
+  .jc-r { background: linear-gradient(200deg, #ff6e76, #f0363f); border-radius: 6px calc(var(--u) * 7) calc(var(--u) * 7) 6px; }
+  .jc .mini { color: #1c1d20; font-weight: 900; font-size: calc(var(--u) * 2.4); line-height: 1; }
+  .jc .stick { width: calc(var(--u) * 6.4); height: calc(var(--u) * 6.4); border-radius: 50%; background: radial-gradient(circle at 40% 35%, #4a4c52, #1c1d20 70%); box-shadow: 0 2px 4px #0006, inset 0 0 0 calc(var(--u) * .5) #0002; }
+  .jc .cap { width: calc(var(--u) * 2); height: calc(var(--u) * 2); border-radius: 3px; background: #1c1d20; }
+  .dpad, .abxy { display: grid; grid-template: repeat(3, calc(var(--u) * 3.4)) / repeat(3, calc(var(--u) * 3.4)); }
+  .dpad [data-k='up'], .abxy .x { grid-area: 1 / 2; } .dpad [data-k='left'], .abxy .y { grid-area: 2 / 1; }
+  .dpad [data-k='right'], .abxy .a { grid-area: 2 / 3; } .dpad [data-k='down'], .abxy .b { grid-area: 3 / 2; }
+  .dpad button, .abxy > * { display: grid; place-items: center; width: 100%; height: 100%; padding: 0; border: 0; border-radius: 50%; color: #c9ccd2; background: #1c1d20; font: 700 calc(var(--u) * 1.5) system-ui, sans-serif; box-shadow: 0 2px 0 #000a; cursor: pointer; touch-action: none; }
+  .abxy > span { opacity: .55; cursor: default; }
+  .dpad button:active, .abxy button:active, .jc .home:active { transform: translateY(1px); box-shadow: 0 1px 0 #000a; background: #303237; }
+  .jc .home { width: calc(var(--u) * 3.2); height: calc(var(--u) * 3.2); padding: 0; border: 0; border-radius: 50%; color: #c9ccd2; background: #4a4c52; font-size: calc(var(--u) * 1.8); cursor: pointer; touch-action: none; }
+  .handheld button:focus-visible { outline: 2px solid #ffd27a; outline-offset: 2px; }
+  .hh-tip { margin: 0; font-size: 13px; color: #c9d3e3; text-align: center; }
+  .hh-close { padding: 6px 16px; border: 1px solid #ffffff40; border-radius: 999px; color: #fff; background: #10203acc; font: inherit; font-size: 14px; cursor: pointer; }
+  .hh-close kbd { font: inherit; font-size: 11px; opacity: .7; }
+  @media (pointer: coarse) { .hh-tip { display: none; } }
   .almanac { position: absolute; inset: 0; z-index: 5; display: grid; place-items: center; padding: 16px; background: #0b1424b3; backdrop-filter: blur(3px); overflow: auto; }
   .almanac[hidden] { display: none; }
   .almanac-card { width: min(440px, 100%); display: flex; flex-direction: column; gap: 10px; }

@@ -21,10 +21,11 @@ import { plants } from './objects/plants';
 import { furniture } from './objects/furniture';
 import { mirror } from './objects/mirror';
 import { dust } from './objects/dust';
+import { handheld } from './objects/handheld';
 import { cameraRig } from './objects/cameraRig';
 
 /** 场景里挂载的物件清单。新物件：在 objects/ 下建文件，然后加到这里。cameraRig 放最后。 */
-const OBJECTS: SceneObject[] = [sky, countryside, animals, room, furniture, mirror, desk, monitor, bookshelf, recorder, coffee, cups, meal, calendar, fridge, plants, dust, cameraRig];
+const OBJECTS: SceneObject[] = [sky, countryside, animals, room, furniture, mirror, desk, monitor, bookshelf, recorder, coffee, cups, meal, calendar, fridge, handheld, plants, dust, cameraRig];
 
 export function start(canvas: HTMLCanvasElement, tier: Exclude<Tier, 'low'>, data: SiteData, bus: EventTarget) {
   // high 档的抗锯齿在后期处理的离屏缓冲里做（多重采样），画布本身再开一份全屏多重采样缓冲是白占显存
