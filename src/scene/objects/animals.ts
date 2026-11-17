@@ -181,24 +181,7 @@ export const animals: SceneObject = ({ scene, tier }) => {
     if (idle) mixer.clipAction(idle).play();
     loaded.push(model);
   }).catch((e) => console.warn('[scene] 水牛模型加载失败', e));
-  // 箩筐里和箩筐边刚摘的菜（Kenney Food Kit，CC0）
-  ([['cabbage', 1.38, -6.2, 0.2, 0.24], ['tomato', 1.6, -6.12, 0.2, 0.1], ['eggplant', 1.52, -6.32, 0.2, 0.2], ['corn', 1.9, -6.1, 0, 0.24], ['pumpkin', 1.95, -6.5, 0, 0.3], ['carrot', 1.2, -5.85, 0, 0.2]] as const).forEach(([name, x, z, y, size], i) => {
-    loader.loadAsync(asset(`models/produce/${name}.glb`)).then((gltf) => {
-      if (stopped) return;
-      const model = gltf.scene;
-      model.traverse((o) => {
-        const m = o as THREE.Mesh;
-        if (!m.isMesh) return;
-        const old = m.material as THREE.MeshStandardMaterial;
-        m.material = bin.add(new THREE.MeshLambertMaterial({ map: old.map, color: 0x808080, emissive: 0xffffff, emissiveMap: old.map, emissiveIntensity: 0.62 }));
-        m.userData.noAO = true;
-      });
-      const box = new THREE.Box3().setFromObject(model), dim = box.getSize(new THREE.Vector3());
-      model.scale.multiplyScalar(size / Math.max(dim.x, dim.y, dim.z));
-      model.position.set(x, gy + y, z); model.rotation.y = i * 1.3;
-      group.add(model); loaded.push(model);
-    }).catch(() => { /* 没有也不影响 */ });
-  });
+  // 箩筐里原来放着 Kenney Food Kit 的菜（低多边形卡通风格），窗外改写实以后拿掉了，箩筐空着
 
   // ---------- 鸡：在横路左边那一片踱步、低头啄食 ----------
   const hens = [0xb5522a, 0xe9e2d2, 0x3a2e28].map((coat, i) => {
