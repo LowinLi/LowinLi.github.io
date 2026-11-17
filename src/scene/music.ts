@@ -73,6 +73,7 @@ export function playTrack(ac: AudioContext, id: string): () => void {
       lp.frequency.setValueAtTime(2800, t); lp.frequency.exponentialRampToValueAtTime(380, t + 0.7);
       lp.connect(out);
       const o = tone('sawtooth', f, t, 0.2, 0.004, 3.2, lp);
+      o.onended = () => lp.disconnect(); // 每个音一个滤波器：音停了就从图里摘掉，不然放久了越攒越多
       if (Math.random() < 0.4) { o.frequency.setValueAtTime(f * 0.955, t); o.frequency.exponentialRampToValueAtTime(f, t + 0.14); } // 滑音
       tone('sine', f * 2, t, 0.03, 0.004, 1.6);
       if (Math.random() < 0.22) tone('triangle', mtof(38), t, 0.16, 0.01, 4);

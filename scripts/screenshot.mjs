@@ -24,6 +24,7 @@ for (const w of widths) {
     page.on('pageerror', (e) => errors.push(String(e)));
     page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
     const url = new URL(base); url.searchParams.set('tier', tier);
+    url.searchParams.set('nodegrade', ''); // 截图环境没有显卡、帧率极低，不锁住会自动降档，截出来就不是这一档本来的样子
     await page.goto(url.href, { waitUntil: 'networkidle' });
     if (tier !== 'low') await page.waitForSelector('.scene[data-ready="true"]', { timeout: 60000 }).catch(() => errors.push('scene not ready in 60s'));
     await page.waitForTimeout(4000);

@@ -27,9 +27,13 @@ import { cameraRig } from './objects/cameraRig';
 const OBJECTS: SceneObject[] = [sky, countryside, animals, room, furniture, mirror, desk, monitor, bookshelf, recorder, coffee, cups, meal, calendar, fridge, plants, dust, cameraRig];
 
 export function start(canvas: HTMLCanvasElement, tier: Exclude<Tier, 'low'>, data: SiteData, bus: EventTarget) {
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: tier === 'high', powerPreference: 'high-performance' });
+  // high 档的抗锯齿在后期处理的离屏缓冲里做（多重采样），画布本身再开一份全屏多重采样缓冲是白占显存
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
   const basePR = Math.min(devicePixelRatio, BUDGETS.maxPixelRatio[tier]);
-  renderer.setPixelRatio(basePR);
+  let prScale = 1; // 自动降档时往下乘
+  /** 像素比：设备像素比、档位上限、每帧像素上限三者取最小 */
+  const pixelRatio = (w: number, h: number) => Math.max(0.5, Math.min(basePR * prScale, Math.sqrt(BUDGETS.maxPixels[tier] / Math.max(1, w * h))));
+  renderer.setPixelRatio(pixelRatio(canvas.clientWidth, canvas.clientHeight));
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 0.96;
   if (tier === 'high') {
@@ -46,6 +50,7 @@ export function start(canvas: HTMLCanvasElement, tier: Exclude<Tier, 'low'>, dat
 
   const size = () => {
     const { clientWidth: w, clientHeight: h } = canvas;
+    renderer.setPixelRatio(pixelRatio(w, h));
     renderer.setSize(w, h, false);
     post?.setSize(w, h);
     camera.aspect = w / Math.max(1, h);
@@ -179,35 +184,52 @@ export function start(canvas: HTMLCanvasElement, tier: Exclude<Tier, 'low'>, dat
   io.observe(canvas);
 
   // ---- 自动降档 ----
-  // 没法预知访客的显卡：开头几秒量帧率，持续低于 30 帧就降一档，最多降两档，不再升回去。
-  //   high：1 = 关掉遮蔽 / 景深 / 光束，像素比 1.25；2 = 关掉全部后期和阴影更新，像素比 1
-  //   mid ：1 = 像素比 1；2 = 像素比 0.75
-  let level = 0, frames = 0, acc = 0, warm = 0, usePost = !!post, shadowEvery = 2, tick = 0;
+  // 没法预知访客的显卡：开头几秒量帧率，持续低于 30 帧就降一档（第 3 档的门槛是 20 帧），最多降三档，不再升回去。
+  //   high：1 = 关掉遮蔽 / 景深 / 光束，像素比 ×0.8；2 = 关掉全部后期和阴影更新，像素比 ×0.65
+  //   mid ：1 = 像素比 ×0.8；2 = 像素比 ×0.6
+  //   两档共用的 3 = 像素比再 ×0.8，并且每秒最多画 20 帧
+  //   像素比之外还有每帧像素上限（BUDGETS.maxPixels），大屏先被它压住
+  let level = 0, autoDegrade = true, minGap = 0, last = 0, frames = 0, acc = 0, warm = 0, usePost = !!post, shadowEvery = 2, tick = 0;
   const degrade = () => {
     level++;
     if (tier === 'high') {
-      if (level === 1) { post?.setLite(true); renderer.setPixelRatio(Math.min(basePR, 1.25)); shadowEvery = 4; }
-      else { usePost = false; shadowEvery = 0; renderer.setPixelRatio(Math.min(basePR, 1)); emit(bus, 'quality:nopost'); }
-    } else renderer.setPixelRatio(Math.min(basePR, level === 1 ? 1 : 0.75));
+      if (level === 1) { post?.setLite(true); prScale = 0.8; shadowEvery = 4; }
+      else if (level === 2) { usePost = false; shadowEvery = 0; prScale = 0.65; emit(bus, 'quality:nopost'); }
+    } else if (level < 3) prScale = level === 1 ? 0.8 : 0.6;
+    // 第 3 档（两档都降完还是很卡）：再缩一点分辨率，并且每秒最多画 20 帧，给显卡留出喘气的时间
+    if (level === 3) { prScale *= 0.8; minGap = 50; }
     onResize();
     (window as any).__scene.level = level;
     console.info(`[scene] 帧率偏低，自动降到第 ${level} 档`);
   };
 
   const clock = new THREE.Clock();
-  renderer.setAnimationLoop(() => {
+  // 量帧率：按时间窗（每 1.5 秒看一次平均帧率），不按帧数——很卡的时候一帧要零点几秒，按 90 帧算要等好几分钟。
+  // 连着 3 帧都超过 0.25 秒就立刻降一档。以前「超过 0.5 秒的帧不算」，结果显卡越顶不住越不降档，一直顶满。
+  // 只有刚从别的标签页切回来的那几帧不算（那几帧的间隔是标签页藏起来的时间）。
+  let skip = 0, slow = 0;
+  const onVis = () => { if (!document.hidden) { skip = 5; clock.getDelta(); } };
+  document.addEventListener('visibilitychange', onVis);
+  renderer.setAnimationLoop((now) => {
+    if (minGap && now - last < minGap) return;
+    last = now;
     const raw = clock.getDelta(), dt = Math.min(raw, 0.1);
-    if (!visible || document.hidden) { frames = 0; acc = 0; return; }
+    if (!visible || document.hidden) { frames = 0; acc = 0; slow = 0; skip = 5; return; }
     const t = clock.elapsedTime;
     for (const m of mounted) m.frame(dt, t);
     renderer.info.reset();
     if (tier === 'high') renderer.shadowMap.needsUpdate = tick < 120 || (shadowEvery > 0 && tick % shadowEvery === 0); // 开头连续更新，等模型都加载进来
     tick++;
     if (post && usePost) post.render(dt); else renderer.render(scene, camera);
-    // 量帧率：跳过开头 3 秒（加载、编译着色器），之后每 90 帧看一次平均值；单帧超过半秒的卡顿（切标签页回来）不算
-    if (level < 2 && raw < 0.5) {
+    if (skip > 0) { skip--; return; }
+    if (autoDegrade && level < 3) {
       warm += raw;
-      if (warm > 3) { frames++; acc += raw; if (frames >= 90) { if (frames / acc < 30) degrade(); frames = 0; acc = 0; } }
+      if (warm > 3) {
+        frames++; acc += raw;
+        slow = raw > 0.25 ? slow + 1 : 0;
+        if (slow >= 3 || (acc >= 1.5 && frames / acc < (level < 2 ? 30 : 20))) { degrade(); frames = 0; acc = 0; slow = 0; warm = 2; }
+        else if (acc >= 1.5) { frames = 0; acc = 0; }
+      }
     }
   });
 
@@ -216,7 +238,10 @@ export function start(canvas: HTMLCanvasElement, tier: Exclude<Tier, 'low'>, dat
     // 调试：屏幕上某一点点下去会命中谁（命中的网格和它的点击归属）
     pickAt: (x: number, y: number) => { const r = cast({ clientX: x, clientY: y } as PointerEvent); return r && { hit: r.hit.object.type + ':' + (r.hit.object as THREE.Mesh).geometry?.type, owner: r.owner.type + ':' + r.owner.name, uuid: r.owner.uuid }; } };
   // 调试：?level=1|2 直接从某一档开始（比如想看降档后的画面）
-  for (let i = Math.min(2, Number(new URLSearchParams(location.search).get('level')) || 0); i > 0; i--) degrade();
+  const q = new URLSearchParams(location.search);
+  for (let i = Math.min(3, Number(q.get('level')) || 0); i > 0; i--) degrade();
+  // ?nodegrade：不自动降档。只给截图脚本用——没有显卡的截图环境一秒才一两帧，不锁住的话 high 档截出来全是降过档的样子
+  if (q.has('nodegrade')) autoDegrade = false;
 
   return () => {
     renderer.setAnimationLoop(null);
@@ -224,6 +249,7 @@ export function start(canvas: HTMLCanvasElement, tier: Exclude<Tier, 'low'>, dat
     offs.forEach((f) => f());
     io.disconnect();
     removeEventListener('resize', onResize);
+    document.removeEventListener('visibilitychange', onVis);
     canvas.removeEventListener('pointermove', onMove);
     canvas.removeEventListener('pointerdown', onDown);
     canvas.removeEventListener('pointerup', onUp);
