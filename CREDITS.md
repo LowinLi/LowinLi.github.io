@@ -20,10 +20,12 @@
 | `models/animals/cat.glb`、`dog.glb` | Quaternius「Animal Pack Vol.2」（[OpenGameArt](https://opengameart.org/content/animated-animales-low-poly)，CC0） | 菜园里走过的猫和狗 | .blend 转 glb，运行时重新上色 |
 | `models/animals/cow.glb` | Quaternius「Farm Animals」（[OpenGameArt](https://opengameart.org/content/lowpoly-animated-farm-animal-pack)，CC0） | 稻田里的水牛 | 同上 |
 | `impostors/*.webp` | Poly Haven 模型「Island Tree 02」「Tree Small 02」「Shrub 02」「Shrub 04」「Grass Medium 01」「Weed Plant 02」（[polyhaven.com](https://polyhaven.com/models)，CC0） | 窗外的树、竹丛、灌木、草丛（公告板） | 在 Blender 里用日出天空渲成带透明底的照片，见 `tools/render_impostors.py` |
-| `outdoor/*.jpg` | Poly Haven 贴图「Farm Soil」「Stony Dirt Path」「Plastered Wall」「Grey Roof Tiles」「Old Stone Wall」（另有 Sparse Grass、Brown Mud 备用）（[polyhaven.com](https://polyhaven.com/textures)，CC0） | 菜园的泥土和菜畦、土路、农舍的墙和瓦、墙裙、踏脚石和井台 | 缩到 512–1024 |
+| `outdoor/*.jpg` | Poly Haven 贴图「Farm Soil」「Stony Dirt Path」「Plastered Wall」「Grey Roof Tiles」「Old Stone Wall」「Reed Roof 04」「Rough Linen」「Denim Fabric」（[polyhaven.com](https://polyhaven.com/textures)，CC0） | 菜园的泥土和菜畦、土路、农舍的墙和瓦、墙裙、踏脚石和井台、草垛、稻草人和农人的衣服 | 缩到 512–1024 |
 | `light/*.jpg` | 用上面那张 HDRI 当天光，在 Blender 里烘焙的光照贴图 | 地面和三面墙的光影 | 见 `tools/bake_lighting.py` |
 
-其余所有东西（窗外的菜、稻田、房子的形状、远山、鸡、蝴蝶、鸟，木格窗、竹帘、字画，书桌、录音机和磁带、咖啡机和拿铁、咖啡豆袋、书、显示器、键盘、虎尾兰，音乐等）都是代码生成的，没有外部素材。
+图集里的稻丛、白菜、生菜、葱、玉米和 `outdoor/paddy_detail.webp` 是自己在 Blender 里按程序建模渲的（`tools/render_crops.py`），没有外部素材。
+
+其余所有东西（窗外的向日葵、篱笆、房子的形状、远山、鸡、蝴蝶、鸟，木格窗、竹帘、字画，书桌、录音机和磁带、咖啡机和拿铁、咖啡豆袋、书、显示器、键盘、虎尾兰，音乐等）都是代码生成的，没有外部素材。
 
 ## 用到的开源库（运行时按需加载）
 

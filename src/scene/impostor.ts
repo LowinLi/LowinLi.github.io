@@ -18,13 +18,14 @@ export const HAZE = new THREE.Color(0.78, 0.8, 0.8);
 const HAZE_GLSL = 'clamp((-wpos.z - 30.0) / 420.0, 0.0, 0.75)';
 
 /** 屋外的无光照材质：贴图 × 顶点色（明暗、色调），再按距离混一点雾色。sat < 1 降低饱和度（代码画的东西颜色太艳，和照片放一起像卡通） */
-export function outdoorMaterial(bin: Bin, o: THREE.MeshBasicMaterialParameters & { billboard?: boolean; haze?: boolean; sat?: number; atlas?: boolean } = {}) {
-  const { billboard, haze = true, sat = 1, atlas = false, ...params } = o;
+export function outdoorMaterial(bin: Bin, o: THREE.MeshBasicMaterialParameters & { billboard?: boolean; haze?: boolean; sat?: number; atlas?: boolean; detail?: { map: THREE.Texture; size: number } } = {}) {
+  const { billboard, haze = true, sat = 1, atlas = false, detail, ...params } = o;
   const m = bin.add(new THREE.MeshBasicMaterial(params));
   m.onBeforeCompile = (sh) => {
     sh.uniforms.uHaze = { value: HAZE };
+    if (detail) { sh.uniforms.uDetail = { value: detail.map }; sh.uniforms.uDetailSize = { value: detail.size }; }
     sh.vertexShader = sh.vertexShader
-      .replace('#include <common>', `#include <common>\nvarying float vHz;${atlas ? '\nattribute vec4 aRect;' : ''}`)
+      .replace('#include <common>', `#include <common>\nvarying float vHz;\nvarying vec3 vWpos;${atlas ? '\nattribute vec4 aRect;' : ''}`)
       .replace('#include <uv_vertex>', atlas ? '#include <uv_vertex>\nvMapUv = mix(aRect.xy, aRect.zw, uv); // 图集里这一张照片的范围' : '#include <uv_vertex>')
       .replace('#include <project_vertex>', billboard ? `
         // 公告板：以实例原点为中心，只绕竖轴转向镜头。实例矩阵里只有位置和缩放（x 可以是负的，表示镜像）
@@ -34,21 +35,23 @@ export function outdoorMaterial(bin: Bin, o: THREE.MeshBasicMaterialParameters &
         vec3 wpos = org.xyz + rgt * transformed.x * instanceMatrix[0][0] + vec3(0.0, transformed.y * instanceMatrix[1][1], 0.0);
         vec4 mvPosition = viewMatrix * vec4(wpos, 1.0);
         gl_Position = projectionMatrix * mvPosition;
-        vHz = ${HAZE_GLSL};` : `
+        vHz = ${HAZE_GLSL}; vWpos = wpos;` : `
         #include <project_vertex>
         vec4 wpos4 = modelMatrix * vec4(transformed, 1.0);
         #ifdef USE_INSTANCING
           wpos4 = modelMatrix * instanceMatrix * vec4(transformed, 1.0);
         #endif
         vec3 wpos = wpos4.xyz;
-        vHz = ${HAZE_GLSL};`);
+        vHz = ${HAZE_GLSL}; vWpos = wpos;`);
     sh.fragmentShader = sh.fragmentShader
-      .replace('#include <common>', '#include <common>\nvarying float vHz;\nuniform vec3 uHaze;')
+      .replace('#include <common>', `#include <common>\nvarying float vHz;\nvarying vec3 vWpos;\nuniform vec3 uHaze;${detail ? '\nuniform sampler2D uDetail;\nuniform float uDetailSize;' : ''}`)
+      // 细节贴图：按世界坐标平铺的一张灰度图（平均 0.5），乘 2 叠在底色上——大片稻田的底色是画的，近处靠它出一行行秧苗
+      .replace('#include <map_fragment>', detail ? '#include <map_fragment>\ndiffuseColor.rgb *= texture2D(uDetail, vWpos.xz / uDetailSize).r * 2.0;' : '#include <map_fragment>')
       .replace('#include <opaque_fragment>', `${sat !== 1 ? `outgoingLight = mix(vec3(dot(outgoingLight, vec3(0.299, 0.587, 0.114))), outgoingLight, ${sat.toFixed(3)});` : ''}
 ${haze ? 'outgoingLight = mix(outgoingLight, uHaze, vHz);' : ''}
 #include <opaque_fragment>`);
   };
-  m.customProgramCacheKey = () => `outdoor-${billboard ? 1 : 0}-${haze ? 1 : 0}-${sat}-${atlas ? 1 : 0}`;
+  m.customProgramCacheKey = () => `outdoor-${billboard ? 1 : 0}-${haze ? 1 : 0}-${sat}-${atlas ? 1 : 0}-${detail ? 1 : 0}`;
   return m;
 }
 

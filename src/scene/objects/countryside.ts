@@ -30,16 +30,21 @@ export const countryside: SceneObject = ({ scene, tier }) => {
   const imp = new Impostors(bin);
   // 照片贴图的部件（泥土、墙、瓦、石头、土路）：贴图到之前只显示顶点色（和原来一样），到了以后换成照片 × 明暗。
   // 顶点色里存的是「底色 × 明暗」，贴图到了以后材质颜色设成底色的倒数，相乘就只剩「照片 × 明暗」
-  type TexKind = 'soil' | 'plaster' | 'roof' | 'stone' | 'path';
-  const TEX: Record<TexKind, [string, number]> = {
+  type TexKind = 'soil' | 'plaster' | 'roof' | 'stone' | 'path' | 'straw' | 'linen' | 'denim';
+  // [贴图, 一张贴图对应多少米, 照片整体乘的颜色（可选：照片本身太亮或颜色不对时压一压）]
+  const TEX: Record<TexKind, [string, number, number?]> = {
     soil: ['outdoor/farm_soil.jpg', 1.6], plaster: ['outdoor/plastered_wall.jpg', 2.4], roof: ['outdoor/grey_roof_tiles.jpg', 1.4],
     stone: ['outdoor/old_stone_wall.jpg', 1.1], path: ['outdoor/stony_dirt_path.jpg', 2.2],
+    straw: ['outdoor/reed_roof_04.jpg', 0.9], linen: ['outdoor/rough_linen.jpg', 0.35, 0xc9b597], denim: ['outdoor/denim_fabric.jpg', 0.3],
   };
   const texBase: Partial<Record<TexKind, THREE.Color>> = {};
   const texMat = {} as Record<TexKind, THREE.MeshBasicMaterial>;
   for (const k of Object.keys(TEX) as TexKind[]) {
     const m = texMat[k] = outdoorMaterial(bin, { vertexColors: true, side: THREE.DoubleSide, sat: 0.85 });
-    photo(bin, TEX[k][0], (t) => { const b = texBase[k] ?? new THREE.Color(1, 1, 1); m.map = t; m.color.setRGB(1 / b.r, 1 / b.g, 1 / b.b); m.needsUpdate = true; });
+    photo(bin, TEX[k][0], (t) => {
+      const b = texBase[k] ?? new THREE.Color(1, 1, 1), g = new THREE.Color(TEX[k][2] ?? 0xffffff);
+      m.map = t; m.color.setRGB(g.r / b.r, g.g / b.g, g.b / b.b); m.needsUpdate = true;
+    });
   }
   // 菜叶的细纹理：叶脉、斑驳、边缘略深。乘在顶点色上，叶子不再是一块纯色
   const leafTex = bin.add(canvasTex(128, 256, (g, w, h) => {
@@ -196,14 +201,19 @@ export const countryside: SceneObject = ({ scene, tier }) => {
       put(rbox(0.86, 0.12, len + 0.15, 0.05, 1), 0x5c4630, [x, gy + 0.06, zc], [0, 0, 0], 1, { k: 1.12, tex: 'soil' }); // 垄
       const step = crop === 'scallion' ? 0.16 : crop === 'cabbage' || crop === 'lettuce' ? 0.38 : crop === 'bean' ? 0.6 : crop === 'pumpkin' ? 0.7 : crop === 'corn' ? 0.42 : 0.5;
       const rowsX = crop === 'scallion' ? [-0.2, 0, 0.2] : crop === 'cabbage' || crop === 'lettuce' ? [-0.18, 0.18] : crop === 'corn' ? [-0.17, 0.17] : [0];
+      // 白菜、生菜、葱、玉米换成 Blender 里渲的照片（tools/render_crops.py）；代码画的版本进回退批次，照片到了整批拿掉
+      const PHOTO: Partial<Record<Crop, [string[], number, number]>> = { cabbage: [['cabbage_0', 'cabbage_1', 'cabbage_2'], 0.36, 1.1], lettuce: [['lettuce_0', 'lettuce_1', 'lettuce_2'], 0.22, 0.82], scallion: [['scallion_0', 'scallion_1'], 0.56, 1.1], corn: [['corn_0', 'corn_1'], 2.1, 1.1] };
+      const photoCrop = PHOTO[crop];
       for (const dx of rowsX) for (let z = band.z0 + 0.2; z < band.z1 - 0.1; z += step) {
         if (skip()) continue;
         const px = x + dx + (r() - 0.5) * 0.04, pz = z + (r() - 0.5) * 0.05;
+        if (photoCrop) { imp.add(pick(photoCrop[0]), px, by - 0.01, pz, photoCrop[1] * (0.85 + r() * 0.3), { flip: r() < 0.5, tint: photoCrop[2] * (0.95 + r() * 0.12) }); target = treeBatch; }
         if (crop === 'cabbage') plant.cabbage(px, pz, 0.85 + r() * 0.3);
         else if (crop === 'lettuce') plant.cabbage(px, pz, 0.7 + r() * 0.2, true);
         else if (crop === 'scallion') plant.scallion(px, pz);
         else if (crop === 'chili' || crop === 'eggplant') plant.bush(px, pz, crop);
         else plant[crop](px, pz);
+        target = batch;
       }
       if (crop === 'bean') put(new THREE.CylinderGeometry(0.011, 0.011, len, 5), 0xc2ab6c, [x, by + 1.72, zc], [Math.PI / 2, 0, 0]); // 架顶的横竿
     });
@@ -357,8 +367,8 @@ export const countryside: SceneObject = ({ scene, tier }) => {
   const HOUSES: [number, number][] = [];
   const haystack = (x: number, z: number) => {
     const o = { haze: hazeAt(z) };
-    put(new THREE.CylinderGeometry(1.5, 1.7, 1.6, 12), 0xcfae5a, [x, gy + 0.8, z], [0, 0, 0], 1, o);
-    put(new THREE.ConeGeometry(1.8, 1.5, 12), 0xd9ba66, [x, gy + 2.3, z], [0, 0, 0], 1, o);
+    put(new THREE.CylinderGeometry(1.5, 1.7, 1.6, 12), 0xcfae5a, [x, gy + 0.8, z], [0, 0, 0], 1, { ...o, tex: 'straw' });
+    put(new THREE.ConeGeometry(1.8, 1.5, 12), 0xd9ba66, [x, gy + 2.3, z], [0, 0, 0], 1, { ...o, tex: 'straw' });
     shade(x, z, 1.7, 3);
   };
   // 最近的一户在左前方，能看清门窗和对联；后面一丛竹子，旁边两个草垛
@@ -385,15 +395,15 @@ export const countryside: SceneObject = ({ scene, tier }) => {
   const sx = -11.5, sz = -27; // 稻草人：草帽、破布衫、稻草的手
   put(new THREE.CylinderGeometry(0.03, 0.03, 2.0, 5), 0x8a744a, [sx, gy + 1.0, sz]);
   put(new THREE.CylinderGeometry(0.025, 0.025, 1.5, 5), 0x8a744a, [sx, gy + 1.45, sz], [0, 0, Math.PI / 2]);
-  put(new THREE.BoxGeometry(0.5, 0.62, 0.14), 0x9a4a3a, [sx, gy + 1.3, sz]);
-  for (const s of [-1, 1]) { put(new THREE.BoxGeometry(0.42, 0.2, 0.12), 0x9a4a3a, [sx + s * 0.44, gy + 1.45, sz]); put(new THREE.ConeGeometry(0.07, 0.2, 6), 0xd9c08a, [sx + s * 0.78, gy + 1.45, sz], [0, 0, -s * Math.PI / 2]); }
-  put(new THREE.SphereGeometry(0.14, 10, 8), 0xd9c08a, [sx, gy + 1.78, sz]);
-  put(new THREE.ConeGeometry(0.36, 0.2, 12), 0xcfae62, [sx, gy + 1.96, sz]);
+  put(new THREE.BoxGeometry(0.5, 0.62, 0.14), 0x9a4a3a, [sx, gy + 1.3, sz], [0, 0, 0], 1, { tex: 'linen' });
+  for (const s of [-1, 1]) { put(new THREE.BoxGeometry(0.42, 0.2, 0.12), 0x9a4a3a, [sx + s * 0.44, gy + 1.45, sz], [0, 0, 0], 1, { tex: 'linen' }); put(new THREE.ConeGeometry(0.07, 0.2, 6), 0xd9c08a, [sx + s * 0.78, gy + 1.45, sz], [0, 0, -s * Math.PI / 2], 1, { tex: 'straw' }); }
+  put(new THREE.SphereGeometry(0.14, 10, 8), 0xd9c08a, [sx, gy + 1.78, sz], [0, 0, 0], 1, { tex: 'straw' });
+  put(new THREE.ConeGeometry(0.36, 0.2, 12), 0xcfae62, [sx, gy + 1.96, sz], [0, 0, 0], 1, { tex: 'straw' });
   const fx = 4.5, fz = -24; // 农人：弯着腰，戴草帽，手里一把锄头
-  for (const s of [-1, 1]) put(new THREE.CylinderGeometry(0.07, 0.06, 0.8, 6), 0x3a4a5c, [fx + s * 0.1, gy + 0.4, fz]);
-  put(new THREE.CylinderGeometry(0.17, 0.15, 0.62, 8), 0x6f8aa0, [fx, gy + 1.02, fz - 0.14], [-0.6, 0, 0]);
+  for (const s of [-1, 1]) put(new THREE.CylinderGeometry(0.07, 0.06, 0.8, 6), 0x3a4a5c, [fx + s * 0.1, gy + 0.4, fz], [0, 0, 0], 1, { tex: 'denim' });
+  put(new THREE.CylinderGeometry(0.17, 0.15, 0.62, 8), 0x6f8aa0, [fx, gy + 1.02, fz - 0.14], [-0.6, 0, 0], 1, { tex: 'denim' });
   put(new THREE.SphereGeometry(0.11, 10, 8), 0xd9a878, [fx, gy + 1.36, fz - 0.38]);
-  put(new THREE.ConeGeometry(0.3, 0.16, 12), 0xd9ba66, [fx, gy + 1.5, fz - 0.38], [-0.3, 0, 0]);
+  put(new THREE.ConeGeometry(0.3, 0.16, 12), 0xd9ba66, [fx, gy + 1.5, fz - 0.38], [-0.3, 0, 0], 1, { tex: 'straw' });
   put(new THREE.CylinderGeometry(0.018, 0.018, 1.5, 5), 0x8a6a44, [fx + 0.05, gy + 0.75, fz - 0.75], [-0.75, 0, 0]);
   shade(fx, fz, 0.3, 1.6);
   const ox = 8.5, oz = -30; // 水牛是带动画的模型，在 animals.ts 里；这里只留它的影子
@@ -463,14 +473,17 @@ export const countryside: SceneObject = ({ scene, tier }) => {
   treeBatch.build(fallbackTrees, bin).forEach((m) => { m.frustumCulled = false; });
   imp.load(group, high).then((n) => {
     if (!n || stopped) return;
-    group.remove(fallbackTrees);
+    group.remove(fallbackTrees); group.remove(rice);
     fallbackTrees.traverse((o) => (o as THREE.Mesh).geometry?.dispose());
   }).catch((e) => console.warn('[countryside] 照片树加载失败，继续用代码画的树', e));
   shadows.build(group, bin).forEach((m) => { m.frustumCulled = false; m.renderOrder = 1; });
 
   // ---------- 稻田的底色：一大块一大块拼起来的田，田埂、土路、水渠把它们隔开 ----------
+  // 稻田的细节贴图到之前先用一张中灰（乘 2 等于不变），不然没加载的贴图采样是黑的，整片田会黑一下
+  const paddyDetail = photo(bin, 'outdoor/paddy_detail.webp');
+  { const c = document.createElement('canvas'); c.width = c.height = 2; const g = c.getContext('2d')!; g.fillStyle = '#808080'; g.fillRect(0, 0, 2, 2); paddyDetail.image = c as unknown as HTMLImageElement; paddyDetail.needsUpdate = true; }
   const FW = 900, FD = 470;
-  const fields = outdoorMaterial(bin, { haze: false, sat: 0.72, map: bin.add(canvasTex(2048, 1070, (g, w, h) => {
+  const fields = outdoorMaterial(bin, { haze: false, sat: 0.72, detail: { map: paddyDetail, size: 2 }, map: bin.add(canvasTex(2048, 1070, (g, w, h) => {
     const rr = rng(77);
     g.fillStyle = '#8a7a4a'; g.fillRect(0, 0, w, h); // 田埂的土色
     const palette = ['#7fae3f', '#8cb845', '#6fa23a', '#a8bf4a', '#c9c24f', '#d8c85a', '#93b84a', '#b9c852'];
@@ -545,6 +558,11 @@ export const countryside: SceneObject = ({ scene, tier }) => {
   });
   rice.frustumCulled = false;
   group.add(rice);
+  // 稻丛照片：左边一块熟了（金黄），中间青的，右边半黄（青黄混着）。照片到了以后上面代码画的稻丛就拿掉
+  spots.forEach(([x, z]) => {
+    const gold = x < -9.5 || (x > 12 && r() < 0.5);
+    imp.add(`rice_${gold ? 'golden' : 'green'}_${Math.floor(r() * 3)}`, x + (r() - 0.5) * 0.15, gy, z + (r() - 0.5) * 0.15, 0.9 * (0.8 + r() * 0.45), { flip: r() < 0.5, tint: 1.0 + r() * 0.2 });
+  });
 
   // 篱笆脚下、路边、田埂上的杂草（实例化）
   const weedGeo = bladeGeo(4, 0.2, false);
