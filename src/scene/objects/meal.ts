@@ -128,16 +128,19 @@ export const meal: SceneObject = ({ scene, camera, tier, bus, pick }) => {
       sb.add(tipM, new THREE.CylinderGeometry(0.0029, 0.0029, 0.012, 8).rotateZ(Math.PI / 2), [0.14, 0, dz]);
     }
     sb.build(sticks, bin);
-    sticks.position.set(-0.02, 0.066, 0); sticks.rotation.set(0, 0.35, -0.04);
+    sticks.position.set(-0.02, 0.066, 0); sticks.rotation.set(0, 0.35, -0.015);
     body.add(sticks);
     const levels = [ // 每一档：饭面底部的高度、隆起的高度
       [0.012, 0], [0.028, 0.008], [0.042, 0.016], [0.054, 0.034],
     ];
     let shown = BITES;
+    let restY = 0.0655;
     const place = (lv: number) => {
       const i = Math.floor(lv), f = lv - i, a = levels[i], b = levels[Math.min(BITES, i + 1)];
       const y = a[0] + (b[0] - a[0]) * f, hgt = a[1] + (b[1] - a[1]) * f, r = innerR(riceProf, y) - 0.0006;
       dome.position.y = y; dome.scale.set(r, Math.max(0.0005, hgt), r);
+      // 筷子搁在饭堆顶上；饭低过碗沿以后就搁在碗沿上（筷子几乎从碗中心上方横过，所以按饭堆最高处算）
+      restY = Math.max(0.0655, y + hgt * 0.97 + 0.0032);
       dome.visible = lv > 0.03; crumbs.visible = lv < 0.5;
     };
     place(BITES);
@@ -148,7 +151,7 @@ export const meal: SceneObject = ({ scene, camera, tier, bus, pick }) => {
       },
       extra(k) {
         // 吃的时候筷子抬起来，像夹了一口；饭面平滑地落到新的高度
-        sticks.position.y = 0.066 + k * 0.03; sticks.rotation.z = -0.04 - k * 0.35;
+        sticks.position.y = restY + k * 0.03; sticks.rotation.z = -0.015 - k * 0.35;
         const cur = dome.userData.lv ?? BITES;
         const next = cur + (shown - cur) * 0.12;
         dome.userData.lv = Math.abs(next - shown) < 0.002 ? shown : next;

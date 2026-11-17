@@ -111,7 +111,7 @@ export const desk: SceneObject = ({ scene, tier, bus, pick }) => {
   ];
 
   // 笔筒：深色木筒，插着两支毛笔和两支铅笔
-  const bx = -1.03, bz = -0.3;
+  const bx = -0.95, bz = 0.08; // 原来在 (-1.03, -0.3)，那里后来放了黄历，笔筒和毛笔会从日历页里穿出来
   const cupWood = std({ roughness: 0.5, map: bin.add(canvasTex(256, 128, (g, w, h) => woodGrain(g, 0, 0, w, h, '#4a2c1a', '15,8,4', 31, 90))) });
   batch.add(cupWood, new THREE.LatheGeometry([[0, 0], [0.04, 0], [0.042, 0.004], [0.042, 0.105], [0.04, 0.108], [0.036, 0.108], [0.036, 0.01], [0, 0.01]].map(([x, y]) => new THREE.Vector2(x, y)), 32), [bx, 0, bz]);
   const bamboo = std({ color: 0xc9a66b, roughness: 0.5 });
