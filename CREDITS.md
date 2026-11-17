@@ -1,6 +1,6 @@
 # 素材出处
 
-`public/assets/` 下的实拍素材大部分来自 [Poly Haven](https://polyhaven.com)，动物和箩筐里的菜来自 Quaternius 和 Kenney，授权都是 **CC0**（可商用，无需署名）。这里记录出处，方便以后更新或替换。
+`public/assets/` 下的实拍素材大部分来自 [Poly Haven](https://polyhaven.com)，动物和箩筐里的菜来自 Quaternius 和 Kenney，授权都是 **CC0**（可商用，无需署名）。冰箱里的可乐罐和雪糕是例外：CC BY 4.0，要署名（见下表）。这里记录出处，方便以后更新或替换。
 
 | 文件 | 素材 | 用在哪里 | 处理 |
 | --- | --- | --- | --- |
@@ -21,6 +21,8 @@
 | `models/animals/cow.glb` | Quaternius「Farm Animals」（[OpenGameArt](https://opengameart.org/content/lowpoly-animated-farm-animal-pack)，CC0） | 稻田里的水牛 | 同上 |
 | `impostors/*.webp` | Poly Haven 模型「Island Tree 02」「Tree Small 02」「Shrub 02」「Shrub 04」「Grass Medium 01」「Weed Plant 02」（[polyhaven.com](https://polyhaven.com/models)，CC0） | 窗外的树、竹丛、灌木、草丛（公告板） | 在 Blender 里用日出天空渲成带透明底的照片，见 `tools/render_impostors.py` |
 | `outdoor/*.jpg` | Poly Haven 贴图「Farm Soil」「Stony Dirt Path」「Plastered Wall」「Grey Roof Tiles」「Old Stone Wall」「Reed Roof 04」「Rough Linen」「Denim Fabric」（[polyhaven.com](https://polyhaven.com/textures)，CC0） | 菜园的泥土和菜畦、土路、农舍的墙和瓦、墙裙、踏脚石和井台、草垛、稻草人和农人的衣服 | 缩到 512–1024 |
+| `models/fridge/cola.glb` | Sketchfab 模型「[Simple Cola Can](https://sketchfab.com/3d-models/aaa11e57064848268d701a3586792d0d)」，作者 Blender3D，**CC BY 4.0（需署名）** | 冰箱里的可乐罐 | 从 Objaverse 的镜像下载；摆正、缩到真实尺寸（高 11.5 cm），贴图缩到 1024 转 webp，见 `tools/prep_fridge_models.py`。罐子上的商标属于其所有者 |
+| `models/fridge/icebar.glb` | Sketchfab 模型「[Ice Cream Bars](https://sketchfab.com/3d-models/3ff7b700266448668023b196645f583f)」，作者 ArbitraryCanary，**CC BY 4.0（需署名）** | 冰箱里的巧克力脆皮雪糕（完整的一根、咬过一口的一根） | 去掉纸杯、两根分开摆正，宽 4.2 cm，贴图缩到 512，同上 |
 | `light/*.jpg` | 用上面那张 HDRI 当天光，在 Blender 里烘焙的光照贴图 | 地面和三面墙的光影 | 见 `tools/bake_lighting.py` |
 
 图集里的稻丛、白菜、生菜、葱、玉米和 `outdoor/paddy_detail.webp` 是自己在 Blender 里按程序建模渲的（`tools/render_crops.py`），没有外部素材。

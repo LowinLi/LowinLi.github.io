@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import { Bin, emit, on, type SceneObject } from '../types';
 import { L } from '../layout';
 import { damp } from '../tween';
-import { Batch, blob, canvasTex, contactMaterial, rbox, rng, speckle } from '../util';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { asset, Batch, blob, canvasTex, contactMaterial, rbox, rng, speckle } from '../util';
 
 /**
  * 右后方靠墙的冰箱（奶油色的老式双门冰箱）和它左边的脚踏垃圾桶。用户要的一套小交互：
@@ -202,6 +203,7 @@ export const fridge: SceneObject = ({ scene, camera, tier, bus, pick, audio }) =
     state: 'fridge' | 'held' | 'back' | 'fly' | 'bin';
     step: number; opened: boolean; action: null | 'bite' | 'tear' | 'open' | 'sip'; t: number; spin: number;
     onStep?: (n: number) => void; onOpen?: () => void; anim?: (k: number, a: string | null) => void;
+    useModel?: (m: THREE.Object3D) => void; usePop?: (whole: THREE.Mesh, bitten: THREE.Mesh, cut: { value: number }) => void;
   }
   const items: Item[] = [];
   const makeItem = (kind: Kind, local: [number, number, number], rot: [number, number, number], build: (body: THREE.Group, it: Item) => void) => {
@@ -291,10 +293,12 @@ export const fridge: SceneObject = ({ scene, camera, tier, bus, pick, audio }) =
   const CAN_R = 0.033, CAN_H = 0.115;
   const bubGeo = bin.add(new THREE.SphereGeometry(0.0018, 6, 4));
   const makeCola = (body: THREE.Group, it: Item) => {
-    add(new THREE.CylinderGeometry(CAN_R, CAN_R, CAN_H - 0.02, 32, 1, true, -Math.PI / 2), std({ map: colaTex, roughness: 0.25, metalness: 0.5 }), 0, CAN_H / 2, 0, body);
     const lathe = (pts: number[][]) => new THREE.LatheGeometry(pts.map(([x, y]) => new THREE.Vector2(x, y)), 32);
-    add(lathe([[0, 0.004], [0.022, 0.0], [0.03, 0.004], [CAN_R, 0.01]]), alu, 0, 0, 0, body);
-    add(lathe([[CAN_R, CAN_H - 0.01], [0.027, CAN_H - 0.001], [0.0275, CAN_H + 0.001], [0.0255, CAN_H + 0.001], [0.025, CAN_H - 0.003], [0, CAN_H - 0.003]]), alu, 0, 0, 0, body);
+    const drawn = [ // 代码画的罐子：模型到之前（或加载失败时）用
+      add(new THREE.CylinderGeometry(CAN_R, CAN_R, CAN_H - 0.02, 32, 1, true, -Math.PI / 2), std({ map: colaTex, roughness: 0.25, metalness: 0.5 }), 0, CAN_H / 2, 0, body),
+      add(lathe([[0, 0.004], [0.022, 0.0], [0.03, 0.004], [CAN_R, 0.01]]), alu, 0, 0, 0, body),
+    ];
+    drawn.push(add(lathe([[CAN_R, CAN_H - 0.01], [0.027, CAN_H - 0.001], [0.0275, CAN_H + 0.001], [0.0255, CAN_H + 0.001], [0.025, CAN_H - 0.003], [0, CAN_H - 0.003]]), alu, 0, 0, 0, body));
     const hole = add(new THREE.CircleGeometry(1, 16).rotateX(-Math.PI / 2), std({ color: 0x0d0a08, roughness: 0.9 }), 0, CAN_H - 0.0025, 0.012, body);
     hole.scale.set(0.0001, 1, 0.0001);
     const tabPivot = new THREE.Group(); tabPivot.position.set(0, CAN_H - 0.002, 0.002); body.add(tabPivot);
@@ -304,8 +308,15 @@ export const fridge: SceneObject = ({ scene, camera, tier, bus, pick, audio }) =
     const bubM = bin.add(new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0 }));
     const bubs = new THREE.InstancedMesh(bubGeo, bubM, 8); bubs.visible = false; fizz.add(bubs);
     const bm = new THREE.Matrix4();
-    it.onOpen = () => { /* 动画在 anim 里 */ };
+    let model = false;
+    it.useModel = (m) => {
+      // 模型自带一个平躺的拉环；代码的拉环平时藏着，拉开时才出来翘起（像模型上那个被掰起来了）。开口抬到模型的罐盖上面
+      for (const d of drawn) d.visible = false;
+      body.add(m); model = true; tabPivot.visible = it.opened; hole.position.y = 0.1139;
+    };
+    it.onOpen = () => { tabPivot.visible = true; };
     it.anim = (k, a) => {
+      void model;
       // 拉环：先翘到 75°，再按回到 15°；开口跟着出现；冒一串小气泡
       if (a === 'open') {
         const up = k < 0.5 ? k / 0.5 : 1 - (k - 0.5) / 0.5 * 0.8;
@@ -325,11 +336,11 @@ export const fridge: SceneObject = ({ scene, camera, tier, bus, pick, audio }) =
     g.fillStyle = '#2f77c8'; for (let y = 0; y < h; y += 28) g.fillRect(0, y, w, 6);
     g.fillStyle = '#e03a30'; g.fillRect(0, top ? h - 70 : 0, w, 70);
     g.fillStyle = '#fff'; g.font = `bold 40px ${SANS}`; g.textAlign = 'center'; g.textBaseline = 'middle';
-    if (top) g.fillText('老冰', w / 2, h - 36); else g.fillText('棍儿', w / 2, 36);
-    g.fillStyle = '#2f77c8'; g.font = `24px ${SANS}`; g.fillText(top ? '❄ 奶油味' : '❄ 小时候的味道', w / 2, top ? 60 : 150);
+    if (top) g.fillText('脆皮', w / 2, h - 36); else g.fillText('雪糕', w / 2, 36);
+    g.fillStyle = '#2f77c8'; g.font = `24px ${SANS}`; g.fillText(top ? '❄ 巧克力' : '❄ 香草奶油', w / 2, top ? 60 : 150);
   }));
   const wrapTop = wrapTex(true), wrapBot = wrapTex(false);
-  const POP_W = 0.042, POP_H = 0.085, POP_D = 0.016, STICK = 0.06;
+  const POP_W = 0.042, POP_H = 0.07, POP_D = 0.018, STICK = 0.045; // 和模型（icebar.glb）的尺寸一致
   const popShape = (lv: number) => {
     // 剩 lv 截（3 是整根）：底边平，顶上 3 是圆角；吃过的顶上是两三个半圆的牙印
     const h = POP_H * lv / 3, s = new THREE.Shape(), x0 = -POP_W / 2, x1 = POP_W / 2, rr = 0.01;
@@ -347,15 +358,26 @@ export const fridge: SceneObject = ({ scene, camera, tier, bus, pick, audio }) =
   };
   const popGeos = [0, 1, 2, 3].map((lv) => (lv ? popShape(lv) : null));
   const makePop = (body: THREE.Group, it: Item) => {
-    add(new THREE.BoxGeometry(0.009, STICK + 0.03, 0.0022), std({ color: 0xd9bf8a, roughness: 0.8 }), 0, -STICK / 2 + 0.015, 0, body);
-    const ice = new THREE.Mesh(popGeos[3]!, std({ color: 0xf2dfa6, roughness: 0.3, emissive: 0x2a2010 })); ice.position.y = 0.0; body.add(ice);
+    const stick = add(new THREE.BoxGeometry(0.009, STICK + 0.03, 0.0022), std({ color: 0xd9bf8a, roughness: 0.8 }), 0, -STICK / 2 + 0.015, 0, body);
+    const ice = new THREE.Mesh(popGeos[3]!, std({ color: 0x3b2216, roughness: 0.35 })); ice.position.y = 0.0; body.add(ice); // 代码画的版本：模型到之前用
     const frost = std({ roughness: 0.6, map: wrapTop, side: THREE.DoubleSide }), frost2 = std({ roughness: 0.6, map: wrapBot, side: THREE.DoubleSide });
     // 包装：两截各是一个扁盒子，两头压出锯齿边
     // 两截在 cut 处接上，合起来从棍子下半截一直包到冰棍顶上再多出一点
     const yTop = POP_H + 0.018, yBot = -STICK * 0.55, cut = POP_H * 0.5;
     const top = add(rbox(POP_W + 0.012, yTop - cut, POP_D + 0.01, 0.005), frost, 0, (yTop + cut) / 2, 0, body);
     const bot = add(rbox(POP_W + 0.012, cut - yBot, POP_D + 0.01, 0.005), frost2, 0, (cut + yBot) / 2, 0, body);
-    it.onStep = (n) => { const lv = 3 - n; ice.visible = lv > 0; if (lv > 0) ice.geometry = popGeos[lv]!; };
+    let bars: { whole: THREE.Mesh; bitten: THREE.Mesh; cut: { value: number } } | null = null;
+    const showLevel = (lv: number) => {
+      if (!bars) { ice.visible = lv > 0; if (lv > 0) ice.geometry = popGeos[lv]!; return; }
+      // 3：整根；2：模型里那根被咬过一口的；1：整根从下往上只留三分之一（切口是一排牙印，切开的地方露出里面的奶油）；0：只剩棍儿
+      bars.whole.visible = lv !== 2; bars.bitten.visible = lv === 2;
+      bars.cut.value = lv >= 2 ? 1 : lv === 1 ? 0.026 : -0.008; // 0 时连巧克力圆底一起切掉
+    };
+    it.onStep = (n) => showLevel(3 - n);
+    it.usePop = (whole, bitten, cut) => {
+      stick.visible = false; ice.visible = false;
+      body.add(whole, bitten); bars = { whole, bitten, cut }; showLevel(3 - it.step);
+    };
     it.onOpen = () => {
       // 撕开：上截往上一扯、甩向垃圾桶；下截顺着棍儿褪下来，过一会儿也扔进去
       sfx('tear');
@@ -366,11 +388,63 @@ export const fridge: SceneObject = ({ scene, camera, tier, bus, pick, audio }) =
   // 冰棍平躺在冷冻室底板上
   for (const [i, x] of [-0.13, -0.01].entries()) makeItem('pop', [x, DIV_Y + 0.045 + 0.016, 0.08 + i * 0.03], [-Math.PI / 2, 0, 0.3 - i * 0.5], makePop);
 
+  // ---- 换成模型：可乐罐和巧克力脆皮雪糕（Sketchfab，CC-BY，见 CREDITS.md；tools/prep_fridge_models.py 摆正、缩放过）----
+  // 异步加载，到之前是上面代码画的版本
+  let stopped = false;
+  const loader = new GLTFLoader();
+  loader.loadAsync(asset('models/fridge/cola.glb')).then((gltf) => {
+    let src: THREE.Mesh | undefined; gltf.scene.traverse((o) => { if ((o as THREE.Mesh).isMesh) src = o as THREE.Mesh; });
+    if (!src || stopped) return;
+    const mat = src.material as THREE.MeshStandardMaterial; bin.add(src.geometry); bin.add(mat);
+    for (const k of ['map', 'normalMap', 'metalnessMap', 'roughnessMap'] as const) if (mat[k]) bin.add(mat[k]!);
+    mat.envMapIntensity = 0.9; credit.cola = '模型 Blender3D · CC BY';
+    for (const it of items) if (it.kind === 'cola') {
+      const m = new THREE.Mesh(src.geometry, mat); m.rotation.y = 2.51; // 让「Coke」那一面朝前（拿起来时朝着镜头）
+      it.useModel?.(m);
+    }
+  }).catch(() => {});
+  loader.loadAsync(asset('models/fridge/icebar.glb')).then((gltf) => {
+    const get = (n: string) => gltf.scene.getObjectByName(n) as THREE.Mesh | undefined;
+    const a = get('whole'), b = get('bitten');
+    if (!a || !b || stopped) return;
+    credit.pop = '模型 ArbitraryCanary · CC BY';
+    const base = a.material as THREE.MeshStandardMaterial; bin.add(a.geometry); bin.add(b.geometry); bin.add(base);
+    for (const k of ['map', 'normalMap', 'metalnessMap', 'roughnessMap'] as const) if (base[k]) bin.add(base[k]!);
+    for (const it of items) if (it.kind === 'pop') {
+      // 每根冰棍一份材质（切口高度各不相同）：高于切口的片元丢掉，背面（从切口看进去的内壁）画成奶油色，像实心的
+      const cut = { value: 1 };
+      const mat = bin.add(base.clone()); mat.side = THREE.DoubleSide;
+      mat.color.setScalar(2.1); mat.roughness = 0.45; mat.envMapIntensity = 1.4; // 原贴图很暗，冰箱跟前几乎是黑的；调亮一点、带点光泽
+      mat.onBeforeCompile = (sh) => {
+        sh.uniforms.uCut = cut;
+        sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vLp;')
+          .replace('#include <begin_vertex>', '#include <begin_vertex>\nvLp = position;');
+        sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 vLp;\nuniform float uCut;')
+          .replace('#include <clipping_planes_fragment>', `#include <clipping_planes_fragment>
+            // 切口是一排半圆的牙印（只在吃到一半时有；整根时 uCut=1，吃完时贴着巧克力下沿一刀平切）
+            float bite = uCut > 0.01 && uCut < 0.5 ? 0.006 * abs(sin(vLp.x * 110.0)) - 0.003 : 0.0;
+            if (vLp.y > uCut + bite) discard;`)
+          .replace('#include <map_fragment>', '#include <map_fragment>\nif (!gl_FrontFacing) diffuseColor.rgb = vec3(0.93, 0.86, 0.72);')
+          // 内壁的法线朝里，吃不到光：自己发一点光，读起来像切开的实心奶油
+          .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\nif (!gl_FrontFacing) totalEmissiveRadiance += vec3(0.42, 0.38, 0.3);');
+      };
+      mat.customProgramCacheKey = () => 'icebar-cut';
+      const whole = new THREE.Mesh(a.geometry, mat), bitten = new THREE.Mesh(b.geometry, mat);
+      it.usePop?.(whole, bitten, cut);
+    }
+  }).catch(() => {});
+
   // ---------------- 交互 ----------------
   let isOpen = false, held: Item | null = null;
   const say = (msg: string | null) => emit(bus, 'cup:state', msg ? { msg } : null);
   const left = ['', '还剩两口', '还剩一口', ''];
+  // 两个模型是 CC-BY：拿在手里时提示末尾带上署名（网站上没有别的地方放）
+  const credit: Partial<Record<Kind, string>> = {};
   const hint = (it: Item): string => {
+    const c = credit[it.kind];
+    return c ? `${hint0(it)} · ${c}` : hint0(it);
+  };
+  const hint0 = (it: Item): string => {
     if (it.kind === 'apple') return it.step < 3 ? `点一下咬一口${it.step ? ' · ' + left[it.step] : ''}` : '只剩苹果核了 · 点一下扔进垃圾桶';
     if (it.kind === 'pop') return !it.opened ? '点一下撕开包装' : it.step < 3 ? `点一下咬一口${it.step ? ' · ' + left[it.step] : ''}` : '只剩一根棍儿了 · 点一下扔进垃圾桶';
     return !it.opened ? '点一下拉开拉环' : it.step < 3 ? `点一下喝一口${it.step ? ' · ' + left[it.step] : ''}` : '喝完了，扔进垃圾桶';
@@ -502,6 +576,6 @@ export const fridge: SceneObject = ({ scene, camera, tier, bus, pick, audio }) =
       }
       void t; void focusP;
     },
-    stop() { off.forEach((f) => f()); scene.remove(group); bin.dispose(); },
+    stop() { stopped = true; off.forEach((f) => f()); scene.remove(group); bin.dispose(); },
   };
 };
