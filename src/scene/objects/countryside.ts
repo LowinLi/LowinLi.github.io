@@ -480,7 +480,8 @@ export const countryside: SceneObject = ({ scene, tier }) => {
 
   // ---------- 稻田的底色：一大块一大块拼起来的田，田埂、土路、水渠把它们隔开 ----------
   // 稻田的细节贴图到之前先用一张中灰（乘 2 等于不变），不然没加载的贴图采样是黑的，整片田会黑一下
-  const paddyDetail = photo(bin, 'outdoor/paddy_detail.webp');
+  // 图片到了以后先 dispose：显存里按 2×2 占位图分配的那块放不下 512 的图（three 用的是不可变的 texStorage），要重新分配
+  const paddyDetail = photo(bin, 'outdoor/paddy_detail.webp', (t) => { t.dispose(); t.needsUpdate = true; });
   { const c = document.createElement('canvas'); c.width = c.height = 2; const g = c.getContext('2d')!; g.fillStyle = '#808080'; g.fillRect(0, 0, 2, 2); paddyDetail.image = c as unknown as HTMLImageElement; paddyDetail.needsUpdate = true; }
   const FW = 900, FD = 470;
   const fields = outdoorMaterial(bin, { haze: false, sat: 0.72, detail: { map: paddyDetail, size: 2 }, map: bin.add(canvasTex(2048, 1070, (g, w, h) => {

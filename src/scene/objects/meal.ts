@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { Bin, emit, HIT_LAYER, on, type SceneObject } from '../types';
 import { Batch, blob, canvasTex, contactMaterial, rng, speckle } from '../util';
+import { mergeGeometries, mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 /**
  * 一碗米饭（青花碗，碗沿上搁着一双筷子）和一盘西红柿炒鸡蛋。用户要的一套小交互，和咖啡杯同一个路数：
@@ -119,6 +120,34 @@ export const meal: SceneObject = ({ scene, camera, tier, bus, pick }) => {
       p.needsUpdate = true; domeGeo.computeVertexNormals();
     };
     shape();
+    // 一粒粒的米：几百个实例化的小椭球贴着饭堆的表面（咬掉的坑也跟着），远看是一堆饭、近看是一粒粒的米
+    const GN = high ? 900 : 380;
+    const grainMesh = new THREE.InstancedMesh(bin.add(new THREE.SphereGeometry(1, 7, 5).scale(1, 0.46, 0.5)),
+      bin.add(new THREE.MeshStandardMaterial({ color: 0xf7f4ec, roughness: 0.35, emissive: 0x2a2620 })), GN); // 微微自发光：米粒有点透
+    body.add(grainMesh);
+    const gr = rng(73);
+    const gpts = Array.from({ length: GN }, (_, i) => {
+      const rr = Math.sqrt((i + 0.5) / GN) * 0.96, a = i * 2.39996;
+      return { x: rr * Math.cos(a) + (gr() - 0.5) * 0.02, z: rr * Math.sin(a) + (gr() - 0.5) * 0.02, yaw: gr() * 6.28, tilt: (gr() - 0.5) * 0.9, s: 0.0024 + gr() * 0.0008 };
+    });
+    /** 饭堆表面在 (x, z) 处的高度（单位半球坐标），和 shape() 里的算法一致 */
+    const H = (x: number, z: number) => {
+      const y = Math.sqrt(Math.max(0, 1 - x * x - z * z));
+      let k = 1;
+      for (const [bx, bz] of bites) { const d = Math.hypot(x - bx, z - bz); if (d < 0.75) k = Math.min(k, 0.15 + 0.85 * (d / 0.75) ** 2); }
+      return y * k * (1 + 0.06 * Math.sin(x * 9 + z * 7) * Math.cos(z * 11 - x * 3));
+    };
+    const gm = new THREE.Matrix4(), gq = new THREE.Quaternion(), ge = new THREE.Euler(), gv = new THREE.Vector3(), gs = new THREE.Vector3();
+    let gKey = '';
+    const placeGrains = () => {
+      const key = `${dome.position.y.toFixed(4)}|${dome.scale.y.toFixed(4)}|${bites.length}`;
+      if (key === gKey) return; gKey = key;
+      gpts.forEach((g, i) => {
+        gm.compose(gv.set(g.x * dome.scale.x, dome.position.y + H(g.x, g.z) * dome.scale.y + 0.0008, g.z * dome.scale.z), gq.setFromEuler(ge.set(g.tilt * 0.3, g.yaw, g.tilt)), gs.setScalar(g.s));
+        grainMesh.setMatrixAt(i, gm);
+      });
+      grainMesh.instanceMatrix.needsUpdate = true;
+    };
     // 筷子：一双红木筷子斜搁在碗沿上
     const wood = bin.add(new THREE.MeshStandardMaterial({ color: 0x5a1e14, roughness: 0.35 }));
     const tipM = bin.add(new THREE.MeshStandardMaterial({ color: 0xd9b26a, roughness: 0.4, metalness: 0.5 }));
@@ -142,6 +171,7 @@ export const meal: SceneObject = ({ scene, camera, tier, bus, pick }) => {
       // 筷子搁在饭堆顶上；饭低过碗沿以后就搁在碗沿上（筷子几乎从碗中心上方横过，所以按饭堆最高处算）
       restY = Math.max(0.0655, y + hgt * 0.97 + 0.0032);
       dome.visible = lv > 0.03; crumbs.visible = lv < 0.5;
+      grainMesh.visible = dome.visible; placeGrains();
     };
     place(BITES);
     return {
@@ -165,11 +195,17 @@ export const meal: SceneObject = ({ scene, camera, tier, bus, pick }) => {
   const dishProf: [number, number][] = [[0, 0.007], [0.04, 0.008], [0.063, 0.02], [0.075, 0.031]];
   const sauceTex = bin.add(canvasTex(256, 256, (g, w) => {
     const c = w / 2, r = g.createRadialGradient(c, c, 4, c, c, c);
-    r.addColorStop(0, '#d8471f'); r.addColorStop(0.7, '#c43a18'); r.addColorStop(0.92, '#b8501f'); r.addColorStop(1, 'rgba(190,80,30,0)');
+    r.addColorStop(0, '#c23a16'); r.addColorStop(0.7, '#a92c10'); r.addColorStop(0.92, '#a34418'); r.addColorStop(1, 'rgba(190,80,30,0)');
     g.fillStyle = r; g.fillRect(0, 0, w, w);
     // 浮着的油花
     const q = rng(41);
-    for (let i = 0; i < 40; i++) { g.fillStyle = `rgba(255,200,120,${0.15 + q() * 0.25})`; g.beginPath(); g.arc(q() * w, q() * w, 1 + q() * 4, 0, 7); g.fill(); }
+    for (let i = 0; i < 70; i++) { // 浮在汤上的油珠：一圈深边、中间亮
+      const x = q() * w, y = q() * w, rr = 1.5 + q() * 5;
+      g.fillStyle = 'rgba(150,40,10,.35)'; g.beginPath(); g.arc(x, y, rr + 1, 0, 7); g.fill();
+      g.fillStyle = `rgba(255,190,110,${0.35 + q() * 0.3})`; g.beginPath(); g.arc(x, y, rr, 0, 7); g.fill();
+      g.fillStyle = 'rgba(255,245,220,.7)'; g.beginPath(); g.arc(x - rr * 0.3, y - rr * 0.3, rr * 0.3, 0, 7); g.fill();
+    }
+    for (let i = 0; i < 50; i++) { g.fillStyle = `rgba(${200 + q() * 40},${50 + q() * 30},25,.55)`; g.beginPath(); g.ellipse(q() * w, q() * w, 3 + q() * 7, 2 + q() * 4, q() * 3, 0, 7); g.fill(); } // 煮烂的番茄肉
     speckle(g, w, w, 42, 400, '90,20,5', 0.3);
   }));
   const smearTex = bin.add(canvasTex(256, 256, (g, w) => {
@@ -185,38 +221,76 @@ export const meal: SceneObject = ({ scene, camera, tier, bus, pick }) => {
   make('dish', 0.85, 0.031, 0.082, 0.06, (body) => {
     body.add(new THREE.Mesh(bin.add(new THREE.LatheGeometry(V2([[0, 0.003], [0.035, 0.003], [0.036, 0], [0.041, 0], [0.042, 0.004], [0.066, 0.018], [0.078, 0.03], [0.0772, 0.0318], ...dishProf.slice().reverse()]), 56)), porcelain));
     const rimLine = new THREE.Mesh(bin.add(new THREE.TorusGeometry(0.0755, 0.0009, 6, 56).rotateX(Math.PI / 2)), blue); rimLine.position.y = 0.0312; body.add(rimLine);
-    const sauceMat = bin.add(new THREE.MeshStandardMaterial({ map: sauceTex, transparent: true, roughness: 0.25 }));
+    const sauceMat = bin.add(new THREE.MeshPhysicalMaterial({ map: sauceTex, transparent: true, roughness: 0.2, clearcoat: 0.5, clearcoatRoughness: 0.1, envMapIntensity: 0.5 })); // 油亮的汤汁
     const sauce = new THREE.Mesh(bin.add(new THREE.CircleGeometry(1, 40).rotateX(-Math.PI / 2)), sauceMat);
     body.add(sauce);
     // 蛋块：揉皱的扁块，金黄、边上带一点焦色（顶点色）；番茄块：去了籽的瓣，亮；葱花：小绿段
     const lumpy = (seed: number, detail: number) => {
-      const geo = new THREE.IcosahedronGeometry(1, detail);
+      const ico = new THREE.IcosahedronGeometry(1, detail); ico.deleteAttribute('normal');
+      const geo = mergeVertices(ico); ico.dispose(); // 合并重复顶点：法线才是平滑的，不然一块块全是小三角面
       const p = geo.attributes.position, r = rng(seed);
       const ph = [r() * 6, r() * 6, r() * 6];
       for (let i = 0; i < p.count; i++) {
         const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
         const n = 1 + 0.28 * Math.sin(x * 3 + ph[0]) * Math.sin(y * 4 + ph[1]) + 0.18 * Math.sin(z * 5 + ph[2]);
-        p.setXYZ(i, x * n, y * n * 0.45, z * n);
+        const fold = 1 + 0.18 * Math.sin(x * 7 + z * 5 + ph[0]); // 炒散的蛋是一片片带褶的薄块
+        p.setXYZ(i, x * n, y * n * 0.32 * fold, z * n);
       }
       geo.computeVertexNormals();
       return bin.add(geo);
     };
     const eggGeo = lumpy(51, 2);
     const cols: number[] = [];
-    { const p = eggGeo.attributes.position; for (let i = 0; i < p.count; i++) { const brown = Math.max(0, -p.getY(i) * 1.6 - 0.1) + (Math.sin(i * 1.7) > 0.8 ? 0.25 : 0); const c = new THREE.Color(0xf4c84a).lerp(new THREE.Color(0xc98a2c), Math.min(1, brown)); cols.push(c.r, c.g, c.b); } }
+    { const p = eggGeo.attributes.position; for (let i = 0; i < p.count; i++) { const brown = Math.max(0, -p.getY(i) * 1.6 - 0.1) + (Math.sin(i * 1.7) > 0.8 ? 0.25 : 0); const c = new THREE.Color(0xffffff).lerp(new THREE.Color(0xc98a50), Math.min(1, brown)); cols.push(c.r, c.g, c.b); } } // 底色在贴图里，顶点色只管背面的焦色
     eggGeo.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3));
-    const tomGeo = bin.add(new THREE.SphereGeometry(1, 10, 6, 0, Math.PI * 0.85, 0, Math.PI * 0.6).scale(1, 0.55, 1));
+    // 蛋的贴图：金黄底色上拉着几道没炒匀的蛋白，零星几块煎出的焦黄
+    const eggTex = bin.add(canvasTex(256, 256, (g, w) => {
+      g.fillStyle = '#f5cc46'; g.fillRect(0, 0, w, w);
+      const q = rng(57);
+      for (let i = 0; i < 22; i++) { g.strokeStyle = `rgba(252,240,200,${0.4 + q() * 0.4})`; g.lineWidth = 3 + q() * 8; g.lineCap = 'round'; g.beginPath(); const x = q() * w, y = q() * w; g.moveTo(x, y); g.bezierCurveTo(x + (q() - 0.5) * 120, y + (q() - 0.5) * 120, x + (q() - 0.5) * 120, y + (q() - 0.5) * 120, x + (q() - 0.5) * 160, y + (q() - 0.5) * 160); g.stroke(); }
+      for (let i = 0; i < 26; i++) { g.fillStyle = `rgba(${170 + q() * 40},${100 + q() * 30},30,${0.25 + q() * 0.35})`; g.beginPath(); g.ellipse(q() * w, q() * w, 4 + q() * 14, 3 + q() * 8, q() * 3, 0, 7); g.fill(); }
+      speckle(g, w, w, 58, 900, '120,70,10', 0.15);
+    }));
+    // 番茄块：一瓣带皮的番茄，外面是亮红的皮，两个切面露出果肉——外圈一道红色的果壁，里面是透亮的果胶和籽
+    const fleshTex = bin.add(canvasTex(128, 128, (g, w) => {
+      g.fillStyle = '#d8452a'; g.fillRect(0, 0, w, w);
+      g.fillStyle = '#f07a4a'; g.fillRect(0, 0, w * 0.62, w);         // 靠里的果胶（u 小 = 离中轴近）
+      const q = rng(63);
+      for (let i = 0; i < 30; i++) { g.fillStyle = 'rgba(245,215,140,.85)'; g.beginPath(); g.ellipse(q() * w * 0.55, 8 + q() * (w - 16), 3, 1.8, q() * 3, 0, 7); g.fill(); }
+      g.fillStyle = 'rgba(255,170,130,.35)'; g.fillRect(w * 0.6, 0, 3, w);
+    }));
+    const tomGeo = (() => {
+      const PH = 1.25, T0 = 0.12, T1 = 2.7, NT = 8;
+      const skin = new THREE.SphereGeometry(1, 8, NT, 0, PH, T0, T1 - T0);
+      const side = (phi: number, flip: boolean) => {
+        const pos: number[] = [], uv: number[] = [], idx: number[] = [];
+        for (let i = 0; i <= NT; i++) {
+          const th = T0 + (T1 - T0) * (i / NT), y = Math.cos(th), r = Math.sin(th);
+          pos.push(0, y, 0, -r * Math.cos(phi) * 0.999, y, r * Math.sin(phi) * 0.999);
+          uv.push(0, i / NT, 1, i / NT);
+          if (i < NT) { const a = i * 2; idx.push(...(flip ? [a, a + 2, a + 1, a + 1, a + 2, a + 3] : [a, a + 1, a + 2, a + 1, a + 3, a + 2])); }
+        }
+        const g = new THREE.BufferGeometry();
+        g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.setIndex(idx);
+        g.computeVertexNormals();
+        return g.toNonIndexed();
+      };
+      const merged = mergeGeometries([skin.toNonIndexed(), side(0, false), side(PH, true)], true);
+      merged.groups[2].materialIndex = 1; // 两个切面都用果肉材质
+      merged.scale(1, 0.75, 1);
+      return bin.add(merged);
+    })();
     const scalGeo = bin.add(new THREE.CylinderGeometry(1, 1, 1, 6));
     const kinds = [
-      { geo: eggGeo, mat: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.65 }), n: 14, size: [0.011, 0.017] },
-      { geo: tomGeo, mat: new THREE.MeshStandardMaterial({ color: 0xd4321b, roughness: 0.22, side: THREE.DoubleSide }), n: 10, size: [0.012, 0.016] },
+      { geo: eggGeo, mat: new THREE.MeshPhysicalMaterial({ vertexColors: true, map: eggTex, roughness: 0.5, clearcoat: 0.45, clearcoatRoughness: 0.25 }), n: 18, size: [0.01, 0.016] },
+      { geo: tomGeo, mat: [new THREE.MeshPhysicalMaterial({ color: 0xd1301a, roughness: 0.25, clearcoat: 0.6, clearcoatRoughness: 0.1 }), new THREE.MeshStandardMaterial({ map: fleshTex, roughness: 0.35, side: THREE.DoubleSide })], n: 14, size: [0.011, 0.015] },
       { geo: scalGeo, mat: new THREE.MeshStandardMaterial({ color: 0x4f9b2f, roughness: 0.5 }), n: 12, size: [0.0016, 0.0016] },
     ];
     const r = rng(61), m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), s = new THREE.Vector3(), p = new THREE.Vector3();
     type Piece = { mesh: THREE.InstancedMesh; i: number; m: THREE.Matrix4; group: number };
     const pieces: Piece[] = [];
     for (const k of kinds) {
-      bin.add(k.mat);
+      for (const m of ([] as THREE.Material[]).concat(k.mat)) bin.add(m);
       const mesh = new THREE.InstancedMesh(k.geo, k.mat, k.n);
       mesh.castShadow = high;
       for (let i = 0; i < k.n; i++) {
