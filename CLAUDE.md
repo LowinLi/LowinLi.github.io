@@ -145,7 +145,7 @@ URL 加 `?tier=high|mid|low` 可以强制指定档位。
   - 猫、狗、水牛是带骨骼动画的模型（Quaternius，CC0，原文件是 .blend，用 bpy 转成 glb 放在 `public/assets/models/animals/`）：走和站两套动作交叉淡入淡出。材质换成以自发光为主的 `MeshLambertMaterial`（屋外不吃室内的灯），并重新上色（灰猫→橘猫，灰狗→黄狗，奶牛→水牛）。猫狗在模型加载前用代码拼的版本顶替。
   - 猫狗的毛色和五官在 `scene/animalDetail.ts`（用户嫌过模型「没有毛发纹路和五官」）：毛发是改 Lambert 着色器、按绑定姿态下的顶点位置画的（顺毛的细纹、猫的虎斑、狗背上的深色鞍毛），跟着骨骼动；眼睛（会眨）、鼻子、嘴、猫的胡须挂在头骨 `Bone003` 上。脸上各点的位置是在 Blender 里用射线在静止姿态取的，换模型要重取。调试：`?pets=1` 把猫狗放到书桌上面朝镜头站着。
   - 活物在 `objects/animals.ts`：橘猫和黄狗走菜园中间那条横路（坐在桌前能看到），猫偶尔贴着窗根走，走到半路会停下来转头朝屋里看；三只鸡在路边踱步啄食；菜地上有蝴蝶；隔一阵有一小群鸟从远处飞过。
-  - **叫声**（用户要的：看窗外时鸡要叫，狗、猫经过时偶尔叫）：`scene/animalSounds.ts` 用 WebAudio 现合成（锯齿波声带 + 带通共振峰，音高和共振峰按折线变化；狗叫掺噪声，公鸡过软削波），没有音频文件。只在窗前（`window:focus` 到 `window:blur`）排：母鸡每 4–11 秒咯咯几声，远处（左后方，画面里没有公鸡）每 25–55 秒一声打鸣；狗、猫只在画面里走着时叫，停下来朝屋里看时计时快三倍。按离镜头的距离衰减、按屏幕左右做声像。AudioContext 在 `window:focus` 的点击里拿（浏览器要求有手势）。
+  - **叫声**（用户要的：看窗外时鸡要叫，狗、猫经过时偶尔叫；后来要求「找声音素材」）：用的是**实录**——Wikimedia Commons 的公有领域录音（公鸡、母鸡、猫）和 OpenGameArt 的 CC0 录音（狗、猫），`tools/build_animal_sounds.py` 剪成 16 段、统一响度，拼成一个 212 KB 的 mp3 声音精灵（`public/assets/sounds/animals.mp3` + 每段起止的 json），第一次走到窗前才下载，`decodeAudioData` 后按偏移播放，每次音高随机差 ±6%。下载完成前和失败时用 `scene/animalSounds.ts` 合成的版本（锯齿波声带 + 带通共振峰）顶替。只在窗前（`window:focus` 到 `window:blur`）排：母鸡每 4–11 秒咯咯几声，远处（左后方，画面里没有公鸡）每 25–55 秒一声打鸣；狗、猫只在画面里走着时叫，停下来朝屋里看时计时快三倍。按离镜头的距离衰减、按屏幕左右做声像。AudioContext 在 `window:focus` 的点击里拿（浏览器要求有手势）。
   - **窗外也要细致，用户嫌过「简陋」。** 现在的做法（新增东西时照着来）：
     - 叶子用 `leafGeo`，顶点色从叶柄的浅色过渡到叶色、中脉偏浅（`put` 的 `base` / `rib` 选项）；白菜是外圈摊开的老叶 + 里圈抱着的嫩叶。
     - 代码画的树（照片没到时的回退）= 树干 + 分枝 + 十来团凹凸的小树冠（`lump`）；杨树是一条瘦高的树冠；竹子是一丛细竿。
@@ -275,7 +275,8 @@ URL 加 `?tier=high|mid|low` 可以强制指定档位。
 - 物理上真实的天光比例下房间会很暗，而运行时桌面物件的环境光是按「明亮的清晨」调的，所以烘焙脚本里把天光提了 5 倍，运行时再乘 2。改任何一边都要一起看。
 - 扫描模型第一次进画面时要编译着色器，会卡一下：`furniture.ts` 里先 `renderer.compileAsync` 再加进场景。
 - Poly Haven 的接口拒绝 Python 自带的客户端标识（403），下载脚本要换成普通浏览器的标识。
-- 这个云端环境默认连不上素材站：项目环境的白名单里放行了 `api.polyhaven.com`、`dl.polyhaven.org`、`opengameart.org`、`kenney.nl`，以及 Sketchfab 的搜索接口（`api.sketchfab.com`、缩略图 `media.sketchfab.com`）和 Hugging Face（`huggingface.co`、`us.aws.cdn.hf.co` 等，下 Objaverse 的 glb：先下 `object-paths.json.gz` 查 uid 对应的路径）。
+- Wikimedia Commons 的下载要带一个说明用途的客户端标识，连续下太快会 429，每个文件之间隔几秒。
+- 这个云端环境默认连不上素材站：项目环境的白名单里放行了 `commons.wikimedia.org`、`upload.wikimedia.org`、`api.polyhaven.com`、`dl.polyhaven.org`、`opengameart.org`、`kenney.nl`，以及 Sketchfab 的搜索接口（`api.sketchfab.com`、缩略图 `media.sketchfab.com`）和 Hugging Face（`huggingface.co`、`us.aws.cdn.hf.co` 等，下 Objaverse 的 glb：先下 `object-paths.json.gz` 查 uid 对应的路径）。
 - Kenney Nature Kit 的树是方块风格，比现在代码生成的树还简单，试过没有采用。
 - 截图环境里 high 档（后期处理 + 4 倍抗锯齿）极慢：1440×900 会超时，用 1100×690 左右，截图超时设到 3 分钟。mid 档可以用 1440×900。
 - `Batch` 合并要求所有几何体属性一致：它会自动转成非索引并补齐 uv；需要顶点色时用 `new Batch(['position','normal','uv','color'])`。

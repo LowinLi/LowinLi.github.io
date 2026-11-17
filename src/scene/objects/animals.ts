@@ -252,11 +252,35 @@ export const animals: SceneObject = ({ scene, tier, camera, bus, audio }) => {
     on(bus, 'window:focus', () => {
       try { actx = audio(); } catch { actx = null; }
       if (actx && !out) { out = actx.createGain(); out.gain.value = 0.55; out.connect(actx.destination); }
+      if (actx) loadSprite(actx);
       atWindow = true;
       timers.hen = 1 + Math.random() * 2; timers.rooster = 3 + Math.random() * 4; timers.dog = 1.5 + Math.random() * 3; timers.cat = 2 + Math.random() * 4;
     }),
     on(bus, 'window:blur', () => { atWindow = false; }),
   ];
+  // 录音（tools/build_animal_sounds.py 拼的声音精灵：一个 mp3 + 每段的起止），第一次走到窗前才下载；到之前、失败时用合成的
+  type Kind = 'crow' | 'cluck' | 'bark' | 'meow';
+  let sprite: { buf: AudioBuffer; clips: Record<Kind, [number, number][]> } | null = null, spriteLoading = false;
+  const loadSprite = (ctx: AudioContext) => {
+    if (spriteLoading) return; spriteLoading = true;
+    Promise.all([
+      fetch(asset('sounds/animals.json')).then((r) => r.json() as Promise<Record<Kind, [number, number][]>>),
+      fetch(asset('sounds/animals.mp3')).then((r) => r.arrayBuffer()).then((b) => ctx.decodeAudioData(b)),
+    ]).then(([clips, buf]) => { if (!stopped) sprite = { buf, clips }; }).catch(() => {});
+  };
+  const SYNTH: Record<Kind, (ctx: AudioContext, dest: AudioNode, t0: number) => void> = { crow, cluck, bark, meow };
+  /** 播一声：有录音就随机挑一段（音高随机差一点，听着不像同一段），狗叫连着来一到三下 */
+  const voice = (kind: Kind) => (ctx: AudioContext, dest: AudioNode, t0: number) => {
+    if (!sprite) { SYNTH[kind](ctx, dest, t0); return; }
+    const list = sprite.clips[kind], n = kind === 'bark' ? 1 + Math.floor(Math.random() * 3) : 1;
+    let t = t0;
+    for (let i = 0; i < n; i++) {
+      const [off, dur] = list[Math.floor(Math.random() * list.length)];
+      const src = ctx.createBufferSource(); src.buffer = sprite.buf; src.playbackRate.value = 0.94 + Math.random() * 0.12;
+      src.connect(dest); src.start(t, off, dur); src.onended = () => src.disconnect();
+      t += dur / src.playbackRate.value + 0.08 + Math.random() * 0.12;
+    }
+  };
   /** 在世界坐标 p 处出一声：按离镜头的距离衰减，按左右做声像 */
   const emitAt = (p: THREE.Vector3, play: (ctx: AudioContext, dest: AudioNode, t0: number) => void, loud = 1) => {
     if (!actx || !out || actx.state !== 'running') return;
@@ -266,22 +290,22 @@ export const animals: SceneObject = ({ scene, tier, camera, bus, audio }) => {
     const rel = p.clone().applyMatrix4(camera.matrixWorldInverse); pan.pan.value = THREE.MathUtils.clamp(rel.x / Math.max(-rel.z, 1) * 0.8, -0.9, 0.9);
     g.connect(pan).connect(out);
     play(actx, g, actx.currentTime + 0.02);
-    setTimeout(() => { g.disconnect(); pan.disconnect(); }, 3000);
+    setTimeout(() => { g.disconnect(); pan.disconnect(); }, 6000);
   };
   const tmp = new THREE.Vector3();
   const sounds = (dt: number) => {
     if (!atWindow || !actx) return;
     timers.hen -= dt; timers.rooster -= dt; timers.dog -= dt; timers.cat -= dt;
-    if (timers.hen <= 0) { timers.hen = 4 + Math.random() * 7; const h = hens[Math.floor(Math.random() * hens.length)]; emitAt(h.root.getWorldPosition(tmp), cluck, 0.8); }
+    if (timers.hen <= 0) { timers.hen = 4 + Math.random() * 7; const h = hens[Math.floor(Math.random() * hens.length)]; emitAt(h.root.getWorldPosition(tmp), voice('cluck'), 0.8); }
     // 公鸡不在画面里：是远处哪户人家的，声音从左后方远远传来
-    if (timers.rooster <= 0) { timers.rooster = 25 + Math.random() * 30; emitAt(tmp.set(-14, gy + 1, -26), crow, 1.6); }
+    if (timers.rooster <= 0) { timers.rooster = 25 + Math.random() * 30; emitAt(tmp.set(-14, gy + 1, -26), voice('crow'), 1.6); }
     for (const [a, key] of [[dog, 'dog'], [cat, 'cat']] as const) {
       const seen = a.root.visible && a.state !== 'wait' && Math.abs(a.root.position.x) < EDGE - 1;
       if (!seen) continue;
       timers[key] -= a.state === 'pause' ? dt * 2 : 0; // 停下来朝屋里看的时候叫得勤一点
       if (timers[key] <= 0) {
         timers[key] = key === 'dog' ? 4 + Math.random() * 7 : 5 + Math.random() * 8;
-        emitAt(a.root.getWorldPosition(tmp).setY(gy + 0.4), key === 'dog' ? bark : meow, key === 'dog' ? 1 : 0.75);
+        emitAt(a.root.getWorldPosition(tmp).setY(gy + 0.4), voice(key === 'dog' ? 'bark' : 'meow'), key === 'dog' ? 1 : 0.75);
       }
     }
   };

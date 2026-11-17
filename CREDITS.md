@@ -23,11 +23,12 @@
 | `outdoor/*.jpg` | Poly Haven 贴图「Farm Soil」「Stony Dirt Path」「Plastered Wall」「Grey Roof Tiles」「Old Stone Wall」「Reed Roof 04」「Rough Linen」「Denim Fabric」（[polyhaven.com](https://polyhaven.com/textures)，CC0） | 菜园的泥土和菜畦、土路、农舍的墙和瓦、墙裙、踏脚石和井台、草垛、稻草人和农人的衣服 | 缩到 512–1024 |
 | `models/fridge/cola.glb` | Sketchfab 模型「[Simple Cola Can](https://sketchfab.com/3d-models/aaa11e57064848268d701a3586792d0d)」，作者 Blender3D，**CC BY 4.0（需署名）** | 冰箱里的可乐罐 | 从 Objaverse 的镜像下载；摆正、缩到真实尺寸（高 11.5 cm），贴图缩到 1024 转 webp，见 `tools/prep_fridge_models.py`。罐子上的商标属于其所有者 |
 | `models/fridge/icebar.glb` | Sketchfab 模型「[Ice Cream Bars](https://sketchfab.com/3d-models/3ff7b700266448668023b196645f583f)」，作者 ArbitraryCanary，**CC BY 4.0（需署名）** | 冰箱里的巧克力脆皮雪糕（完整的一根、咬过一口的一根） | 去掉纸杯、两根分开摆正，宽 4.2 cm，贴图缩到 512，同上 |
+| `sounds/animals.mp3`、`animals.json` | 录音：Wikimedia Commons「[Medium rooster crowing](https://commons.wikimedia.org/wiki/File:Medium_rooster_crowing.ogg)」「[Small rooster crowing](https://commons.wikimedia.org/wiki/File:Small_rooster_crowing.ogg)」「[Hen announcing shes lain an egg](https://commons.wikimedia.org/wiki/File:Hen_announcing_shes_lain_an_egg.ogg)」（alys，公有领域）、「[Meow of a pleading cat](https://commons.wikimedia.org/wiki/File:Meow_of_a_pleading_cat.oga)」（Heismark，公有领域）；OpenGameArt「[Dog barking mono](https://opengameart.org/content/dog-barking-mono)」（haeldb，CC0）、「[Meow](https://opengameart.org/content/meow)」（ignasd，CC0）、「[Cat Purr & Meow](https://opengameart.org/content/cat-purr-meow)」（kerzoven，CC0） | 看窗外时的鸡叫、公鸡打鸣、狗叫、猫叫 | 剪成一声声的片段、统一响度，拼成一个 mp3 声音精灵，见 `tools/build_animal_sounds.py` |
 | `light/*.jpg` | 用上面那张 HDRI 当天光，在 Blender 里烘焙的光照贴图 | 地面和三面墙的光影 | 见 `tools/bake_lighting.py` |
 
 图集里的稻丛、白菜、生菜、葱、玉米和 `outdoor/paddy_detail.webp` 是自己在 Blender 里按程序建模渲的（`tools/render_crops.py`），没有外部素材。
 
-其余所有东西（窗外的向日葵、篱笆、房子的形状、远山、鸡、蝴蝶、鸟，木格窗、竹帘、字画，书桌、录音机和磁带、咖啡机和拿铁、咖啡豆袋、书、显示器、键盘、虎尾兰，音乐等）都是代码生成的，没有外部素材。
+其余所有东西（窗外的向日葵、冰箱和咖啡机的音效、篱笆、房子的形状、远山、鸡、蝴蝶、鸟，木格窗、竹帘、字画，书桌、录音机和磁带、咖啡机和拿铁、咖啡豆袋、书、显示器、键盘、虎尾兰，音乐等）都是代码生成的，没有外部素材。
 
 ## 用到的开源库（运行时按需加载）
 
