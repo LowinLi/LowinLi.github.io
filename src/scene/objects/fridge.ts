@@ -357,6 +357,18 @@ export const fridge: SceneObject = ({ scene, camera, tier, bus, pick, audio }) =
     return bin.add(g.translate(0, 0, -(POP_D - 0.006) / 2));
   };
   const popGeos = [0, 1, 2, 3].map((lv) => (lv ? popShape(lv) : null));
+  const BARE_LO = -0.039, BARE_HI = 0.046, BARE_W = 0.0095;
+  const bareGeo = bin.add(new THREE.CapsuleGeometry(BARE_W / 2, BARE_HI - BARE_LO - BARE_W, 4, 10).scale(1, 1, 0.24).translate(0, (BARE_HI + BARE_LO) / 2, 0));
+  const bareMat = std({ roughness: 0.75, map: bin.add(canvasTex(32, 256, (g, w, h) => {
+    g.fillStyle = '#dcc394'; g.fillRect(0, 0, w, h);
+    g.strokeStyle = 'rgba(150,110,60,.35)'; g.lineWidth = 1;
+    for (let x = 3; x < w; x += 5) { g.beginPath(); g.moveTo(x, 0); g.lineTo(x + 1, h); g.stroke(); } // 木纹
+    // 贴图上半是棍子的上半截（原来插在雪糕里）：沾着化掉的巧克力，越往下越淡，边缘不齐
+    const grd = g.createLinearGradient(0, 0, 0, h * 0.5); grd.addColorStop(0, 'rgba(70,38,20,.8)'); grd.addColorStop(0.55, 'rgba(90,50,25,.3)'); grd.addColorStop(1, 'rgba(110,70,35,0)');
+    g.fillStyle = grd; g.fillRect(0, 0, w, h * 0.5);
+    const q = rng(91); g.fillStyle = 'rgba(70,38,20,.45)';
+    for (let i = 0; i < 6; i++) { g.beginPath(); g.ellipse(q() * w, h * (0.3 + q() * 0.2), 2 + q() * 4, 4 + q() * 10, 0, 0, 7); g.fill(); }
+  })) });
   const makePop = (body: THREE.Group, it: Item) => {
     const stick = add(new THREE.BoxGeometry(0.009, STICK + 0.03, 0.0022), std({ color: 0xd9bf8a, roughness: 0.8 }), 0, -STICK / 2 + 0.015, 0, body);
     const ice = new THREE.Mesh(popGeos[3]!, std({ color: 0x3b2216, roughness: 0.35 })); ice.position.y = 0.0; body.add(ice); // 代码画的版本：模型到之前用
@@ -370,9 +382,12 @@ export const fridge: SceneObject = ({ scene, camera, tier, bus, pick, audio }) =
     const showLevel = (lv: number) => {
       if (!bars) { ice.visible = lv > 0; if (lv > 0) ice.geometry = popGeos[lv]!; return; }
       // 3：整根；2：模型里那根被咬过一口的；1：整根从下往上只留三分之一（切口是一排牙印，切开的地方露出里面的奶油）；0：只剩棍儿
-      bars.whole.visible = lv !== 2; bars.bitten.visible = lv === 2;
-      bars.cut.value = lv >= 2 ? 1 : lv === 1 ? 0.026 : -0.008; // 0 时连巧克力圆底一起切掉
+      bars.whole.visible = lv === 3 || lv === 1; bars.bitten.visible = lv === 2; bare.visible = lv === 0;
+      bars.cut.value = lv === 1 ? 0.026 : 1;
     };
+    // 吃光后剩的整根棍儿：模型里的棍子只建了露在外面的一小截，插在雪糕里的那段没有，切光了只剩个短头（用户说「把棍也吃了」）。
+    // 所以最后一档换成一根完整的：两头圆、扁的，上半截沾着巧克力，伸到原来雪糕的三分之二高
+    const bare = add(bareGeo.clone(), bareMat, 0, 0, 0, body); bare.visible = false;
     it.onStep = (n) => showLevel(3 - n);
     it.usePop = (whole, bitten, cut) => {
       stick.visible = false; ice.visible = false;
