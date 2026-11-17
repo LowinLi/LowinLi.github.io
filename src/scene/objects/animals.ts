@@ -3,7 +3,8 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { asset } from '../util';
 import { addFace, addFur } from '../animalDetail';
-import { Bin, type SceneObject } from '../types';
+import { Bin, on, type SceneObject } from '../types';
+import { bark, cluck, crow, meow } from '../animalSounds';
 import { L } from '../layout';
 
 type Tint = number | ((x: number, y: number, z: number) => number);
@@ -32,8 +33,10 @@ interface Spec { len: number; legLen: number; bodyR: number; headR: number; coat
  * - 三只鸡在路边踱步、低头啄食。
  * - 两三只蝴蝶在菜地上飞。
  * - 隔一阵有一小群鸟从远处的天上飞过。
+ * - 走到窗前看窗外时有叫声（用户要的）：鸡隔一会儿咯咯几声、远处偶尔一声公鸡打鸣；狗、猫在画面里走过时偶尔叫，
+ *   停下来朝屋里看的时候更容易叫。声音按左右位置做声像、按距离变小。只在窗前时有，回座位就停。
  */
-export const animals: SceneObject = ({ scene, tier }) => {
+export const animals: SceneObject = ({ scene, tier, camera, bus, audio }) => {
   const bin = new Bin();
   const group = new THREE.Group();
   const mat = bin.add(new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide }));
@@ -241,8 +244,51 @@ export const animals: SceneObject = ({ scene, tier }) => {
   scene.add(group);
 
   const EDGE = 9.6;
+
+  // ---- 叫声：只在窗前时排。AudioContext 要在用户点击里拿（window:focus 是点击触发的，同步派发）----
+  let actx: AudioContext | null = null, out: GainNode | null = null, atWindow = false;
+  const timers = { hen: 0, rooster: 0, dog: 0, cat: 0 };
+  const offs = [
+    on(bus, 'window:focus', () => {
+      try { actx = audio(); } catch { actx = null; }
+      if (actx && !out) { out = actx.createGain(); out.gain.value = 0.55; out.connect(actx.destination); }
+      atWindow = true;
+      timers.hen = 1 + Math.random() * 2; timers.rooster = 3 + Math.random() * 4; timers.dog = 1.5 + Math.random() * 3; timers.cat = 2 + Math.random() * 4;
+    }),
+    on(bus, 'window:blur', () => { atWindow = false; }),
+  ];
+  /** 在世界坐标 p 处出一声：按离镜头的距离衰减，按左右做声像 */
+  const emitAt = (p: THREE.Vector3, play: (ctx: AudioContext, dest: AudioNode, t0: number) => void, loud = 1) => {
+    if (!actx || !out || actx.state !== 'running') return;
+    const d = p.distanceTo(camera.position);
+    const g = actx.createGain(); g.gain.value = loud * Math.min(1, 5 / Math.max(d, 1));
+    const pan = actx.createStereoPanner();
+    const rel = p.clone().applyMatrix4(camera.matrixWorldInverse); pan.pan.value = THREE.MathUtils.clamp(rel.x / Math.max(-rel.z, 1) * 0.8, -0.9, 0.9);
+    g.connect(pan).connect(out);
+    play(actx, g, actx.currentTime + 0.02);
+    setTimeout(() => { g.disconnect(); pan.disconnect(); }, 3000);
+  };
+  const tmp = new THREE.Vector3();
+  const sounds = (dt: number) => {
+    if (!atWindow || !actx) return;
+    timers.hen -= dt; timers.rooster -= dt; timers.dog -= dt; timers.cat -= dt;
+    if (timers.hen <= 0) { timers.hen = 4 + Math.random() * 7; const h = hens[Math.floor(Math.random() * hens.length)]; emitAt(h.root.getWorldPosition(tmp), cluck, 0.8); }
+    // 公鸡不在画面里：是远处哪户人家的，声音从左后方远远传来
+    if (timers.rooster <= 0) { timers.rooster = 25 + Math.random() * 30; emitAt(tmp.set(-14, gy + 1, -26), crow, 1.6); }
+    for (const [a, key] of [[dog, 'dog'], [cat, 'cat']] as const) {
+      const seen = a.root.visible && a.state !== 'wait' && Math.abs(a.root.position.x) < EDGE - 1;
+      if (!seen) continue;
+      timers[key] -= a.state === 'pause' ? dt * 2 : 0; // 停下来朝屋里看的时候叫得勤一点
+      if (timers[key] <= 0) {
+        timers[key] = key === 'dog' ? 4 + Math.random() * 7 : 5 + Math.random() * 8;
+        emitAt(a.root.getWorldPosition(tmp).setY(gy + 0.4), key === 'dog' ? bark : meow, key === 'dog' ? 1 : 0.75);
+      }
+    }
+  };
+
   return {
     frame(dt, t) {
+      sounds(dt);
       for (const m of mixers) m.update(dt);
       for (const b of blinks) b(dt);
       for (const a of [cat, dog]) {
@@ -326,7 +372,7 @@ export const animals: SceneObject = ({ scene, tier }) => {
       }
     },
     stop() {
-      stopped = true;
+      stopped = true; offs.forEach((f) => f()); out?.disconnect();
       mixers.forEach((m) => m.stopAllAction());
       for (const m of loaded) m.traverse((o) => { const x = o as THREE.Mesh; if (x.isMesh) { x.geometry.dispose(); const mm = x.material as THREE.MeshLambertMaterial; mm.map?.dispose?.(); } });
       scene.remove(group); bin.dispose();
