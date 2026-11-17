@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { Bin, type SceneObject } from '../types';
+import { Bin, emit, HIT_LAYER, type SceneObject } from '../types';
 import { L } from '../layout';
 import { Batch, canvasTex, leafGeo, place, rbox, rng, speckle, type V3 } from '../util';
 import { Impostors, outdoorMaterial, photo, worldUV } from '../impostor';
@@ -12,7 +12,7 @@ import { Impostors, outdoorMaterial, photo, worldUV } from '../impostor';
  * 朝上的面亮、朝下的面暗，叶子从叶柄到叶尖有深浅、中脉偏浅，越远越泛白；地上的影子是单独一层半透明的暗色片（清晨的长影子，朝屋子这边拖）。
  * 菜园里所有静态的东西合成一个网格。
  */
-export const countryside: SceneObject = ({ scene, tier }) => {
+export const countryside: SceneObject = ({ scene, tier, bus, pick: pickable }) => {
   const bin = new Bin();
   const group = new THREE.Group();
   const high = tier === 'high';
@@ -127,6 +127,8 @@ export const countryside: SceneObject = ({ scene, tier }) => {
     { z0: -13.2, z1: -8.9, crops: ['corn', 'lettuce', 'scallion', 'cabbage', 'chili', 'lettuce', 'cabbage', 'pumpkin', 'pumpkin', 'corn'] },
   ];
   const GREEN = [0x4f8a3a, 0x5c9a42, 0x437a33, 0x6aa84a];
+  type PickKind = 'cabbage' | 'scallion' | 'lettuce';
+  const crops: { kind: PickKind; x: number; y: number; z: number; h: number; idx: number; gone: boolean }[] = [];
   const by = gy + 0.12; // 垄面的高度
   const plant = {
     cabbage(x: number, z: number, s = 1, light = false) {
@@ -204,10 +206,17 @@ export const countryside: SceneObject = ({ scene, tier }) => {
       // 白菜、生菜、葱、玉米换成 Blender 里渲的照片（tools/render_crops.py）；代码画的版本进回退批次，照片到了整批拿掉
       const PHOTO: Partial<Record<Crop, [string[], number, number]>> = { cabbage: [['cabbage_0', 'cabbage_1', 'cabbage_2'], 0.36, 1.1], lettuce: [['lettuce_0', 'lettuce_1', 'lettuce_2'], 0.22, 0.82], scallion: [['scallion_0', 'scallion_1'], 0.56, 1.1], corn: [['corn_0', 'corn_1'], 2.1, 1.1] };
       const photoCrop = PHOTO[crop];
+      // 站在窗前能摘的：近处那一片的白菜、葱，远处中间几垄的白菜、生菜（照片菜，摘了能藏起来）
+      const canPick = (crop === 'cabbage' || crop === 'scallion' || crop === 'lettuce') && (band.z0 === bands[0].z0 || Math.abs(x) < 4);
       for (const dx of rowsX) for (let z = band.z0 + 0.2; z < band.z1 - 0.1; z += step) {
         if (skip()) continue;
         const px = x + dx + (r() - 0.5) * 0.04, pz = z + (r() - 0.5) * 0.05;
-        if (photoCrop) { imp.add(pick(photoCrop[0]), px, by - 0.01, pz, photoCrop[1] * (0.85 + r() * 0.3), { flip: r() < 0.5, tint: photoCrop[2] * (0.95 + r() * 0.12) }); target = treeBatch; }
+        if (photoCrop) {
+          const ph = photoCrop[1] * (0.85 + r() * 0.3);
+          const idx = imp.add(pick(photoCrop[0]), px, by - 0.01, pz, ph, { flip: r() < 0.5, tint: photoCrop[2] * (0.95 + r() * 0.12) });
+          if (canPick) crops.push({ kind: crop as PickKind, x: px, y: by, z: pz, h: ph, idx, gone: false });
+          target = treeBatch;
+        }
         if (crop === 'cabbage') plant.cabbage(px, pz, 0.85 + r() * 0.3);
         else if (crop === 'lettuce') plant.cabbage(px, pz, 0.7 + r() * 0.2, true);
         else if (crop === 'scallion') plant.scallion(px, pz);
@@ -276,16 +285,7 @@ export const countryside: SceneObject = ({ scene, tier }) => {
   put(new THREE.CylinderGeometry(0.004, 0.004, 0.7, 4), 0xcbb98a, [wx, gy + 0.9, wz]);
   put(new THREE.CylinderGeometry(0.13, 0.1, 0.24, 12, 1, true), 0x8a6a44, [wx + 0.85, gy + 0.12, wz + 0.3]);
   shade(wx, wz, 0.7, 1.1);
-  const bx = 1.5, bz = -6.2; // 箩筐（里面的菜是模型，在 animals.ts 里加载）
-  // 竹篾编的箩筐：横竖交错的篾条（贴图）
-  const weave = outdoorMaterial(bin, { vertexColors: true, haze: false, sat: 0.8, side: THREE.DoubleSide, map: bin.add(canvasTex(256, 128, (g, w, h) => {
-    g.fillStyle = '#6b5232'; g.fillRect(0, 0, w, h);
-    for (let y = 0; y < h; y += 8) for (let x = 0; x < w; x += 16) { const o = (y / 8) % 2 ? 8 : 0; g.fillStyle = `rgb(${190 + Math.random() * 30},${158 + Math.random() * 25},${100 + Math.random() * 20})`; g.fillRect(x + o, y + 1, 13, 6); }
-    for (let x = 4; x < w; x += 16) { g.fillStyle = 'rgba(90,65,35,.5)'; g.fillRect(x, 0, 3, h); }
-  }, [3, 1])) });
-  put(new THREE.CylinderGeometry(0.2, 0.15, 0.22, 18, 1, true), 0xffffff, [bx, gy + 0.11, bz], [0, 0, 0], 1, { mat: weave, k: 1.15 });
-  put(new THREE.TorusGeometry(0.2, 0.012, 5, 18).rotateX(Math.PI / 2), 0x8a6a40, [bx, gy + 0.22, bz]);
-  shade(bx, bz, 0.22, 0.3);
+  // 箩筐挪到了 objects/basket.ts（摘菜时菜飞进去，回屋时能带进屋里），位置还是 (1.5, -6.2)
   put(new THREE.CylinderGeometry(0.015, 0.015, 1.5, 5), 0x8a6a44, [8.45, gy + 0.72, -5.2], [0, 0, 0.18]);
   put(new THREE.BoxGeometry(0.16, 0.02, 0.1), 0x4a4c50, [8.34, gy + 0.03, -5.2], [0, 0, 0.5]);
 
@@ -475,6 +475,22 @@ export const countryside: SceneObject = ({ scene, tier }) => {
     if (!n || stopped) return;
     group.remove(fallbackTrees); group.remove(rice);
     fallbackTrees.traverse((o) => (o as THREE.Mesh).geometry?.dispose());
+    // 能摘的菜：每棵一个看不见的点击球（HIT_LAYER，不画），站在窗前点它 → 问筐收不收（garden:pick，basket.ts 同步回答）→ 收了就藏起这张照片
+    const hit = new THREE.InstancedMesh(bin.add(new THREE.SphereGeometry(1, 8, 6)), bin.add(new THREE.MeshBasicMaterial()), crops.length);
+    const hm = new THREE.Matrix4();
+    crops.forEach((c, i) => { const rad = c.kind === 'scallion' ? 0.13 : 0.2; hit.setMatrixAt(i, hm.makeScale(rad, rad, rad).setPosition(c.x, c.y + Math.min(c.h, 0.4) * 0.45, c.z)); });
+    hit.layers.set(HIT_LAYER); hit.userData.keepsWindow = true; hit.frustumCulled = false;
+    hit.computeBoundingSphere();
+    group.add(hit);
+    pickable(hit, { click(h) {
+      const i = h.instanceId; if (i === undefined) return;
+      const c = crops[i]; if (!c || c.gone) return;
+      const ask = { kind: c.kind, p: [c.x, c.y, c.z], h: c.h, ok: false };
+      emit(bus, 'garden:pick', ask);
+      if (!ask.ok) return;
+      c.gone = true; imp.hide(c.idx);
+      hit.setMatrixAt(i, hm.makeScale(0, 0, 0)); hit.instanceMatrix.needsUpdate = true; hit.computeBoundingSphere();
+    } });
   }).catch((e) => console.warn('[countryside] 照片树加载失败，继续用代码画的树', e));
   shadows.build(group, bin).forEach((m) => { m.frustumCulled = false; m.renderOrder = 1; });
 

@@ -23,10 +23,11 @@ import { mirror } from './objects/mirror';
 import { dust } from './objects/dust';
 import { handheld } from './objects/handheld';
 import { trophyShelf } from './objects/trophyShelf';
+import { basket } from './objects/basket';
 import { cameraRig } from './objects/cameraRig';
 
 /** 场景里挂载的物件清单。新物件：在 objects/ 下建文件，然后加到这里。cameraRig 放最后。 */
-const OBJECTS: SceneObject[] = [sky, countryside, animals, room, furniture, mirror, desk, monitor, bookshelf, recorder, coffee, cups, meal, calendar, fridge, handheld, trophyShelf, plants, dust, cameraRig];
+const OBJECTS: SceneObject[] = [sky, countryside, animals, room, furniture, mirror, desk, monitor, bookshelf, recorder, coffee, cups, meal, calendar, fridge, handheld, trophyShelf, basket, plants, dust, cameraRig];
 
 export function start(canvas: HTMLCanvasElement, tier: Exclude<Tier, 'low'>, data: SiteData, bus: EventTarget) {
   // high 档的抗锯齿在后期处理的离屏缓冲里做（多重采样），画布本身再开一份全屏多重采样缓冲是白占显存
@@ -161,7 +162,8 @@ export function start(canvas: HTMLCanvasElement, tier: Exclude<Tier, 'low'>, dat
     if (!start || Math.hypot(e.clientX - start.x, e.clientY - start.y) > 8) return;
     const res = cast(e);
     // 「点旁边退回」：在窗前时点哪里都回到座位；看显示器时点屏幕以外的地方退出
-    if (windowFocused) { emit(bus, 'window:blur'); return; }
+    // 例外：窗外园子里能摘的菜（userData.keepsWindow）
+    if (windowFocused) { if (res?.owner.userData.keepsWindow) pickables.get(res.owner)?.click?.(res.hit); else emit(bus, 'window:blur'); return; }
     if (monitorFocused && !res?.owner.userData.keepsMonitor) { emit(bus, 'monitor:blur'); return; }
     if (fridgeOpen && !res?.owner.userData.keepsFridge) { emit(bus, 'fridge:close'); return; }
     if (cupFocused && !res?.owner.userData.keepsCup && !res?.owner.userData.keepsMachine) { emit(bus, 'cup:blur'); return; }

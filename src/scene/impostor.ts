@@ -87,10 +87,18 @@ interface Item { name: string; x: number; y: number; z: number; h: number; flip:
  */
 export class Impostors {
   private items: Item[] = [];
+  private mesh: THREE.InstancedMesh | null = null;
+  private slot = new Map<number, number>(); // add() 的序号 → 网格里的实例序号（图集里没有的照片不建实例）
   constructor(private bin: Bin) {}
   /** name 是图集里的名字（比如 island_tree_02_0）；h 是要的高度（米）；tint 是整体亮度，squeeze 横向压扁 */
   add(name: string, x: number, y: number, z: number, h: number, o: { flip?: boolean; tint?: number; squeeze?: number } = {}) {
     this.items.push({ name, x, y, z, h, flip: !!o.flip, tint: o.tint ?? 1, squeeze: o.squeeze ?? 1 });
+    return this.items.length - 1;
+  }
+  /** 藏起 add() 返回的那一个（菜被摘走了）：实例矩阵缩成 0 */
+  hide(i: number) {
+    const k = this.slot.get(i); if (!this.mesh || k === undefined) return;
+    this.mesh.setMatrixAt(k, new THREE.Matrix4().makeScale(0, 0, 0)); this.mesh.instanceMatrix.needsUpdate = true;
   }
   /** 加载图集并建好网格，返回实例数；失败就 reject，调用方保留代码画的版本 */
   async load(parent: THREE.Object3D, high: boolean) {
@@ -99,7 +107,7 @@ export class Impostors {
       new THREE.TextureLoader().loadAsync(asset('impostors/impostors.webp')),
     ]);
     this.bin.add(tex); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 4;
-    const list = this.items.filter((it) => meta[it.name]);
+    const list = this.items.filter((it, i) => { if (!meta[it.name]) return false; this.slot.set(i, this.slot.size); return true; });
     // 照片底边比地面低一点点（渲图时四周留了 2% 的边）
     const quad = this.bin.add(new THREE.PlaneGeometry(1, 1).translate(0, 0.48, 0));
     const rect = new Float32Array(list.length * 4);
@@ -118,7 +126,7 @@ export class Impostors {
     quad.setAttribute('aRect', new THREE.InstancedBufferAttribute(rect, 4));
     mesh.frustumCulled = false; // 实例散在一大片地上，用默认的包围球会被误剔
     mesh.userData.noAO = true;  // 遮蔽通道的法线材质不认镂空，也不会转向镜头
-    parent.add(mesh);
+    parent.add(mesh); this.mesh = mesh;
     return list.length;
   }
 }

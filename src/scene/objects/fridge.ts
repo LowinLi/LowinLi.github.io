@@ -73,11 +73,10 @@ export const fridge: SceneObject = ({ scene, camera, tier, bus, pick, audio }) =
     S(new THREE.BoxGeometry(IW, 0.006, ID - 0.03), glass, 0, y, SH / 2 - 0.01, inside);
     S(new THREE.BoxGeometry(IW, 0.014, 0.012), std({ color: 0xfafafa, roughness: 0.4 }), 0, y, D / 2 - 0.03, inside);
   }
-  // 菜筐：半透明的抽屉，里面几个番茄、两根黄瓜
+  // 菜筐：半透明的抽屉，左前角三个番茄；其余地方空着，留给从园子里摘回来的菜（objects/basket.ts 往这里放）
   S(rbox(IW - 0.02, 0.2, ID - 0.06, 0.01), glass, 0, 0.215, SH / 2 - 0.02, inside);
-  const tomatoM = std({ color: 0xd23a22, roughness: 0.25 }), cukeM = std({ color: 0x2f6a2a, roughness: 0.5 });
-  for (const [x, z] of [[-0.12, 0.06], [-0.04, 0.1], [-0.1, -0.06]]) S(new THREE.SphereGeometry(0.032, 14, 10).scale(1, 0.85, 1), tomatoM, x, 0.145, z, inside);
-  for (const [x, z, r] of [[0.1, 0.02, 0.2], [0.13, -0.08, -0.15]]) S(new THREE.CapsuleGeometry(0.016, 0.16, 6, 10), cukeM, x, 0.13, z, inside, Math.PI / 2, r, 0);
+  const tomatoM = std({ color: 0xd23a22, roughness: 0.25 });
+  for (const [x, z] of [[-0.2, 0.12], [-0.13, 0.17], [-0.21, 0.04]]) S(new THREE.SphereGeometry(0.032, 14, 10).scale(1, 0.85, 1), tomatoM, x, 0.145, z, inside);
   // 上层：一盒牛奶
   const milkTex = bin.add(canvasTex(128, 256, (g, w, h) => {
     g.fillStyle = '#f6f6f2'; g.fillRect(0, 0, w, h);
