@@ -31,9 +31,13 @@ export const cameraRig: SceneObject = ({ camera, bus }) => {
     on(bus, 'view:reset', () => { az = 0; el = 0; }),
   ];
   const smooth = THREE.MathUtils.smoothstep, lerp = THREE.MathUtils.lerp;
+  // 拉远时视角跟着变广（38° → 64°）：屋子只有这么大，镜头退不出去（退出去就穿模），靠广角看到更多。
+  // 各模式的距离、取景都按原来的 38° 算，视角变化只影响看到多少
+  const BASE_FOV = camera.fov, WIDE_FOV = 64;
+  let fov = BASE_FOV;
   return {
     frame(dt) {
-      const tan = Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2);
+      const tan = Math.tan(THREE.MathUtils.degToRad(BASE_FOV) / 2);
       const m = L.monitor;
       if (mode === 'window') {
         // 走到窗前、探出窗外（越过窗棂，不让格子挡住视线），朝着日出的方向看；指针可以带着视线左右、上下看一点
@@ -61,7 +65,7 @@ export const cameraRig: SceneObject = ({ camera, bus }) => {
         // 视线中心往右挪到两者中间，距离按这 4.2 米的宽度算；竖屏放不下，先对着显示器，靠缩放和旋转看其余部分
         const base = wide ? Math.max(2.72, 2.4 / (tan * aspect) + 0.3) : Math.min(0.64 / (tan * aspect), 4.6);
         const cx = wide ? 1.0 : 0;
-        const out = smooth(zoom, 1.1, 1.8), near = smooth(1 - zoom, 0, 0.55);
+        const out = smooth(zoom, 1.15, 2.4), near = smooth(1 - zoom, 0, 0.55);
         const dist = base * zoom;
         // 横屏退得远，抬高一点越过书桌前的圈椅往下看
         const e = (wide ? 0.19 : 0.1) + el + out * 0.26;
@@ -70,10 +74,10 @@ export const cameraRig: SceneObject = ({ camera, bus }) => {
         tp.set(tl.x + Math.sin(a) * Math.cos(e) * dist, tl.y + Math.sin(e) * dist + py * 0.06, tl.z + Math.cos(a) * Math.cos(e) * dist);
         tp.y = Math.max(tp.y, L.floorY + 0.25);
         // 镜头不出屋：房间没有天花板、朝镜头那面敞开，拉远或转到外面会看到窗外场景的地面边缘、稻田的背面（用户截图指出过「穿模」）。
-        // 左右不过两面侧墙（内表面 ±3.2），往后不过敞开的那一面（z = 4.6），高度不过墙顶（2.9）
+        // 左右不过两面侧墙（内表面 ±3.2），往后不过敞开的那一面（z = 4.6），高度不过墙顶（2.9）。再远的「拉远」靠下面的广角
         tp.x = THREE.MathUtils.clamp(tp.x, -3.0, 3.0);
         tp.z = Math.min(tp.z, 4.45);
-        tp.y = Math.min(tp.y, 2.6);
+        tp.y = Math.min(tp.y, 2.4);
       }
       if (mode === 'book') { tp.lerp(new THREE.Vector3(-0.7, 0.5, 1.5), 0.3); tl.lerp(new THREE.Vector3(-0.7, 0.15, L.books.z), 0.3); }
       if (first) { pos.copy(tp); look.copy(tl); first = false; }
@@ -82,6 +86,9 @@ export const cameraRig: SceneObject = ({ camera, bus }) => {
       look.set(damp(look.x, tl.x, k, dt), damp(look.y, tl.y, k, dt), damp(look.z, tl.z, k, dt));
       camera.position.copy(pos);
       camera.lookAt(look);
+      const wantFov = mode === 'home' ? lerp(BASE_FOV, WIDE_FOV, smooth(zoom, 1.0, 2.4)) : BASE_FOV;
+      const nf = damp(fov, wantFov, 4, dt);
+      if (Math.abs(nf - camera.fov) > 0.01) { fov = nf; camera.fov = nf; camera.updateProjectionMatrix(); }
     },
     input(e) {
       if (e.type === 'pointer') { px = e.x; py = e.y; }

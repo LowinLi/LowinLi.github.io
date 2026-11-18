@@ -192,6 +192,31 @@ export const room: SceneObject = ({ scene, camera, tier, bus, pick }) => {
   bounce.position.set(0, 0.4, 0.3);
   group.add(sun, sun.target, hemi, fill, bounce);
 
+  // ---- 天花板（深色木梁）和朝镜头那面墙 ----
+  // 镜头可以在屋里拉远、换广角往下看（用户要的「能拉远一点，但限制在房屋内」），屋子得是封闭的，
+  // 不然广角会从墙顶上看到天和树、从敞开的一面看到菜园的地面边缘。镜子也直接照到这面墙。
+  // 一个网格（顶点色），不投影也不接收实时阴影：不挡窗户进来的阳光，烘焙的墙和地板也不受影响。
+  const shell = new Batch(['position', 'normal', 'uv', 'color']);
+  const shellMat = bin.add(new THREE.MeshLambertMaterial({ vertexColors: true, emissive: 0x2a241c }));
+  const tint = (geo: THREE.BufferGeometry, hex: number, jitter = 0) => {
+    const c = new THREE.Color(hex), n = geo.getAttribute('position').count, a = new Float32Array(n * 3);
+    const k = 1 + (Math.random() - 0.5) * jitter;
+    for (let i = 0; i < n; i++) { a[i * 3] = c.r * k; a[i * 3 + 1] = c.g * k; a[i * 3 + 2] = c.b * k; }
+    geo.setAttribute('color', new THREE.Float32BufferAttribute(a, 3));
+    return geo;
+  };
+  const ceilZ0 = wallZ - th, ceilD = RZ - ceilZ0;
+  shell.add(shellMat, tint(new THREE.PlaneGeometry(RX * 2, ceilD).rotateX(Math.PI / 2), 0xe2dbcf), [0, top, ceilZ0 + ceilD / 2]);
+  // 横梁：顺着 x 方向跨过整间屋，下面两根顺着 z 的檩条压在上面
+  for (let z = ceilZ0 + 0.55; z < RZ - 0.3; z += 1.05)
+    shell.add(shellMat, tint(new THREE.BoxGeometry(RX * 2, 0.17, 0.15), 0x3b2a1e, 0.18), [0, top - 0.085, z]);
+  for (const x of [-1.6, 1.6])
+    shell.add(shellMat, tint(new THREE.BoxGeometry(0.13, 0.1, ceilD), 0x4a3526, 0.1), [x, top - 0.22, ceilZ0 + ceilD / 2]);
+  // 前墙（朝窗户）+ 踢脚线
+  shell.add(shellMat, tint(new THREE.PlaneGeometry(RX * 2, H).rotateY(Math.PI), 0xd8d1c4), [0, yc, RZ]);
+  shell.add(shellMat, tint(new THREE.PlaneGeometry(RX * 2, 0.1).rotateY(Math.PI), 0xf3efe6), [0, floorY + 0.05, RZ - 0.009]);
+  shell.build(group, bin, { cast: false, receive: false });
+
   scene.add(group);
   return {
     frame() {

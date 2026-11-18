@@ -34,13 +34,31 @@ export function createPost(renderer: THREE.WebGLRenderer, scene: THREE.Scene, ca
     return list;
   };
   const renderAO = gtao.render.bind(gtao);
+  // 镜头不动时遮蔽几乎不变：只每 4 帧重算一次（法线 / 深度重画整个场景 + 遮蔽 + 降噪），其余帧直接把上次的结果叠上去。
+  // 深度图（景深也用它）同样沿用上一次的。镜头一动就每帧重算。
+  let aoAge = 99, camStill = false;
+  const g = gtao as unknown as { copyMaterial: THREE.ShaderMaterial; blendMaterial: THREE.ShaderMaterial; pdRenderTarget: THREE.WebGLRenderTarget; renderToScreen: boolean;
+    _renderPass(r: THREE.WebGLRenderer, m: THREE.Material, t: THREE.WebGLRenderTarget | null): void };
   gtao.render = (...args: Parameters<typeof renderAO>) => {
+    const [r, write, read] = args;
+    if (camStill && ++aoAge < 4) {
+      const dst = g.renderToScreen ? null : write;
+      g.copyMaterial.uniforms.tDiffuse.value = read.texture; g.copyMaterial.blending = THREE.NoBlending;
+      g._renderPass(r, g.copyMaterial, dst);
+      g.blendMaterial.uniforms.intensity.value = gtao.blendIntensity; g.blendMaterial.uniforms.tDiffuse.value = g.pdRenderTarget.texture;
+      g._renderPass(r, g.blendMaterial, dst);
+      return;
+    }
+    aoAge = 0;
     skip ??= collect();
     const was = skip.map((o) => o.visible);
     skip.forEach((o) => { o.visible = false; });
     renderAO(...args);
     skip.forEach((o, i) => { o.visible = was[i]; });
   };
+  // 遮蔽在半分辨率下算（像素少 3/4），叠回去时双线性放大：遮蔽本来就是柔和的大片暗部，看不出差别
+  const aoSize = gtao.setSize.bind(gtao);
+  gtao.setSize = (w: number, h: number) => aoSize(Math.max(1, Math.round(w / 2)), Math.max(1, Math.round(h / 2)));
   composer.addPass(gtao);
 
   // 景深：复用遮蔽通道的深度图，不用再画一遍场景
@@ -125,13 +143,16 @@ export function createPost(renderer: THREE.WebGLRenderer, scene: THREE.Scene, ca
     /** 走到窗前看风景时关掉远景虚化，远处的稻田和山要是清楚的 */
     setFarBlur(on: boolean) { farBlur = on ? 1 : 0; },
     setSize(w: number, h: number) {
+      aoAge = 99;
       composer.setPixelRatio(renderer.getPixelRatio());
       composer.setSize(w, h);
       const pr = renderer.getPixelRatio();
       dof.uniforms.uTexel.value.set(1 / (w * pr), 1 / (h * pr));
       dof.uniforms.uMax.value = 3.2 * pr * Math.max(0.6, h / 900);
     },
-    render(dt: number) {
+    /** still：镜头这一帧没动（遮蔽可以沿用上一次的） */
+    render(dt: number, still = false) {
+      camStill = still;
       // 焦点落在显示器上：推近显示器时景深会自动变浅
       // 显示器跑到镜头后面（走到窗前）时，焦点放到几米外
       dof.uniforms.uFocus.value = Math.max(-v.copy(focusAt).applyMatrix4(camera.matrixWorldInverse).z, 0.25);

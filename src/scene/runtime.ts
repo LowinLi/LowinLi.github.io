@@ -105,7 +105,7 @@ export function start(canvas: HTMLCanvasElement, tier: Exclude<Tier, 'low'>, dat
   let monitorFocused = false, windowFocused = false, bookOpen = false, cupFocused = false, fridgeOpen = false, shelfFocused = false;
   const shelfFocus = new THREE.Vector3(L.trophyShelf.x, L.floorY + L.trophyShelf.h + 0.15, L.trophyShelf.z);
   // 缩放：1 是默认距离。只在自由视角下生效（没在看显示器 / 窗外 / 书）
-  const ZOOM_MIN = 0.45, ZOOM_MAX = 1.8; // 再远镜头就贴着屋子的边界（cameraRig 里夹住了），拉不动了
+  const ZOOM_MIN = 0.45, ZOOM_MAX = 2.4; // 镜头位置夹在屋里（cameraRig），拉远到后面主要靠视角变广
   let zoomK = 1;
   const free = () => !monitorFocused && !windowFocused && !bookOpen && !cupFocused && !fridgeOpen && !shelfFocused;
   const setZoom = (k: number) => {
@@ -117,7 +117,7 @@ export function start(canvas: HTMLCanvasElement, tier: Exclude<Tier, 'low'>, dat
   const offs = [
     on(bus, 'monitor:focus', () => { monitorFocused = true; }),
     on(bus, 'monitor:blur', () => { monitorFocused = false; }),
-    on(bus, 'scene:changed', () => { post?.refresh(); pruneCasters(); }),
+    on(bus, 'scene:changed', () => { post?.refresh(); pruneCasters(); collectCasters(); }),
     on(bus, 'book:open', () => { bookOpen = true; }),
     on<{ p: number[] }>(bus, 'cup:focus', ({ p }) => { cupFocused = true; post?.setFocus(new THREE.Vector3().fromArray(p)); }),
     on(bus, 'cup:blur', () => { cupFocused = false; post?.setFocus(null); }),
@@ -221,6 +221,30 @@ export function start(canvas: HTMLCanvasElement, tier: Exclude<Tier, 'low'>, dat
     console.info(`[scene] 帧率偏低，自动降到第 ${level} 档`);
   };
 
+  // 调试：?prof 统计每帧物件逻辑（js）和渲染提交（render）的耗时、draw call（含阴影、遮蔽、镜子的重画）
+  const prof = new URLSearchParams(location.search).has('prof') ? { n: 0, js: 0, render: 0, calls: 0 } : null;
+  const sameMat = (a: Float32Array, b: THREE.Matrix4) => { const e = b.elements; for (let i = 0; i < 16; i++) if (Math.abs(a[i] - e[i]) > 1e-5) return false; return true; };
+  const camPrev = new Float32Array(16), projPrev = new Float32Array(16);
+  let stillFor = 0;
+  // 投影网格的世界矩阵 + 显隐的快照（每帧比一遍，几百个网格不到 0.1 毫秒）
+  let casters: THREE.Mesh[] = [], snap = new Float32Array(0);
+  const collectCasters = () => { casters = []; scene.traverse((o) => { if ((o as THREE.Mesh).isMesh && o.castShadow) casters.push(o as THREE.Mesh); }); snap = new Float32Array(casters.length * 17); };
+  const castersMoved = () => {
+    let moved = false;
+    for (let i = 0; i < casters.length; i++) {
+      const m = casters[i], e = m.matrixWorld.elements, o = i * 17;
+      let vis = 1; for (let q: THREE.Object3D | null = m; q; q = q.parent) if (!q.visible) { vis = 0; break; }
+      if (snap[o + 16] !== vis) { snap[o + 16] = vis; moved = true; }
+      for (let k = 0; k < 16; k++) if (snap[o + k] !== e[k]) { snap[o + k] = e[k]; moved = true; }
+    }
+    return moved;
+  };
+  collectCasters();
+  // 帧率封顶：高刷屏（120 Hz）上不跑满，最多 60 帧；镜头停住、没人操作 6 秒以后降到 30 帧（场景里只剩钟摆、浮尘、窗外的猫狗在慢慢动）
+  let lastInput = performance.now();
+  const poke = () => { lastInput = performance.now(); };
+  const pokeEvents = ['pointerdown', 'pointermove', 'wheel', 'keydown'] as const;
+  pokeEvents.forEach((e) => addEventListener(e, poke, { passive: true }));
   const clock = new THREE.Clock();
   // 量帧率：按时间窗（每 1.5 秒看一次平均帧率），不按帧数——很卡的时候一帧要零点几秒，按 90 帧算要等好几分钟。
   // 连着 3 帧都超过 0.25 秒就立刻降一档。以前「超过 0.5 秒的帧不算」，结果显卡越顶不住越不降档，一直顶满。
@@ -229,18 +253,29 @@ export function start(canvas: HTMLCanvasElement, tier: Exclude<Tier, 'low'>, dat
   const onVis = () => { if (!document.hidden) { skip = 5; clock.getDelta(); } };
   document.addEventListener('visibilitychange', onVis);
   renderer.setAnimationLoop((now) => {
-    if (minGap && now - last < minGap) return;
+    const idle = stillFor > 1 && now - lastInput > 6000;
+    const gap = Math.max(minGap, idle ? 25 : 10); // 60 Hz 屏：每帧都画 / 闲置隔一帧；120 Hz 屏：隔一帧 / 隔两帧（留余量，免得帧间隔抖一下就多跳一帧）
+    if (now - last < gap) return;
     last = now;
     const raw = clock.getDelta(), dt = Math.min(raw, 0.1);
     if (!visible || document.hidden) { frames = 0; acc = 0; slow = 0; skip = 5; return; }
     const t = clock.elapsedTime;
-    for (const m of mounted) m.frame(dt, t);
+    const t0 = performance.now();
     renderer.info.reset();
-    if (tier === 'high') renderer.shadowMap.needsUpdate = tick < 120 || (shadowEvery > 0 && tick % shadowEvery === 0); // 开头连续更新，等模型都加载进来
+    for (const m of mounted) m.frame(dt, t);
+    const t1 = performance.now();
+    camera.updateMatrixWorld();
+    const still = sameMat(camPrev, camera.matrixWorld) && sameMat(projPrev, camera.projectionMatrix);
+    camPrev.set(camera.matrixWorld.elements); projPrev.set(camera.projectionMatrix.elements);
+    if (still) stillFor += raw; else stillFor = 0;
+    // 阴影贴图只在投影的东西动过（或显隐变过）时才重画：开头 120 帧连续画（等模型加载），之后每帧比对一遍投影网格的世界矩阵
+    if (tier === 'high') renderer.shadowMap.needsUpdate = tick < 120 || (shadowEvery > 0 && tick % shadowEvery === 0 && (castersMoved() || tick % 120 === 0));
     tick++;
-    if (post && usePost) post.render(dt); else renderer.render(scene, camera);
+    if (post && usePost) post.render(dt, still); else renderer.render(scene, camera);
+    if (prof) { prof.n++; prof.js += t1 - t0; prof.render += performance.now() - t1; prof.calls += renderer.info.render.calls; }
     if (skip > 0) { skip--; return; }
-    if (autoDegrade && level < 3) {
+    if (idle) { frames = 0; acc = 0; slow = 0; }
+    else if (autoDegrade && level < 3) {
       warm += raw;
       if (warm > 3) {
         frames++; acc += raw;
@@ -252,7 +287,7 @@ export function start(canvas: HTMLCanvasElement, tier: Exclude<Tier, 'low'>, dat
   });
 
   // 暴露给 QA / 截图脚本读取的诊断信息
-  (window as any).__scene = { tier, level: 0, info: renderer.info, scene, camera, bus, emit: (type: string, d?: unknown) => emit(bus, type, d),
+  (window as any).__scene = { tier, level: 0, prof, info: renderer.info, scene, camera, bus, emit: (type: string, d?: unknown) => emit(bus, type, d),
     // 调试：屏幕上某一点点下去会命中谁（命中的网格和它的点击归属）
     pickAt: (x: number, y: number) => { const r = cast({ clientX: x, clientY: y } as PointerEvent); return r && { hit: r.hit.object.type + ':' + (r.hit.object as THREE.Mesh).geometry?.type, owner: r.owner.type + ':' + r.owner.name, uuid: r.owner.uuid }; } };
   // 调试：?level=1|2 直接从某一档开始（比如想看降档后的画面）
@@ -268,6 +303,7 @@ export function start(canvas: HTMLCanvasElement, tier: Exclude<Tier, 'low'>, dat
     io.disconnect();
     removeEventListener('resize', onResize);
     document.removeEventListener('visibilitychange', onVis);
+    pokeEvents.forEach((e) => removeEventListener(e, poke));
     canvas.removeEventListener('pointermove', onMove);
     canvas.removeEventListener('pointerdown', onDown);
     canvas.removeEventListener('pointerup', onUp);

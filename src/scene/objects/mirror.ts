@@ -53,7 +53,8 @@ export const mirror: SceneObject = ({ scene, camera, renderer, tier, bus }) => {
   // 中途插一次别的渲染会把它打乱，整个画面变空。所以把它摘出来，在每帧开头（主画面之前）单独画，并且每 N 帧才画一次。
   const renderReflection = glass.onBeforeRender.bind(glass);
   glass.onBeforeRender = () => {};
-  let every = high ? 2 : 3, tick = 0;
+  let every = high ? 2 : 3, tick = 0, stillSkips = 0;
+  const lastCam = new Float32Array(16);
   const frustum = new THREE.Frustum(), pv = new THREE.Matrix4();
   // 镜面边上一圈细细的银边和斜着的一道高光，看起来是玻璃不是开了个洞
   const edge = new THREE.Mesh(bin.add(new THREE.PlaneGeometry(MW + 0.012, MH + 0.012)), bin.add(new THREE.MeshStandardMaterial({ color: 0x9aa0a6, roughness: 0.25, metalness: 1 })));
@@ -77,15 +78,6 @@ export const mirror: SceneObject = ({ scene, camera, renderer, tier, bus }) => {
   contact.position.set(RX - 0.12, fy + 0.016, mz);
   scene.add(contact);
 
-  // 房间朝镜头的那一面是敞开的（没有墙）：镜子从侧面照过去会照出屋外的天和地（用户截图指出过「穿模」）。
-  // 补一面只在画倒影时出现的前墙（和墙一样的颜色，带踢脚线），主画面里永远看不到它
-  const frontWall = new THREE.Group();
-  const fwMat = bin.add(new THREE.MeshStandardMaterial({ color: 0xddd6ca, roughness: 0.92 }));
-  const fw = new THREE.Mesh(bin.add(new THREE.PlaneGeometry(6.8, 2.9 - fy).rotateY(Math.PI)), fwMat);
-  fw.position.set(0, (2.9 + fy) / 2, 4.6); frontWall.add(fw);
-  const kick = new THREE.Mesh(bin.add(new THREE.PlaneGeometry(6.8, 0.1).rotateY(Math.PI)), bin.add(new THREE.MeshStandardMaterial({ color: 0xf6f3ec, roughness: 0.5 })));
-  kick.position.set(0, fy + 0.05, 4.59); frontWall.add(kick);
-  frontWall.visible = false; scene.add(frontWall);
   const off = [on(bus, 'quality:nopost', () => { every = 4; })];
   return {
     frame() {
@@ -98,13 +90,16 @@ export const mirror: SceneObject = ({ scene, camera, renderer, tier, bus }) => {
       frustum.setFromProjectionMatrix(pv.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
       glass.updateMatrixWorld();
       if (!frustum.intersectsObject(glass)) return;
-      frontWall.visible = true;
+      // 镜头停着时倒影里只有钟摆、浮尘这类小动静：降到每 3 次才画一次
+      const e = camera.matrixWorld.elements; let same = true;
+      for (let i = 0; i < 16; i++) if (Math.abs(e[i] - lastCam[i]) > 1e-5) { same = false; lastCam[i] = e[i]; }
+      if (same && ++stillSkips < 3) return;
+      stillSkips = 0;
       renderReflection(renderer, scene, camera, glass.geometry, glass.material as THREE.Material, null as never);
-      frontWall.visible = false;
     },
     stop() {
       off.forEach((f) => f());
-      scene.remove(root, contact, frontWall);
+      scene.remove(root, contact);
       glass.dispose();
       bin.dispose();
     },
