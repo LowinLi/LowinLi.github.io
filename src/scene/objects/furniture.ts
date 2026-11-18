@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { Bin, emit, type SceneObject } from '../types';
+import { Bin, emit, HIT_LAYER, type SceneObject } from '../types';
 import { L } from '../layout';
 import { asset, Batch, blob, canvasTex, contactMaterial, speckle, type V3 } from '../util';
 
@@ -11,7 +11,7 @@ const SERIF = '"Kaiti SC","STKaiti","KaiTi","Songti SC","Noto Serif CJK SC","Sim
  * 书桌前的圈椅、左墙边的条案和上面的瓷瓶、右后方的茶几、两只凳子和一套茶具、
  * 窗边的落地座钟（时针分针走访客电脑上的真实时间，钟摆左右摆动），以及左墙上的一幅水墨山水横幅。
  */
-export const furniture: SceneObject = ({ scene, camera, renderer, tier, bus }) => {
+export const furniture: SceneObject = ({ scene, camera, renderer, tier, bus, pick }) => {
   const bin = new Bin();
   const group = new THREE.Group();
   const high = tier === 'high';
@@ -19,39 +19,65 @@ export const furniture: SceneObject = ({ scene, camera, renderer, tier, bus }) =
   const contact = contactMaterial(bin, high ? 0.3 : 0.5);
   const batch = new Batch();
 
-  // ---- 左墙上的水墨山水横幅（代码画的）----
+  // ---- 左墙上的横幅：浅绛设色的青海湖（代码画的）。用户 2013 年夏天十天徒步环湖，点它翻开书桌上的《行路》 ----
   const painting = bin.add(new THREE.MeshStandardMaterial({ roughness: 0.9, map: bin.add(canvasTex(1024, 420, (g, w, h) => {
     g.fillStyle = '#b89a6a'; g.fillRect(0, 0, w, h);                         // 绫边
     g.fillStyle = '#efe6d0'; g.fillRect(40, 30, w - 80, h - 60);             // 画心
     speckle(g, w, h, 91, 2500, '120,90,40', 0.06);
-    // 三层远近不同的山：越远越淡
-    const ridge = (base: number, amp: number, seed: number, alpha: number) => {
-      g.beginPath(); g.moveTo(40, h - 30);
-      for (let x = 40; x <= w - 40; x += 6) {
-        const y = base - amp * (0.55 + 0.45 * Math.sin(x * 0.006 + seed)) * (0.55 + 0.45 * Math.sin(x * 0.019 + seed * 2.1)) - 10 * Math.sin(x * 0.07 + seed * 4);
-        g.lineTo(x, y);
-      }
-      g.lineTo(w - 40, h - 30); g.closePath();
-      const grad = g.createLinearGradient(0, base - amp, 0, h - 30);
-      grad.addColorStop(0, `rgba(30,34,38,${alpha})`); grad.addColorStop(1, 'rgba(30,34,38,0)');
+    g.save(); g.beginPath(); g.rect(40, 30, w - 80, h - 60); g.clip();
+    // 远处一线雪山：淡墨的山体，山顶留白
+    const ridge = (base: number, amp: number, seed: number, ink: string, alpha: number, snow: boolean) => {
+      const pts: [number, number][] = [];
+      for (let x = 40; x <= w - 40; x += 5) pts.push([x, base - amp * (0.5 + 0.5 * Math.sin(x * 0.009 + seed)) * (0.6 + 0.4 * Math.sin(x * 0.027 + seed * 2.3)) - 6 * Math.sin(x * 0.09 + seed * 4)]);
+      g.beginPath(); g.moveTo(40, base + 30); pts.forEach(([x, y]) => g.lineTo(x, y)); g.lineTo(w - 40, base + 30); g.closePath();
+      const grad = g.createLinearGradient(0, base - amp, 0, base + 30);
+      grad.addColorStop(0, `rgba(${ink},${alpha})`); grad.addColorStop(1, `rgba(${ink},0)`);
       g.fillStyle = grad; g.fill();
+      if (snow) { g.strokeStyle = 'rgba(255,255,255,.75)'; g.lineWidth = 3; g.beginPath(); pts.forEach(([x, y], i) => { if (y < base - amp * 0.62) { if (i % 2) g.lineTo(x, y + 2); else g.moveTo(x, y + 2); } }); g.stroke(); }
     };
-    ridge(250, 150, 0.8, 0.28); ridge(290, 130, 3.3, 0.5); ridge(340, 110, 5.6, 0.82);
-    // 一叶小舟和几笔水纹
-    g.strokeStyle = 'rgba(30,34,38,.7)'; g.lineWidth = 2;
-    g.beginPath(); g.moveTo(610, 352); g.quadraticCurveTo(640, 364, 672, 352); g.stroke();
-    g.beginPath(); g.moveTo(642, 352); g.lineTo(642, 326); g.stroke();
-    g.strokeStyle = 'rgba(30,34,38,.25)'; g.lineWidth = 1;
-    for (let i = 0; i < 9; i++) { const x = 120 + i * 95, y = 362 + (i % 3) * 7; g.beginPath(); g.moveTo(x, y); g.lineTo(x + 46, y); g.stroke(); }
-    // 题款和印章
+    ridge(170, 70, 1.2, '70,86,104', 0.35, true);
+    ridge(196, 46, 4.1, '58,72,80', 0.5, false);
+    // 湖：一大片石青，越远越淡，几笔横向的水纹
+    const lake = g.createLinearGradient(0, 196, 0, 290);
+    lake.addColorStop(0, 'rgba(120,170,180,.55)'); lake.addColorStop(1, 'rgba(70,140,160,.8)');
+    g.fillStyle = lake; g.fillRect(40, 196, w - 80, 94);
+    g.strokeStyle = 'rgba(240,248,248,.55)'; g.lineWidth = 1.2;
+    for (let i = 0; i < 26; i++) { const x = 60 + ((i * 137) % (w - 160)), y = 205 + (i * 29) % 78; g.beginPath(); g.moveTo(x, y); g.lineTo(x + 30 + (i % 4) * 12, y); g.stroke(); }
+    // 湖心一座小岛
+    g.fillStyle = 'rgba(58,72,80,.55)'; g.beginPath(); g.ellipse(700, 236, 46, 9, 0, Math.PI, 0); g.fill();
+    // 近岸：一片油菜花（藤黄点染）+ 草坡
+    g.fillStyle = 'rgba(120,140,70,.55)'; g.beginPath(); g.moveTo(40, 300);
+    for (let x = 40; x <= w - 40; x += 8) g.lineTo(x, 292 - 8 * Math.sin(x * 0.01) - 4 * Math.sin(x * 0.05));
+    g.lineTo(w - 40, h - 30); g.lineTo(40, h - 30); g.closePath(); g.fill();
+    const q = (k: number) => ((Math.sin(k * 12.9898) * 43758.5453) % 1 + 1) % 1;
+    for (let i = 0; i < 900; i++) { const x = 40 + q(i) * (w - 80), y = 296 + q(i + 0.5) * 50; g.fillStyle = `rgba(${226 + q(i + 0.7) * 24},${186 + q(i + 0.3) * 30},40,${0.55 + q(i + 0.9) * 0.35})`; g.fillRect(x, y, 2 + q(i + 0.2) * 2, 2); }
+    // 一条沿湖的土路，路上一个背包的小人（就是当年的自己）
+    g.strokeStyle = 'rgba(150,120,80,.7)'; g.lineWidth = 7; g.lineCap = 'round';
+    g.beginPath(); g.moveTo(40, 380); g.bezierCurveTo(260, 350, 420, 372, 560, 340); g.bezierCurveTo(700, 312, 820, 330, w - 40, 312); g.stroke();
+    const mx = 470, my = 352;
+    g.fillStyle = '#2a2420'; g.beginPath(); g.arc(mx, my - 22, 3.2, 0, 7); g.fill();          // 头
+    g.fillRect(mx - 2, my - 19, 4, 12);                                                         // 身子
+    g.fillStyle = '#8a3a2a'; g.fillRect(mx - 7, my - 19, 5, 10);                                 // 背包
+    g.strokeStyle = '#2a2420'; g.lineWidth = 1.6; g.beginPath(); g.moveTo(mx, my - 7); g.lineTo(mx - 3, my); g.moveTo(mx, my - 7); g.lineTo(mx + 4, my); g.moveTo(mx + 2, my - 16); g.lineTo(mx + 9, my - 6); g.stroke(); // 腿、登山杖
+    // 几只鸟
+    g.strokeStyle = 'rgba(30,34,38,.6)'; g.lineWidth = 1.4;
+    for (const [bx, by] of [[300, 90], [322, 98], [340, 84]]) { g.beginPath(); g.moveTo(bx - 6, by - 3); g.quadraticCurveTo(bx - 2, by, bx, by); g.quadraticCurveTo(bx + 2, by, bx + 6, by - 3); g.stroke(); }
+    g.restore();
+    // 题款和印章：环湖十日 · 癸巳夏（2013）
     g.fillStyle = '#1b1814'; g.font = `26px ${SERIF}`; g.textAlign = 'center'; g.textBaseline = 'middle';
-    [...'山居晨读'].forEach((ch, i) => g.fillText(ch, w - 90, 80 + i * 32));
-    g.fillStyle = '#b3261e'; g.fillRect(w - 104, 216, 28, 28);
+    [...'环湖十日'].forEach((ch, i) => g.fillText(ch, w - 90, 72 + i * 32));
+    g.font = `16px ${SERIF}`; [...'癸巳夏'].forEach((ch, i) => g.fillText(ch, w - 122, 82 + i * 20));
+    g.fillStyle = '#b3261e'; g.fillRect(w - 104, 208, 28, 28);
+    g.fillStyle = '#f3e3d0'; g.font = `bold 14px ${SERIF}`; g.fillText('行', w - 90, 216); g.fillText('路', w - 90, 230);
   })) }));
   const pz = 1.3, py = 1.32;
   batch.add(painting, new THREE.PlaneGeometry(1.5, 0.615).rotateY(Math.PI / 2), [-3.19, py, pz]);
   const darkWood = bin.add(new THREE.MeshStandardMaterial({ color: 0x3a2416, roughness: 0.5 }));
   for (const dz of [-0.76, 0.76]) batch.add(darkWood, new THREE.CylinderGeometry(0.014, 0.014, 0.66, 10), [-3.18, py, pz + dz]);
+  // 横幅上一块看不见的点击区（HIT_LAYER，不画）：点画翻开《行路》
+  const paintingHit = new THREE.Mesh(bin.add(new THREE.PlaneGeometry(1.5, 0.62).rotateY(Math.PI / 2)), bin.add(new THREE.MeshBasicMaterial()));
+  paintingHit.position.set(-3.17, py, pz); paintingHit.layers.set(HIT_LAYER); group.add(paintingHit);
+  pick(paintingHit, { click: () => emit(bus, 'book:open', { id: 'vol-road' }) });
 
   // ---- 座钟的钟摆 ----
   // 这只钟的模型箱门是实木的，钟摆藏在里面看不见。所以在箱门上加一扇带铜边的玻璃小窗：

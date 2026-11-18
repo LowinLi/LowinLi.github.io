@@ -133,6 +133,28 @@ export const fridge: SceneObject = ({ scene, camera, tier, bus, pick, audio }) =
     return { pivot, inner, open: 0, lag };
   };
   const doors = [makeDoor(0.085, DIV_Y + 0.02, 0, true, false), makeDoor(DIV_Y + 0.03, H - 0.005, 0.12, false, true)];
+  // 冷藏室门上用磁铁吸着一张粉红色的老式火车票：2014 年正月十七，坐绿皮车离开黑土地（旧博客《月下绿皮》）。点它翻开书桌上的《行路》
+  const ticketTex = bin.add(canvasTex(480, 240, (g, w, h) => {
+    g.fillStyle = '#f3c9c4'; g.fillRect(0, 0, w, h);
+    g.strokeStyle = 'rgba(200,90,90,.18)'; g.lineWidth = 1;
+    for (let x = -h; x < w; x += 9) { g.beginPath(); g.moveTo(x, 0); g.lineTo(x + h, h); g.stroke(); }   // 防伪底纹
+    speckle(g, w, h, 17, 900, '140,60,60', 0.06);
+    g.fillStyle = '#c0392b'; g.font = 'bold 22px "Courier New", monospace'; g.textAlign = 'left'; g.fillText('A 020170', 20, 34);
+    g.fillStyle = '#2b2522'; g.font = `24px ${SANS}`; g.textAlign = 'right'; g.fillText('检票：月台', w - 20, 34);
+    g.textAlign = 'center'; g.font = `bold 42px ${SANS}`; g.fillText('黑土地站', 108, 98); g.fillText('远方站', w - 100, 98);
+    g.font = `22px ${SANS}`; g.fillText('绿 皮', w / 2, 80);
+    g.strokeStyle = '#2b2522'; g.lineWidth = 2; g.beginPath(); g.moveTo(w / 2 - 38, 94); g.lineTo(w / 2 + 38, 94); g.lineTo(w / 2 + 28, 88); g.stroke();
+    g.font = `24px ${SANS}`; g.textAlign = 'left';
+    g.fillText('2014年02月17日 正月十七开', 20, 148); g.textAlign = 'right'; g.fillText('06车017号', w - 20, 148);
+    g.textAlign = 'left'; g.fillText('¥ 一年乡愁元', 20, 186); g.textAlign = 'right'; g.fillText('硬座', w - 20, 186);
+    g.fillStyle = '#7a4a44'; g.font = `18px ${SANS}`; g.textAlign = 'center'; g.fillText('限乘当日当次车 · 月下绿皮', w / 2, 222);
+  }));
+  const ticket = new THREE.Mesh(bin.add(new THREE.PlaneGeometry(0.12, 0.06)), std({ map: ticketTex, roughness: 0.85 }));
+  ticket.position.set(-W / 2 - 0.02, DIV_Y - 0.17, 0.0514); ticket.rotation.z = -0.07;
+  ticket.userData.keepsFridge = true;
+  doors[0].pivot.add(ticket);
+  S(new THREE.CylinderGeometry(0.011, 0.011, 0.006, 16).rotateX(Math.PI / 2), magnetM, -W / 2 - 0.02 - 0.045, DIV_Y - 0.17 + 0.022, 0.055, doors[0].pivot);
+  pick(ticket, { click: () => emit(bus, 'book:open', { id: 'vol-road' }) });
   S(blob(W * 0.7, D * 0.65), contactMaterial(bin, high ? 0.35 : 0.6), 0, 0.012, 0);
   box.userData.keepsFridge = true; box.name = 'fridge';
 

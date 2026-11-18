@@ -9,13 +9,24 @@
 - 部署：推送到 `main` 后，`.github/workflows/deploy.yml` 会自动构建并发布到 GitHub Pages。仓库的 Settings → Pages → Source 要选 **GitHub Actions**。
 - `npm run preview`：本地预览构建结果
 - `npm run shots -- <url> <outDir>`：在 390/768/1100 三个宽度 × high/mid/low 三档截图，同时检查控制台报错和横向滚动。改了视觉后**必须**跑它并真的打开截图看过，不许没渲染就说「看起来不错」。
-- `npm run migrate:hexo -- <hexo 仓库路径>`：迁移 Hexo 文章
+- `npm run migrate:hexo -- <hexo 仓库路径>`：迁移 Hexo 文章（没用上：源码仓库 `LowinLi/myblog` 停在 2022-04）
+- `node scripts/migrate-site.mjs [https://lowin.li]`：**实际用的迁移**——抓旧博客网页转回 Markdown（见下文「内容」）
 
 ## 架构
 - **站内链接一律用 `url('/path')`（`src/lib/url.ts`），不要直接写 `/path`。** 项目仓库的 Pages 地址在 `/<repo>/` 子路径下，直接写死的根路径会 404。可以用 `BASE=/test/ npm run build` 检查。
 - 一个站，路由分治：`/` 是主页，**整页只有房间**（一屏，不滚动，没有页脚；用户明确要求去掉房间以外的内容），带唯一一个 3D island（`src/components/Scene.astro`）；`/posts/**` 是零 JS 的静态页。**文章页不允许出现 `<script>`。**
 - 文章在 `src/content/posts/`，schema 在 `src/content.config.ts`。
 - 3D 代码全在 `src/scene/`。three.js 只能通过 `runtime.ts` 动态 import 进来，不能被首页的首屏 bundle 静态引用。
+
+## 内容（用户要的：「读一下我的主页 lowin.li，设计里面的内容，合并到小屋里」）
+- 主人是 **Lowin Li（李龙威）**，NLP / 大模型工程。首页文案和「关于我」在 `src/site.ts`：按旧博客的签名（「大浪淘沙，风起帆扬」「Never really desperate, only the lost of the soul.」）、文章和奖杯写的**初稿**，用户还没改过。链接：GitHub、知乎、GitBook 笔记。
+- **30 篇文章**从 lowin.li（Hexo + Matery）搬过来：`scripts/migrate-site.mjs` 抓网页 → 取 `#articleContent` → turndown 转 Markdown。公式（旧站是浏览器里的 MathJax，正文里是原样的 `$…$`）转换前换成占位符；代码块取 Prism 高亮前的纯文本 + 语言；lowin.li 上的图片下载到 `public/posts-media/<slug>/`，大图转 webp（74 MB → 16 MB）。文件在 `src/content/posts/<年>/<月>/<日>/<slug>.md`，站内地址 `/posts/<年>/<月>/<日>/<slug>/`。
+  - 旧地址 `/<年>/<月>/<日>/<slug>/` 由 `astro.config.mjs` 按每篇的 `oldUrl` 生成跳转页（以后把 lowin.li 指过来，外面的旧链接不断）。域名还没切，用户没决定。
+  - 公式在构建时用 KaTeX 渲染（`remark-math` + `rehype-katex`，要装 `@astrojs/markdown-remark`，新版 Astro 默认不带）；文章页引 `katex.min.css`，没有脚本。
+  - 文章图片路径由 `astro.config` 里的小插件按 `base` 补前缀。
+- **书桌上的书**（`src/books.ts`）：关于我、文章索引、五卷文集（按每篇 front matter 的 `shelf` 分：`llm` 大模型与生成 / `infer` 推理与量化 / `tf` 模型拆解 / `eng` 工程手记 / `road` 行路，卷名用短的中文——书脊上的字是一个个竖着排的，英文排不好）、四本古籍。目录里一条是标题一行 + 日期和摘要一行小字（`.page .link` 是块级的）。原来的 SICP 等占位读书笔记删了。
+- **右墙书架顶格**是开源项目（`src/projects.ts`，8 个；简介按旧博客的文章写的）：书脊竖着印项目名，一个网格（图集的一列一本 + 顶点色）。站到书架前（`shelf:focus`）再点书脊 → `project:open {id}` → HTML 卡片（简介、相关文章、GitHub）；没站过去时点书脊先站过去。卡片里的元素是脚本建的，样式要写 `:global`。
+- 两个彩蛋都翻开《行路》（`book:open {id: 'vol-road'}`）：左墙横幅改成浅绛设色的青海湖（用户 2013 年十天徒步环湖：雪山、湖、油菜花、沿湖土路上一个背包的小人，题「环湖十日 · 癸巳夏」，HIT_LAYER 点击区）；冰箱冷藏室门上磁铁吸着一张粉红色老式火车票（黑土地站 → 远方站，2014 年 2 月 17 日正月十七，《月下绿皮》），只在关着门时点得到。
 
 ## 场景概念：乡间的中式书房，清晨
 一间古典中式风格的书房：青砖地面、白墙、深色实木家具。书桌正对一扇中式木格窗（上面卷着竹帘），窗外是农家菜园，
@@ -55,7 +66,8 @@
 
 内容在哪里改：
 - 首页文案：`src/site.ts`
-- 书和书里的内容：`src/books.ts`（技术书是读书笔记，古籍是原文选段；「关于我」「文章索引」两本由 site 和文章列表生成）
+- 书和书里的内容：`src/books.ts`（五卷文集按文章的 `shelf` 生成，古籍是原文选段；「关于我」「文章索引」由 site 和文章列表生成）
+- 开源项目：`src/projects.ts`
 - 磁带：`src/tracks.ts`（元数据）+ `src/scene/music.ts`（合成器，没有音频文件）。录音机在 `objects/recorder.ts`，咖啡角在 `objects/coffee.ts`。
 - 黄历：数据和版式在 `src/almanac.ts`（3D 贴图和放大图共用），3D 物件在 `objects/calendar.ts`。
 - 收音机的电台表：`src/stations.ts`（频率、台名、直播流地址）；收音逻辑在 `src/scene/radio.ts`。
@@ -96,6 +108,7 @@
 | `handheld:open {rect?}` / `handheld:close` | handheld（拿到镜头前以后）/「游戏」按钮（low 档）/ ESC、「放下」、点旁边 | 打开 / 收起 HTML 的大掌机。`rect` 是 3D 屏幕在画面上的外接矩形，大掌机的屏幕从这里放大、缩回这里 |
 | `handheld:shown` / `handheld:closed` | HTML 层 | 大掌机已经盖住 3D 那台（3D 的藏起来）/ 已经缩回去（3D 的重新出现、放回书顶） |
 | `shelf:focus` / `shelf:blur` | 右墙边的书架 / ESC、返回、点别处、打开别的视角 | 镜头走到书架前看奖杯 / 回座位。cameraRig（`shelf` 模式）、runtime（景深对焦奖杯、「点旁边退回」：带 `keepsShelf` 的不退）、HTML 层、trophyShelf（底部提示）都监听 |
+| `project:open {id}` / `project:close` | trophyShelf（站在书架前点项目书脊）/ ESC、✕、点卡片外面 | 打开 / 关上开源项目卡片（HTML 层）；ESC 先关卡片，再按一次才离开书架 |
 | `garden:pick {kind, p, h, ok}` | countryside（窗前点了能摘的菜） | 同步地问菜篮收不收：basket 收下就把 `ok` 设成 true，countryside 再把那棵菜的照片藏起来 |
 | `radio:on` / `radio:off` | 波段旋钮 / HTML 按钮 / 面板 ✕ | 打开 / 关掉收音机 |
 | `radio:tune {mhz}` | 面板滑杆 | 直接调到某个频率 |
