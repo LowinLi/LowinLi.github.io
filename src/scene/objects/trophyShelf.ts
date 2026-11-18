@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { Bin, emit, on, type SceneObject } from '../types';
 import { L } from '../layout';
 import { Batch, blob, canvasTex, contactMaterial, rbox, rng, speckle, usePhotoTexture } from '../util';
@@ -179,6 +180,8 @@ export const trophyShelf: SceneObject = ({ scene, tier, pick, bus }) => {
   // ---------------- 奖杯 ----------------
   const glassClear = bin.add(new THREE.MeshStandardMaterial({ color: 0xe8f0ff, roughness: 0.04, metalness: 0.1, transparent: true, opacity: 0.22, envMapIntensity: 1.6, side: THREE.DoubleSide, depthWrite: false }));
   const baseMat = bin.add(new THREE.MeshStandardMaterial({ color: 0x0e0e12, roughness: 0.3, metalness: 0.2, flatShading: true }));
+  const groups: THREE.Group[] = [];
+  const texs: { base: ReturnType<typeof baseTextures>; face?: ReturnType<typeof panelTextures> }[] = [];
   AWARDS.forEach((a, i) => {
     const t = new THREE.Group();
     t.position.set(i === 0 ? -0.2 : 0.2, H, 0.02);
@@ -187,31 +190,68 @@ export const trophyShelf: SceneObject = ({ scene, tier, pick, bus }) => {
     // 底座：黑色梯形台（上 10.5×6、下 13×7.4、高 7 厘米）
     const bh = 0.07, tw = 0.105, bw = 0.13;
     const baseGeo = new THREE.CylinderGeometry(tw / Math.SQRT2, bw / Math.SQRT2, bh, 4, 1).rotateY(Math.PI / 4).scale(1, 1, 0.57);
-    const base = new THREE.Mesh(bin.add(baseGeo), baseMat); base.position.y = bh / 2; t.add(base);
-    const bt = baseTextures(bin, a);
+    const base = new THREE.Mesh(bin.add(baseGeo), baseMat); base.position.y = bh / 2; t.add(base); base.userData.part = 'base';
+    const bt = baseTextures(bin, a); texs.push({ base: bt });
     const baseFace = new THREE.Mesh(bin.add(new THREE.PlaneGeometry((tw + bw) / 2 * 0.98, bh * 0.98)),
       bin.add(new THREE.MeshStandardMaterial({ map: bt.map, metalnessMap: bt.metal, metalness: 0.55, roughness: 0.35, emissive: 0xffffff, emissiveMap: bt.glow, emissiveIntensity: 0.32, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 })));
     const zFront = (bw * 0.57 + tw * 0.57) / 4; // 正面在半高处离中心的距离
     baseFace.position.set(0, bh / 2, zFront + 0.0006); baseFace.rotation.x = -Math.atan(((bw - tw) * 0.57 / 2) / bh);
-    t.add(baseFace);
+    t.add(baseFace); baseFace.userData.part = 'baseFace';
     // 后面两片交叉的水晶：一片透明往左高，一片带色往右高
-    const back = (shape: THREE.Shape, mat: THREE.Material, z: number) => {
+    const back = (shape: THREE.Shape, mat: THREE.Material, z: number, part: string) => {
       const g = new THREE.ExtrudeGeometry(shape, { depth: 0.005, bevelEnabled: false });
-      const mesh = new THREE.Mesh(bin.add(g), mat); mesh.position.set(0, bh - 0.004, z); mesh.renderOrder = 1; t.add(mesh);
+      const mesh = new THREE.Mesh(bin.add(g), mat); mesh.position.set(0, bh - 0.004, z); mesh.renderOrder = 1; t.add(mesh); mesh.userData.part = part;
+      if (part === 'tint') mesh.userData.tint = a.tint;
     };
-    back(panelShape(0.07, 0.092, [[-0.046, 0.3], [0.046, 0.236]]), glassClear, -0.016);
-    back(panelShape(0.07, 0.098, [[-0.049, 0.232], [0.049, 0.284]]), bin.add(new THREE.MeshStandardMaterial({ color: a.tint, roughness: 0.05, metalness: 0.1, transparent: true, opacity: 0.5, envMapIntensity: 1.4, side: THREE.DoubleSide, depthWrite: false })), -0.009);
+    back(panelShape(0.07, 0.092, [[-0.046, 0.3], [0.046, 0.236]]), glassClear, -0.016, 'clear');
+    back(panelShape(0.07, 0.098, [[-0.049, 0.232], [0.049, 0.284]]), bin.add(new THREE.MeshStandardMaterial({ color: a.tint, roughness: 0.05, metalness: 0.1, transparent: true, opacity: 0.5, envMapIntensity: 1.4, side: THREE.DoubleSide, depthWrite: false })), -0.009, 'tint');
     // 正面印刷的那片：顶边是 V 形。印刷面单独一个网格，uv 按外接框归一化
     const frontShape = panelShape(0.07, 0.09, [[-0.045, 0.215], [0.006, 0.197], [0.045, 0.21]]);
     const edge = new THREE.Mesh(bin.add(new THREE.ExtrudeGeometry(frontShape, { depth: 0.006, bevelEnabled: false })), glassClear);
-    edge.position.set(0, bh - 0.004, -0.003); edge.renderOrder = 2; t.add(edge);
+    edge.position.set(0, bh - 0.004, -0.003); edge.renderOrder = 2; t.add(edge); edge.userData.part = 'clear';
     const faceGeo = new THREE.ShapeGeometry(frontShape);
     const p = faceGeo.attributes.position, uv = faceGeo.attributes.uv;
     for (let k = 0; k < p.count; k++) uv.setXY(k, (p.getX(k) + 0.045) / 0.09, p.getY(k) / 0.215);
-    const pt = panelTextures(bin, a);
+    const pt = panelTextures(bin, a); texs[i].face = pt;
     const face = new THREE.Mesh(bin.add(faceGeo), bin.add(new THREE.MeshStandardMaterial({ map: pt.map, metalnessMap: pt.metal, metalness: 0.55, roughness: 0.28, emissive: 0xffffff, emissiveMap: pt.glow, emissiveIntensity: 0.3, envMapIntensity: 1.3, transparent: true, opacity: 0.93 })));
-    face.position.set(0, bh - 0.004, 0.0032); face.renderOrder = 3; t.add(face);
+    face.position.set(0, bh - 0.004, 0.0032); face.renderOrder = 3; t.add(face); face.userData.part = 'face';
+    groups.push(t);
   });
+  // 两座奖杯同类的零件合成一个网格（12 个 → 5 个 draw call：开场视角能看到书架以后，high 档贴着 520 的上限）：
+  // 底座、透明水晶、带色水晶（颜色进顶点色）、底座金字和印刷面（两座的贴图左右拼成一张，uv 各占一半）
+  root.updateMatrixWorld(true);
+  const inv = root.matrixWorld.clone().invert();
+  const parts = new Map<string, { geo: THREE.BufferGeometry; i: number; tint?: number }[]>();
+  groups.forEach((g, i) => g.traverse((o) => {
+    const m = o as THREE.Mesh; if (!m.isMesh) return;
+    const geo = (m.geometry.index ? m.geometry.toNonIndexed() : m.geometry.clone()).applyMatrix4(inv.clone().multiply(m.matrixWorld));
+    for (const k of Object.keys(geo.attributes)) if (!['position', 'normal', 'uv'].includes(k)) geo.deleteAttribute(k);
+    const list = parts.get(m.userData.part) ?? []; list.push({ geo, i, tint: m.userData.tint }); parts.set(m.userData.part, list);
+  }));
+  const atlas = (pick2: (t: (typeof texs)[number]) => THREE.Texture) => {
+    const imgs = texs.map((t) => pick2(t).image as HTMLCanvasElement);
+    return bin.add(canvasTex(imgs[0].width * 2, imgs[0].height, (g, w) => imgs.forEach((im, k) => g.drawImage(im, k * w / 2, 0))));
+  };
+  const build = (part: string, mat: THREE.Material, order: number) => {
+    const list = parts.get(part)!;
+    for (const { geo, i, tint } of list) {
+      if (part === 'face' || part === 'baseFace') { const uv = geo.attributes.uv; for (let k = 0; k < uv.count; k++) uv.setX(k, uv.getX(k) * 0.5 + i * 0.5); }
+      if (part === 'tint') { const c = new THREE.Color(tint), a = new Float32Array(geo.attributes.position.count * 3); for (let k = 0; k < a.length; k += 3) a.set([c.r, c.g, c.b], k); geo.setAttribute('color', new THREE.BufferAttribute(a, 3)); }
+    }
+    const mesh = new THREE.Mesh(bin.add(mergeGeometries(list.map((x) => x.geo))), mat);
+    list.forEach((x) => x.geo.dispose());
+    mesh.renderOrder = order; root.add(mesh);
+  };
+  const faceTex = { map: atlas((t) => t.face!.map), metal: atlas((t) => t.face!.metal), glow: atlas((t) => t.face!.glow) };
+  const baseTex = { map: atlas((t) => t.base.map), metal: atlas((t) => t.base.metal), glow: atlas((t) => t.base.glow) };
+  faceTex.map.anisotropy = 8;
+  build('base', baseMat, 0);
+  build('clear', glassClear, 1);
+  build('tint', bin.add(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.05, metalness: 0.1, transparent: true, opacity: 0.5, envMapIntensity: 1.4, side: THREE.DoubleSide, depthWrite: false })), 1);
+  build('baseFace', bin.add(new THREE.MeshStandardMaterial({ map: baseTex.map, metalnessMap: baseTex.metal, metalness: 0.55, roughness: 0.35, emissive: 0xffffff, emissiveMap: baseTex.glow, emissiveIntensity: 0.32, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 })), 2);
+  build('face', bin.add(new THREE.MeshStandardMaterial({ map: faceTex.map, metalnessMap: faceTex.metal, metalness: 0.55, roughness: 0.28, emissive: 0xffffff, emissiveMap: faceTex.glow, emissiveIntensity: 0.3, envMapIntensity: 1.3, transparent: true, opacity: 0.93 })), 3);
+  // 原来一座座搭的零件（只用来算位置）拿掉；它们的几何体、贴图、材质都在 bin 里，stop() 时一起释放
+  groups.forEach((g) => root.remove(g));
 
   root.traverse((o) => { o.userData.noAO = true; });
   // 点书架：镜头走到书架正前方看奖杯（cameraRig 的 shelf 模式）；底下提示两座奖杯的名字。点别处 / ESC / 返回回座位

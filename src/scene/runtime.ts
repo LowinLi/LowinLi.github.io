@@ -89,6 +89,15 @@ export function start(canvas: HTMLCanvasElement, tier: Exclude<Tier, 'low'>, dat
     for (const c of scene.children) if (!before.has(c)) c.userData.owner ??= i; // 名字会被压缩，用 OBJECTS 里的序号
     return m;
   });
+  // 小于 7 厘米半径的零件不投实时阴影（按钮、旋钮、笔、杯子……）：影子小到看不出，桌上的东西本来就有接触阴影，
+  // 每个投影的网格在阴影通道里都要多画一次（开场视角拉远看到书架以后，high 档贴着 520 的上限）。异步加进来的模型在 scene:changed 时再筛一遍
+  const pruneCasters = () => scene.traverse((o) => {
+    const m = o as THREE.Mesh; if (!m.isMesh || !m.castShadow) return;
+    if (!m.geometry.boundingSphere) m.geometry.computeBoundingSphere();
+    const sc = m.getWorldScale(new THREE.Vector3()), r = (m.geometry.boundingSphere?.radius ?? 1) * Math.max(sc.x, sc.y, sc.z);
+    if (r < 0.07) m.castShadow = false;
+  });
+  pruneCasters();
   const send = (e: SceneInput) => mounted.forEach((m) => m.input?.(e));
   send({ type: 'resize', width, height });
 
@@ -108,7 +117,7 @@ export function start(canvas: HTMLCanvasElement, tier: Exclude<Tier, 'low'>, dat
   const offs = [
     on(bus, 'monitor:focus', () => { monitorFocused = true; }),
     on(bus, 'monitor:blur', () => { monitorFocused = false; }),
-    on(bus, 'scene:changed', () => post?.refresh()),
+    on(bus, 'scene:changed', () => { post?.refresh(); pruneCasters(); }),
     on(bus, 'book:open', () => { bookOpen = true; }),
     on<{ p: number[] }>(bus, 'cup:focus', ({ p }) => { cupFocused = true; post?.setFocus(new THREE.Vector3().fromArray(p)); }),
     on(bus, 'cup:blur', () => { cupFocused = false; post?.setFocus(null); }),

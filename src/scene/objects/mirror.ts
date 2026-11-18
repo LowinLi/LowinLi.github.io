@@ -77,6 +77,15 @@ export const mirror: SceneObject = ({ scene, camera, renderer, tier, bus }) => {
   contact.position.set(RX - 0.12, fy + 0.016, mz);
   scene.add(contact);
 
+  // 房间朝镜头的那一面是敞开的（没有墙）：镜子从侧面照过去会照出屋外的天和地（用户截图指出过「穿模」）。
+  // 补一面只在画倒影时出现的前墙（和墙一样的颜色，带踢脚线），主画面里永远看不到它
+  const frontWall = new THREE.Group();
+  const fwMat = bin.add(new THREE.MeshStandardMaterial({ color: 0xddd6ca, roughness: 0.92 }));
+  const fw = new THREE.Mesh(bin.add(new THREE.PlaneGeometry(6.8, 2.9 - fy).rotateY(Math.PI)), fwMat);
+  fw.position.set(0, (2.9 + fy) / 2, 4.6); frontWall.add(fw);
+  const kick = new THREE.Mesh(bin.add(new THREE.PlaneGeometry(6.8, 0.1).rotateY(Math.PI)), bin.add(new THREE.MeshStandardMaterial({ color: 0xf6f3ec, roughness: 0.5 })));
+  kick.position.set(0, fy + 0.05, 4.59); frontWall.add(kick);
+  frontWall.visible = false; scene.add(frontWall);
   const off = [on(bus, 'quality:nopost', () => { every = 4; })];
   return {
     frame() {
@@ -89,11 +98,13 @@ export const mirror: SceneObject = ({ scene, camera, renderer, tier, bus }) => {
       frustum.setFromProjectionMatrix(pv.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
       glass.updateMatrixWorld();
       if (!frustum.intersectsObject(glass)) return;
+      frontWall.visible = true;
       renderReflection(renderer, scene, camera, glass.geometry, glass.material as THREE.Material, null as never);
+      frontWall.visible = false;
     },
     stop() {
       off.forEach((f) => f());
-      scene.remove(root, contact);
+      scene.remove(root, contact, frontWall);
       glass.dispose();
       bin.dispose();
     },

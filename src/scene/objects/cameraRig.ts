@@ -57,13 +57,16 @@ export const cameraRig: SceneObject = ({ camera, bus }) => {
         tp.set(m.x + px * 0.02, m.cy + py * 0.015, m.z + 0.02 + dist);
       } else {
         const wide = aspect >= 1.1;
-        // 默认距离：横屏保证整张桌子在画面里；竖屏放不下，先对着显示器，靠缩放和旋转看其余部分
-        const base = wide ? Math.max(2.72, 1.22 / (tan * aspect)) : Math.min(0.64 / (tan * aspect), 4.6);
+        // 默认距离：横屏要把书桌左边（x≈-1.2）到右墙边的书架和奖杯（x≈3.0）都框进来（用户要开场就看到书架）——
+        // 视线中心往右挪到两者中间，距离按这 4.2 米的宽度算；竖屏放不下，先对着显示器，靠缩放和旋转看其余部分
+        const base = wide ? Math.max(2.72, 2.4 / (tan * aspect) + 0.3) : Math.min(0.64 / (tan * aspect), 4.6);
+        const cx = wide ? 1.0 : 0;
         const out = smooth(zoom, 1.15, 2.4), near = smooth(1 - zoom, 0, 0.55);
         const dist = base * zoom;
-        const e = (wide ? 0.115 : 0.1) + el + out * 0.26;
+        // 横屏退得远，抬高一点越过书桌前的圈椅往下看
+        const e = (wide ? 0.19 : 0.1) + el + out * 0.26;
         const a = az + px * 0.07;
-        tl.set(0, lerp(wide ? 0.55 : 0.62, 0.34, near) - out * 0.15, m.z + out * 0.5);
+        tl.set(cx * (1 - near), lerp(wide ? 0.5 : 0.62, 0.34, near) - out * 0.15, m.z + out * 0.5);
         tp.set(tl.x + Math.sin(a) * Math.cos(e) * dist, tl.y + Math.sin(e) * dist + py * 0.06, tl.z + Math.cos(a) * Math.cos(e) * dist);
         tp.y = Math.max(tp.y, L.floorY + 0.25);
       }
