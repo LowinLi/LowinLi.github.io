@@ -6,11 +6,14 @@ import { SITE } from '../site';
 import { url } from '../lib/url';
 import { buildBooks } from '../books';
 import { TRACKS } from '../tracks';
+import { PROJECTS } from '../projects';
 const posts = (await getCollection('posts', ({ data }) => !data.draft))
   .sort((a, b) => b.data.date.valueOf() - a.data.date.valueOf());
-const postRefs = posts.slice(0, 18).map((p) => ({ title: p.data.title, url: url(`/posts/${p.id}/`), date: p.data.date.toISOString().slice(0, 10) }));
+const postRefs = posts.map((p) => ({ title: p.data.title, url: url(`/posts/${p.id}/`), date: p.data.date.toISOString().slice(0, 10), shelf: p.data.shelf, description: p.data.description }));
 const postsIndex = url('/posts/');
-const data = { ...SITE, postsIndex, posts: postRefs, books: buildBooks(SITE, postRefs, postsIndex), tracks: TRACKS };
+const byId = new Map(posts.map((p) => [p.id, p]));
+const projects = PROJECTS.map((pr) => ({ ...pr, url: `https://github.com/LowinLi/${pr.id}`, posts: pr.posts.map((id) => byId.get(id)).filter((p) => !!p).map((p) => ({ title: p!.data.title, url: url(`/posts/${p!.id}/`) })) }));
+const data = { ...SITE, postsIndex, posts: postRefs, projects, books: buildBooks(SITE, postRefs, postsIndex), tracks: TRACKS };
 ---
 <!-- 首页只有房间：「关于我」和文章列表在房间里的笔记本和书里（阅读器的内容是服务端渲染进 HTML 的） -->
 <Base title={SITE.name} description={SITE.tagline} bare>

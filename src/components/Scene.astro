@@ -119,6 +119,16 @@ const pct = (n: number) => `${(n * 100).toFixed(2)}%`;
     <p class="hh-tip">方向键 · 空格 / A · H 回主页 · ESC 放下</p>
     <button type="button" class="hh-close">放下 <kbd>ESC</kbd></button>
   </div>
+  <div class="project" role="dialog" aria-modal="true" aria-label="开源项目" hidden>
+    <div class="project-card">
+      <button type="button" class="project-close" aria-label="关上">✕</button>
+      <p class="project-lang"></p>
+      <h2 class="project-name"></h2>
+      <p class="project-desc"></p>
+      <div class="project-posts"></div>
+      <a class="project-gh" target="_blank" rel="noopener">在 GitHub 上看 →</a>
+    </div>
+  </div>
   <div class="almanac" role="dialog" aria-modal="true" aria-label="黄历" hidden>
     <div class="almanac-card">
       <canvas width="600" height="840" aria-hidden="true"></canvas>
@@ -380,6 +390,25 @@ const pct = (n: number) => `${(n * 100).toFixed(2)}%`;
   }, true);
   $('[data-action="games"]').addEventListener('click', (e) => { e.preventDefault(); emit(has3d ? 'handheld:pick' : 'handheld:open', {}); });
 
+  // ---- 开源项目卡片（右墙书架顶格的书脊）----
+  const projUi = $<HTMLDivElement>('.project');
+  type Proj = { id: string; name: string; color: string; desc: string; lang: string; url: string; posts: { title: string; url: string }[] };
+  on<{ id: string }>('project:open', ({ id }) => {
+    const pr = (data.projects as Proj[]).find((x) => x.id === id); if (!pr) return;
+    projUi.querySelector('.project-lang')!.textContent = `开源项目 · ${pr.lang}`;
+    projUi.querySelector('.project-name')!.textContent = pr.name;
+    projUi.querySelector('.project-desc')!.textContent = pr.desc;
+    const box = projUi.querySelector<HTMLDivElement>('.project-posts')!;
+    box.replaceChildren(...(pr.posts.length ? [Object.assign(document.createElement('p'), { className: 'project-sub', textContent: '相关文章' }), ...pr.posts.map((x) => Object.assign(document.createElement('a'), { href: x.url, textContent: x.title }))] : []));
+    const gh = projUi.querySelector<HTMLAnchorElement>('.project-gh')!; gh.href = pr.url;
+    projUi.querySelector<HTMLElement>('.project-card')!.style.setProperty('--c', pr.color);
+    projUi.hidden = false;
+    projUi.querySelector<HTMLButtonElement>('.project-close')!.focus({ preventScroll: true });
+  });
+  on('project:close', () => { projUi.hidden = true; });
+  projUi.addEventListener('click', (e) => { if (e.target === projUi) emit('project:close'); });
+  projUi.querySelector('.project-close')!.addEventListener('click', () => emit('project:close'));
+
   // ---- 收音机（录音机的另一个波段）----
   const radioUi = $<HTMLDivElement>('.radio');
   const slider = radioUi.querySelector<HTMLInputElement>('input')!;
@@ -397,6 +426,7 @@ const pct = (n: number) => `${(n * 100).toFixed(2)}%`;
   radioUi.querySelector('.radio-off')!.addEventListener('click', () => emit('radio:off'));
 
   addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !projUi.hidden) { emit('project:close'); return; }
     if (e.key === 'Escape') { emit('handheld:close'); emit('calendar:close'); emit('book:close'); emit('monitor:blur'); emit('window:blur'); emit('cup:blur'); emit('fridge:close'); emit('shelf:blur'); }
     if (open && e.key === 'ArrowRight') turn(open.classList.contains('classic') ? -1 : 1);
     if (open && e.key === 'ArrowLeft') turn(open.classList.contains('classic') ? 1 : -1);
@@ -509,6 +539,20 @@ const pct = (n: number) => `${(n * 100).toFixed(2)}%`;
   .hh-close { padding: 6px 16px; border: 1px solid #ffffff40; border-radius: 999px; color: #fff; background: #10203acc; font: inherit; font-size: 14px; cursor: pointer; }
   .hh-close kbd { font: inherit; font-size: 11px; opacity: .7; }
   @media (pointer: coarse) { .hh-tip { display: none; } }
+  /* 开源项目卡片：左边一道书脊颜色的竖条 */
+  .project { position: absolute; inset: 0; z-index: 6; display: grid; place-items: center; padding: 16px; background: #0b142466; }
+  .project[hidden] { display: none; }
+  .project-card { position: relative; width: min(420px, 100%); box-sizing: border-box; padding: 22px 24px 20px 30px; color: #2a2622; background: #fbf8f1; border-radius: 8px; box-shadow: 0 20px 60px #0009; border-left: 10px solid var(--c, #2d4f7c); }
+  .project-close { position: absolute; top: 8px; right: 10px; border: 0; background: none; font-size: 18px; color: #8a8178; cursor: pointer; }
+  .project-lang { margin: 0; font-size: 12px; color: #9a9186; letter-spacing: .05em; }
+  .project-name { margin: 4px 0 10px; font: 700 20px/1.3 "Helvetica Neue", Arial, sans-serif; word-break: break-all; }
+  .project-desc { margin: 0 0 14px; font-size: 14px; line-height: 1.7; }
+  /* 卡片里的「相关文章」是脚本现建的元素，没有 Astro 的作用域标记，只能用 :global */
+  .project-posts :global(.project-sub) { margin: 0 0 4px; font-size: 12px; color: #9a9186; }
+  .project-posts :global(a) { display: block; padding: 4px 0; font-size: 14px; color: #1f4e79; text-decoration: none; border-bottom: 1px dashed #d9d0bf; }
+  .project-posts :global(a:hover), .project-gh:hover { text-decoration: underline; }
+  .project-gh { display: inline-block; margin-top: 14px; padding: 7px 14px; border-radius: 999px; color: #fff; background: var(--c, #2d4f7c); font-size: 14px; text-decoration: none; }
+  .project button:focus-visible, .project a:focus-visible { outline: 2px solid #ffd27a; outline-offset: 2px; }
   .almanac { position: absolute; inset: 0; z-index: 5; display: grid; place-items: center; padding: 16px; background: #0b1424b3; backdrop-filter: blur(3px); overflow: auto; }
   .almanac[hidden] { display: none; }
   .almanac-card { width: min(440px, 100%); display: flex; flex-direction: column; gap: 10px; }
@@ -594,10 +638,11 @@ const pct = (n: number) => `${(n * 100).toFixed(2)}%`;
   .page h3 { font-size: 18px; margin: 0 0 16px; color: #8a4b2a; letter-spacing: .08em; }
   .page p { margin: 0 0 14px; line-height: 1.9; }
   .page .author { color: #7c746a; }
-  .page .link { display: flex; justify-content: space-between; gap: 12px; border-bottom: 1px dashed #d9d0bf; padding-bottom: 8px; }
-  .page .link a { color: #1f4e79; text-decoration: none; }
+  /* 目录里的一条：标题一行，日期和摘要在下面一行小字（摘要长，挤在右边会被截掉） */
+  .page .link { display: block; border-bottom: 1px dashed #d9d0bf; padding-bottom: 8px; }
+  .page .link a { display: block; color: #1f4e79; text-decoration: none; font-weight: 600; }
   .page .link a:hover { text-decoration: underline; }
-  .page small { color: #9a9186; flex: none; font-variant-numeric: tabular-nums; }
+  .page small { display: block; margin-top: 3px; color: #9a9186; font-size: 12px; line-height: 1.5; font-variant-numeric: tabular-nums; }
   .title-page { display: flex; flex-direction: column; justify-content: center; }
   /* 古籍：竖排，从右往左翻，泛黄的纸和朱丝栏 */
   .classic .pages { direction: rtl; }

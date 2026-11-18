@@ -104,7 +104,7 @@ const panelShape = (bw: number, tw: number, top: [number, number][]) => {
   return s;
 };
 
-export const trophyShelf: SceneObject = ({ scene, tier, pick, bus }) => {
+export const trophyShelf: SceneObject = ({ scene, tier, pick, bus, data }) => {
   const bin = new Bin();
   const high = tier === 'high';
   const fy = L.floorY;
@@ -153,7 +153,7 @@ export const trophyShelf: SceneObject = ({ scene, tier, pick, bus }) => {
   const inner = W / 2 - T - 0.01;
   row(SHELVES[0] + 0.0, -inner, 0.22, 0.32);
   row(SHELVES[1] + 0.011, -inner, -0.02, 0.3);
-  row(SHELVES[3] + 0.011, -0.05, inner - 0.12, 0.28);
+  row(SHELVES[3] + 0.011, 0.0, inner - 0.12, 0.26); // 顶格左边是开源项目那排（见下面）
   // 平放的一摞
   for (let i = 0; i < 4; i++) books.push({ x: 0.2 + (r() - 0.5) * 0.02, y: SHELVES[1] + 0.011 + i * 0.032, w: 0.24 - i * 0.015, h: 0.03, d: 0.17 - i * 0.008, tilt: 0, flat: true, c: COLS[Math.floor(r() * COLS.length)] });
   for (let i = 0; i < 3; i++) books.push({ x: -0.25, y: SHELVES[2] + 0.011 + i * 0.034, w: 0.22 - i * 0.02, h: 0.032, d: 0.16, tilt: 0, flat: true, c: COLS[Math.floor(r() * COLS.length)] });
@@ -254,12 +254,64 @@ export const trophyShelf: SceneObject = ({ scene, tier, pick, bus }) => {
   groups.forEach((g) => root.remove(g));
 
   root.traverse((o) => { o.userData.noAO = true; });
+  // ---------------- 顶格左边：开源项目（src/projects.ts）----------------
+  // 一本书一个盒子，合成一个网格；书脊（+z 那面）贴一张图集里各自的那一列（竖着印项目名），其余面贴图集最后一列的白色 × 顶点色（书的颜色）
+  const projects = data.projects ?? [];
+  const PW = 0.036, PG = 0.004, PH = [0.27, 0.25, 0.28, 0.26, 0.27, 0.24, 0.26, 0.25];
+  const cols = projects.length + 1;
+  const spineAtlas = bin.add(canvasTex(cols * 96, 768, (g, w, h) => {
+    const cw = w / cols;
+    projects.forEach((pr, i) => {
+      const x0 = i * cw;
+      g.fillStyle = pr.color; g.fillRect(x0, 0, cw, h);
+      speckle(g, cw, h, 20 + i, 600, '255,255,255', 0.05);
+      g.fillStyle = '#e8c878'; g.fillRect(x0, 36, cw, 5); g.fillRect(x0, 48, cw, 2); g.fillRect(x0, h - 50, cw, 2); g.fillRect(x0, h - 42, cw, 5);
+      // 项目名沿书脊竖着印（从上往下读），字号按长度缩
+      g.save(); g.translate(x0 + cw / 2, h / 2); g.rotate(Math.PI / 2);
+      const size = Math.min(44, 560 / Math.max(8, pr.name.length) * 1.7);
+      g.font = `600 ${size}px "Helvetica Neue", Arial, sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = '#f3e7c4';
+      g.fillText(pr.name, 0, 0, h - 150);
+      g.restore();
+      g.fillStyle = '#e8c878'; g.beginPath(); g.arc(x0 + cw / 2, h - 90, 10, 0, 7); g.fill();
+    });
+    g.fillStyle = '#fff'; g.fillRect((cols - 1) * cw, 0, cw, h);
+  }));
+  spineAtlas.anisotropy = 8;
+  const projGeos: THREE.BufferGeometry[] = [];
+  const projX: number[] = [];
+  projects.forEach((pr, i) => {
+    const bh = PH[i % PH.length], bd = 0.19, x = -inner + PW / 2 + i * (PW + PG);
+    projX.push(x);
+    const g = new THREE.BoxGeometry(PW, bh, bd).toNonIndexed().translate(x, SHELVES[3] + 0.011 + bh / 2, -D / 2 + 0.02 + bd / 2);
+    const uv = g.attributes.uv, n = g.attributes.normal, col = new Float32Array(uv.count * 3), cc = new THREE.Color(pr.color);
+    for (let k = 0; k < uv.count; k++) {
+      const spine = n.getZ(k) > 0.9;
+      const c0 = spine ? i : cols - 1;
+      uv.setX(k, (c0 + uv.getX(k)) / cols);
+      col.set(spine ? [1, 1, 1] : [cc.r * 0.8, cc.g * 0.8, cc.b * 0.8], k * 3);
+    }
+    g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    projGeos.push(g);
+  });
+  const projMesh = projGeos.length ? new THREE.Mesh(bin.add(mergeGeometries(projGeos)), bin.add(new THREE.MeshStandardMaterial({ map: spineAtlas, vertexColors: true, roughness: 0.6 }))) : null;
+  projGeos.forEach((g) => g.dispose());
+  if (projMesh) { projMesh.receiveShadow = high; projMesh.userData.noAO = true; root.add(projMesh); }
+
   // 点书架：镜头走到书架正前方看奖杯（cameraRig 的 shelf 模式）；底下提示两座奖杯的名字。点别处 / ESC / 返回回座位
+  // 已经站在书架前时点项目书脊：弹出那个项目的卡片（HTML 层，project:open）
   root.userData.keepsShelf = true;
-  pick(root, { click: () => emit(bus, 'shelf:focus') });
+  const local = new THREE.Vector3();
+  pick(root, { click: (hit) => {
+    if (focused && projMesh && hit.object === projMesh) {
+      local.copy(hit.point); root.worldToLocal(local);
+      const i = projX.findIndex((x) => Math.abs(local.x - x) <= (PW + PG) / 2);
+      if (i >= 0) { emit(bus, 'project:open', { id: projects[i].id }); return; }
+    }
+    if (!focused) emit(bus, 'shelf:focus');
+  } });
   let focused = false;
   const offs = [
-    on(bus, 'shelf:focus', () => { focused = true; emit(bus, 'cup:state', { msg: AWARDS.map((a) => `${a.title} · ${a.base.replace(/(\d)/, ' $1 ')} · ${a.date}`).join('\n') }); }), // 两行：竖屏一行放不下
+    on(bus, 'shelf:focus', () => { focused = true; emit(bus, 'cup:state', { msg: [...AWARDS.map((a) => `${a.title} · ${a.base.replace(/(\d)/, ' $1 ')} · ${a.date}`), '顶格左边那排是我的开源项目，点书脊看看'].join('\n') }); }), // 分行：竖屏一行放不下
     on(bus, 'shelf:blur', () => { if (focused) { focused = false; emit(bus, 'cup:state', null); } }),
   ];
   return {

@@ -1,0 +1,107 @@
+<svg width="800" height="1100" viewBox="0 0 800 1100" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bgGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#0f172a;stop-opacity:1" />
+      <stop offset="50%" style="stop-color:#1e293b;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#0f172a;stop-opacity:1" />
+    </linearGradient>
+
+    <linearGradient id="goldGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#9a7b4f;stop-opacity:1" />
+      <stop offset="20%" style="stop-color:#f0c674;stop-opacity:1" />
+      <stop offset="50%" style="stop-color:#fef08a;stop-opacity:1" />
+      <stop offset="80%" style="stop-color:#f0c674;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#9a7b4f;stop-opacity:1" />
+    </linearGradient>
+
+    <linearGradient id="blueGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#475569;stop-opacity:0.8" />
+      <stop offset="50%" style="stop-color:#334155;stop-opacity:0.8" />
+      <stop offset="100%" style="stop-color:#1e293b;stop-opacity:0.8" />
+    </linearGradient>
+    
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="5" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+  </defs>
+
+  <rect width="100%" height="100%" fill="url(#bgGradient)" />
+  
+  <g stroke="#334155" stroke-width="1" opacity="0.3">
+    <line x1="0" y1="100" x2="800" y2="100" />
+    <line x1="0" y1="200" x2="800" y2="200" />
+    <line x1="0" y1="300" x2="800" y2="300" />
+    <line x1="0" y1="400" x2="800" y2="400" />
+    <line x1="0" y1="500" x2="800" y2="500" />
+    <line x1="0" y1="600" x2="800" y2="600" />
+    <line x1="0" y1="700" x2="800" y2="700" />
+    <line x1="0" y1="800" x2="800" y2="800" />
+  </g>
+
+  <text x="400" y="100" font-family="'Microsoft YaHei', sans-serif" font-size="64" font-weight="bold" fill="#bfdbfe" text-anchor="middle">重新定义代码智能</text>
+  <text x="400" y="180" font-family="'Microsoft YaHei', sans-serif" font-size="64" font-weight="bold" fill="#bfdbfe" text-anchor="middle">的性能巅峰</text>
+  <text x="400" y="250" font-family="'Microsoft YaHei', sans-serif" font-size="32" fill="#e2e8f0" text-anchor="middle">SWE-bench Verified 基准测试对比</text>
+
+  <g stroke="#94a3b8" stroke-width="1" opacity="0.5" stroke-dasharray="4 4">
+    <line x1="80" y1="320" x2="80" y2="720" /> <line x1="186" y1="320" x2="186" y2="720" /> <line x1="293" y1="320" x2="293" y2="720" /> <line x1="400" y1="320" x2="400" y2="720" /> <line x1="506" y1="320" x2="506" y2="720" /> <line x1="613" y1="320" x2="613" y2="720" /> <line x1="720" y1="320" x2="720" y2="720" /> </g>
+  
+  <g font-family="Arial, sans-serif" font-size="16" fill="#94a3b8" text-anchor="middle">
+    <text x="80" y="740">0%</text>
+    <text x="186" y="740">20%</text>
+    <text x="293" y="740">40%</text>
+    <text x="400" y="740">60%</text>
+    <text x="506" y="740">80%</text>
+    <text x="613" y="740">100%</text>
+    <text x="720" y="740">120%</text>
+  </g>
+
+  <g transform="translate(80, 340)">
+    <rect x="0" y="0" width="434" height="50" rx="4" fill="url(#goldGradient)" filter="url(#glow)" opacity="0.6"/>
+    <rect x="0" y="0" width="434" height="50" rx="4" fill="none" stroke="url(#goldGradient)" stroke-width="2" />
+    <rect x="0" y="0" width="434" height="50" rx="4" fill="url(#goldGradient)" opacity="0.2" />
+    
+    <text x="15" y="32" font-family="'Microsoft YaHei', sans-serif" font-size="24" fill="#fef08a" font-weight="bold">IQuest-Coder-V1</text>
+    <text x="420" y="32" font-family="Arial, sans-serif" font-size="28" fill="#fef08a" font-weight="bold" text-anchor="end">81.4%</text>
+  </g>
+
+  <g transform="translate(80, 415)">
+    <rect x="0" y="0" width="411" height="50" rx="4" fill="url(#blueGradient)" stroke="#94a3b8" stroke-width="1" />
+    <text x="15" y="32" font-family="'Microsoft YaHei', sans-serif" font-size="24" fill="#e2e8f0">Claude 3.5 Sonnet</text>
+    <text x="400" y="32" font-family="Arial, sans-serif" font-size="28" fill="#e2e8f0" text-anchor="end" opacity="0.8">77.2%</text>
+  </g>
+
+  <g transform="translate(80, 490)">
+    <rect x="0" y="0" width="406" height="50" rx="4" fill="url(#blueGradient)" stroke="#94a3b8" stroke-width="1" />
+    <text x="15" y="32" font-family="'Microsoft YaHei', sans-serif" font-size="24" fill="#e2e8f0">GPT-4o</text>
+    <text x="395" y="32" font-family="Arial, sans-serif" font-size="28" fill="#e2e8f0" text-anchor="end" opacity="0.8">76.3%</text>
+  </g>
+
+  <g transform="translate(80, 565)">
+    <rect x="0" y="0" width="368" height="50" rx="4" fill="url(#blueGradient)" stroke="#94a3b8" stroke-width="1" />
+    <text x="15" y="32" font-family="'Microsoft YaHei', sans-serif" font-size="24" fill="#e2e8f0">Kimi-K2</text>
+    <text x="358" y="32" font-family="Arial, sans-serif" font-size="28" fill="#e2e8f0" text-anchor="end" opacity="0.8">69.2%</text>
+  </g>
+
+  <g transform="translate(80, 640)">
+    <rect x="0" y="0" width="357" height="50" rx="4" fill="url(#blueGradient)" stroke="#94a3b8" stroke-width="1" />
+    <text x="15" y="32" font-family="'Microsoft YaHei', sans-serif" font-size="24" fill="#e2e8f0">Qwen3-Coder</text>
+    <text x="347" y="32" font-family="Arial, sans-serif" font-size="28" fill="#e2e8f0" text-anchor="end" opacity="0.8">67.0%</text>
+  </g>
+
+  <g font-family="'Microsoft YaHei', sans-serif" font-size="22" fill="#e2e8f0" text-anchor="start">
+    <text x="50" y="800">
+        <tspan x="50" dy="0">在业界公认难度最高的软件工程基准测试 SWE-bench Veri</tspan>
+        <tspan x="50" dy="35">fied上, <tspan fill="#fef08a" font-weight="bold">iQuest-Coder-V1</tspan> 取得了 <tspan fill="#fef08a" font-weight="bold">81.4%</tspan>, 超越了包括 Claude</tspan>
+        <tspan x="50" dy="35">3.5 Sonnet 和 GPT-4o 在内的所有已知模型。</tspan>
+    </text>
+
+    <text x="50" y="930">
+        <tspan x="50" dy="0">SWE-bench 要求模型自主解决真实的 GitHub Issues, 是衡</tspan>
+        <tspan x="50" dy="35">量模型在复杂、真实软件工程场景中主规则、编码调试能力的</tspan>
+        <tspan x="50" dy="35">黄金标准。码大模型在解真实世界问题上实现了质的飞跃。</tspan>
+    </text>
+  </g>
+  
+
+</svg>

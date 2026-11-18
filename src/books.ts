@@ -11,66 +11,49 @@ export interface Book {
 }
 
 interface Site { name: string; tagline: string; bio: string[]; links: { label: string; url: string }[] }
-interface PostRef { title: string; url: string; date: string }
+export interface PostRef { title: string; url: string; date: string; shelf: string; description?: string }
+
+/** 书桌上的五卷文集：旧博客 lowin.li 的 30 篇文章按主题分卷（每篇的 front matter 里有 shelf） */
+export const VOLUMES: { shelf: string; id: string; title: string; color: string; intro: string }[] = [
+  { shelf: 'llm', id: 'vol-llm', title: '大模型与生成', color: '#4b3f8f', intro: '从解码方法、受限集束搜索，到 RLHF、ChatGPT 和 Copilot，再到 Vibecoding 的冷思考。' },
+  { shelf: 'infer', id: 'vol-infer', title: '推理与量化', color: '#1f4e79', intro: '让大模型在小硬件上跑起来：8 位矩阵乘法、ONNX 量化、fastgpt、GPU 服务排队。' },
+  { shelf: 'tf', id: 'vol-tf', title: '模型拆解', color: '#7a2f4f', intro: '拆开 Transformers 仓库看：DataCollator、bigbird、SentenceTransformer、多标签分类、中文摘要。' },
+  { shelf: 'eng', id: 'vol-eng', title: '工程手记', color: '#3d6b45', intro: '部署路上踩过的坑：docker 瘦身和卡死、编译 so、devpi、向量存储、.li 域名。' },
+  { shelf: 'road', id: 'vol-road', title: '行路', color: '#8a5a2b', intro: '十天走完青海湖一圈，正月十七坐绿皮车离开黑土地；还有一篇关于人工智能能否实现的转载。' },
+];
 
 /**
- * 书架上的书，从左到右。
- * 技术书里是简短的读书笔记（TODO：换成你自己的）；古籍是原文选段。
+ * 书架上的书，从左到右：关于我、文章索引、五卷文集、四本古籍（原文选段）。
  */
 export function buildBooks(site: Site, posts: PostRef[], postsIndex: string): Book[] {
   const postPages: Page[] = [];
   for (let i = 0; i < Math.max(1, Math.ceil(posts.length / 6)); i++) {
     postPages.push({
-      heading: i === 0 ? '最近文章' : undefined,
+      heading: i === 0 ? `全部文章（${posts.length} 篇）` : undefined,
       lines: posts.slice(i * 6, i * 6 + 6).map((p) => ({ text: p.title, href: p.url, meta: p.date })),
     });
   }
-  postPages[postPages.length - 1].lines.push({ text: '全部文章 →', href: postsIndex });
+  postPages[postPages.length - 1].lines.push({ text: '按日期看全部 →', href: postsIndex });
+
+  const volumes: Book[] = VOLUMES.map((v) => {
+    const list = posts.filter((p) => p.shelf === v.shelf);
+    const pages: Page[] = [{ heading: v.title, lines: [v.intro, `共 ${list.length} 篇。`] }];
+    for (let i = 0; i < list.length; i += 3) {
+      pages.push({ lines: list.slice(i, i + 3).map((p) => ({ text: p.title, href: p.url, meta: p.description ? `${p.date} · ${p.description}` : p.date })) });
+    }
+    return { id: v.id, title: v.title, author: site.name, kind: 'tech', color: v.color, pages };
+  });
 
   return [
     {
       id: 'about', title: '关于我', author: site.name, kind: 'self', color: '#c8553d',
       pages: [
         { heading: site.name, lines: [site.tagline, ...site.bio] },
-        { heading: '联系', lines: site.links.map((l) => ({ text: l.label, href: `https://${l.url.replace(/^https?:\/\//, '')}`, meta: l.url })) },
+        { heading: '在别处', lines: site.links.map((l) => ({ text: l.label, href: `https://${l.url.replace(/^https?:\/\//, '')}`, meta: l.url })) },
       ],
     },
     { id: 'posts', title: '文章索引', author: site.name, kind: 'self', color: '#2f6f73', pages: postPages },
-    {
-      id: 'sicp', title: '计算机程序的构造和解释', author: 'Abelson / Sussman', kind: 'tech', color: '#4b3f8f',
-      pages: [
-        { heading: '读书笔记', lines: ['程序首先是写给人读的，其次才是给机器执行的。', '全书只做一件事：教你用抽象控制复杂度。过程抽象、数据抽象、语言抽象，一层层往上搭。'] },
-        { heading: '带走的三件事', lines: ['一、遇到复杂问题，先问能不能造一种更贴合问题的语言。', '二、求值器不神秘：eval 和 apply 互相调用，就是一门语言的全部。', '三、状态和时间是麻烦的根源，能不引入就不引入。'] },
-      ],
-    },
-    {
-      id: 'pragmatic', title: '程序员修炼之道', author: 'Hunt / Thomas', kind: 'tech', color: '#d98b2b',
-      pages: [
-        { heading: '读书笔记', lines: ['一本讲习惯的书。没有哪条建议是新的，但把它们都做到的人很少。', '不要容忍破窗：一处将就，很快处处将就。'] },
-        { heading: '常翻的几条', lines: ['DRY：每一项知识在系统里只应有一个权威表述。', '正交：改一处不该牵动另一处。', '曳光弹：先打通一条贯穿全链路的细线，再加粗。', '纯文本、版本控制、自动化，是不会过时的工具。'] },
-      ],
-    },
-    {
-      id: 'ddia', title: '设计数据密集型应用', author: 'Martin Kleppmann', kind: 'tech', color: '#1f4e79',
-      pages: [
-        { heading: '读书笔记', lines: ['可靠、可扩展、可维护，三个词贯穿全书。', '它不教某个数据库怎么用，而是讲清每种设计在换取什么、放弃什么。'] },
-        { heading: '带走的三件事', lines: ['一、复制、分区、事务，各自解决不同的问题，别混为一谈。', '二、分布式系统里，时钟不可信，网络不可信，只有明确的协议可信。', '三、日志是数据系统的脊梁：流和批只是看待同一份日志的两种方式。'] },
-      ],
-    },
-    {
-      id: 'dl', title: '深度学习', author: 'Goodfellow / Bengio / Courville', kind: 'tech', color: '#7a2f4f',
-      pages: [
-        { heading: '读书笔记', lines: ['俗称「花书」。前半本是线性代数、概率和优化的底子，后半本才是网络。', '模型会变，底子不变：读论文卡住的地方，多半能在前八章找到。'] },
-        { heading: '带走的三件事', lines: ['一、表示学习是核心：好的特征让后面的一切变简单。', '二、正则化不是一个技巧，是一类思路——限制模型，逼它泛化。', '三、优化和泛化是两件事，训练得动不等于学得对。'] },
-      ],
-    },
-    {
-      id: 'clrs', title: '算法导论', author: 'Cormen 等', kind: 'tech', color: '#3d6b45',
-      pages: [
-        { heading: '读书笔记', lines: ['不必从头读到尾，当字典用最合适。', '真正值得反复练的是证明的习惯：循环不变式、摊还分析、归约。'] },
-        { heading: '常翻的章节', lines: ['排序与顺序统计：分治的范本。', '动态规划与贪心：先写出最优子结构，再谈实现。', '图算法：最短路径和最大流，几乎能套进一半的实际问题。'] },
-      ],
-    },
+    ...volumes,
     {
       id: 'lunyu', title: '论语', author: '孔子弟子及再传弟子 辑', kind: 'classic', color: '#22375a',
       pages: [

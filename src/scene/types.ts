@@ -12,6 +12,8 @@ export interface SiteData {
   links: { label: string; url: string }[];
   books: Book[];
   tracks: Track[];
+  /** 右墙书架顶格的开源项目（src/projects.ts） */
+  projects: { id: string; name: string; color: string; desc: string; lang: string; url: string; posts: { title: string; url: string }[] }[];
 }
 
 export interface PickHandlers {

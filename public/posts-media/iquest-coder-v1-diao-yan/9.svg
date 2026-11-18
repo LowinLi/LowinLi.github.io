@@ -1,0 +1,125 @@
+<svg width="800" height="1200" viewBox="0 0 800 1200" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bgGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#0f172a;stop-opacity:1" />
+      <stop offset="50%" style="stop-color:#1e293b;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#0f172a;stop-opacity:1" />
+    </linearGradient>
+
+    <linearGradient id="goldGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#9a7b4f;stop-opacity:1" />
+      <stop offset="20%" style="stop-color:#f0c674;stop-opacity:1" />
+      <stop offset="50%" style="stop-color:#fef08a;stop-opacity:1" />
+      <stop offset="80%" style="stop-color:#f0c674;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#9a7b4f;stop-opacity:1" />
+    </linearGradient>
+
+    <linearGradient id="blueGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#475569;stop-opacity:0.8" />
+      <stop offset="50%" style="stop-color:#334155;stop-opacity:0.8" />
+      <stop offset="100%" style="stop-color:#1e293b;stop-opacity:0.8" />
+    </linearGradient>
+    
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="5" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+
+    <linearGradient id="greyGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#334155;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#475569;stop-opacity:1" />
+    </linearGradient>
+
+    <filter id="barShadow" x="-5%" y="-5%" width="110%" height="110%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-opacity="0.5"/>
+    </filter>
+
+    <filter id="boxGlow" x="-10%" y="-10%" width="120%" height="120%">
+      <feGaussianBlur stdDeviation="8" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+  </defs>
+
+  <rect width="800" height="1200" fill="url(#bgGradient)" />
+  
+  <pattern id="circuit" x="0" y="0" width="100" height="100" patternUnits="userSpaceOnUse">
+    <path d="M20,10 H80 V30 H20 Z" fill="none" stroke="#4a5d8b" stroke-width="0.8" opacity="0.3"/>
+    <path d="M30,50 V90 H70 V50 Z" fill="none" stroke="#4a5d8b" stroke-width="0.8" opacity="0.3"/>
+    <circle cx="50" cy="50" r="2" fill="#4a5d8b" opacity="0.3"/>
+    <path d="M50,30 V50" stroke="#4a5d8b" stroke-width="0.8" opacity="0.3"/>
+  </pattern>
+  <rect width="800" height="1200" fill="url(#circuit)" opacity="0.4"/>
+
+  <g font-family="'PingFang SC', 'Microsoft YaHei', Helvetica, Arial, sans-serif">
+    
+    <g transform="translate(40, 80)">
+      <text x="0" y="0" fill="#bfdbfe" font-size="42" font-weight="900" letter-spacing="1">系统级验证：</text>
+      <text x="0" y="55" fill="#bfdbfe" font-size="42" font-weight="900" letter-spacing="1">在 BIRD 基准上刷新 SOTA 记录</text>
+      
+      <text x="0" y="110" fill="#d0d6e0" font-size="22" font-weight="normal" line-height="1.6">
+        <tspan x="0" dy="0">MAC-SQL 框架展现了卓越的性能。在针对大规模、真实</tspan>
+        <tspan x="0" dy="36">世界数据库的 Text-to-SQL 基准 BIRD 上，IQuest-Coder</tspan>
+        <tspan x="0" dy="36">取得了业界领先的成绩。</tspan>
+      </text>
+    </g>
+
+    <g transform="translate(40, 320)">
+      <text x="360" y="0" fill="#bfdbfe" font-size="34" font-weight="bold" text-anchor="middle">BIRD（大规模真实数据库）</text>
+      <text x="360" y="35" fill="#8b9bb4" font-size="18" text-anchor="middle">Execution Accuracy</text>
+
+      <g transform="translate(20, 60)">
+        <line x1="0" y1="0" x2="0" y2="240" stroke="#3a435b" stroke-width="1" stroke-dasharray="4"/>
+        <line x1="170" y1="0" x2="170" y2="240" stroke="#3a435b" stroke-width="1" stroke-dasharray="4"/>
+        <line x1="340" y1="0" x2="340" y2="240" stroke="#3a435b" stroke-width="1" stroke-dasharray="4"/>
+        <line x1="510" y1="0" x2="510" y2="240" stroke="#3a435b" stroke-width="1" stroke-dasharray="4"/>
+        <line x1="680" y1="0" x2="680" y2="240" stroke="#3a435b" stroke-width="1" stroke-dasharray="4"/>
+
+        <rect x="0" y="20" width="479.4" height="40" rx="4" fill="url(#goldGradient)" filter="url(#barShadow)"/>
+        <text x="15" y="47" fill="#000000" font-size="18" font-weight="bold">IQuest-Coder-V1-40B-Instruct</text>
+        <text x="470" y="47" fill="#000000" font-size="20" font-weight="900" text-anchor="end">70.5%</text>
+
+        <rect x="0" y="80" width="475.3" height="40" rx="4" fill="url(#goldGradient)" filter="url(#barShadow)"/>
+        <text x="15" y="107" fill="#000000" font-size="18" font-weight="bold">IQuest-Coder-V1-40B-Loop-Instruct</text>
+        <text x="465" y="107" fill="#000000" font-size="20" font-weight="900" text-anchor="end">69.9%</text>
+
+        <rect x="0" y="140" width="459" height="40" rx="4" fill="url(#greyGradient)" filter="url(#barShadow)"/>
+        <text x="15" y="167" fill="#bfdbfe" font-size="18" font-weight="bold" text-shadow="0 1px 2px rgba(0,0,0,0.5)">Gemini 3 Pro</text>
+        <text x="450" y="167" fill="#bfdbfe" font-size="20" font-weight="900" text-anchor="end" text-shadow="0 1px 2px rgba(0,0,0,0.5)">67.5%</text>
+
+        <rect x="0" y="200" width="448.8" height="40" rx="4" fill="url(#greyGradient)" filter="url(#barShadow)"/>
+        <text x="15" y="227" fill="#bfdbfe" font-size="18" font-weight="bold" text-shadow="0 1px 2px rgba(0,0,0,0.5)">Claude 4.5 Opus</text>
+        <text x="440" y="227" fill="#bfdbfe" font-size="20" font-weight="900" text-anchor="end" text-shadow="0 1px 2px rgba(0,0,0,0.5)">66.0%</text>
+      </g>
+    </g>
+
+    <g transform="translate(40, 680)">
+      <text x="360" y="0" fill="#bfdbfe" font-size="34" font-weight="bold" text-anchor="middle">Spider（跨领域复杂查询）</text>
+      <text x="360" y="35" fill="#8b9bb4" font-size="18" text-anchor="middle">Execution Accuracy</text>
+
+      <g transform="translate(20, 60)">
+        <line x1="0" y1="0" x2="0" y2="100" stroke="#3a435b" stroke-width="1" stroke-dasharray="4"/>
+        <line x1="170" y1="0" x2="170" y2="100" stroke="#3a435b" stroke-width="1" stroke-dasharray="4"/>
+        <line x1="340" y1="0" x2="340" y2="100" stroke="#3a435b" stroke-width="1" stroke-dasharray="4"/>
+        <line x1="510" y1="0" x2="510" y2="100" stroke="#3a435b" stroke-width="1" stroke-dasharray="4"/>
+        <line x1="680" y1="0" x2="680" y2="100" stroke="#3a435b" stroke-width="1" stroke-dasharray="4"/>
+
+        <rect x="0" y="20" width="626.9" height="40" rx="4" fill="url(#goldGradient)" filter="url(#barShadow)"/>
+        <text x="15" y="47" fill="#000000" font-size="18" font-weight="bold">IQuest-Coder-V1-40B-Instruct</text>
+        <text x="615" y="47" fill="#000000" font-size="20" font-weight="900" text-anchor="end">92.2%</text>
+      </g>
+    </g>
+
+    <g transform="translate(40, 900)">
+      <rect x="0" y="0" width="720" height="220" rx="12" ry="12" fill="#1e2538" stroke="#b89035" stroke-width="2" filter="url(#boxGlow)"/>
+      <path d="M0,50 H720" stroke="#b89035" stroke-width="1" opacity="0.3"/>
+      
+      <text x="30" y="38" fill="#ffcc00" font-size="26" font-weight="bold" letter-spacing="1">关键结论</text>
+      
+      <text x="30" y="85" fill="#e0e6ed" font-size="22" font-weight="normal" line-height="1.6">
+        <tspan x="30" dy="0">相比直接调用基础模型，MAC-SQL 这样的智能体框架能够</tspan>
+        <tspan x="30" dy="40">带来超过 10 个百分点的性能提升。</tspan>
+        <tspan x="30" dy="40">这证明了优秀的智能体架构设计是释放大模型潜力的关键。</tspan>
+      </text>
+    </g>
+  </g>
+</svg>

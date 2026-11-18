@@ -1,0 +1,209 @@
+<svg width="1000" height="1350" viewBox="0 0 1000 1350" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bgGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#0f172a;stop-opacity:1" />
+      <stop offset="50%" style="stop-color:#1e293b;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#0f172a;stop-opacity:1" />
+    </linearGradient>
+
+    <linearGradient id="goldGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#9a7b4f;stop-opacity:1" />
+      <stop offset="20%" style="stop-color:#f0c674;stop-opacity:1" />
+      <stop offset="50%" style="stop-color:#fef08a;stop-opacity:1" />
+      <stop offset="80%" style="stop-color:#f0c674;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#9a7b4f;stop-opacity:1" />
+    </linearGradient>
+
+    <linearGradient id="blueGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#475569;stop-opacity:0.8" />
+      <stop offset="50%" style="stop-color:#334155;stop-opacity:0.8" />
+      <stop offset="100%" style="stop-color:#1e293b;stop-opacity:0.8" />
+    </linearGradient>
+    
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="5" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+
+    <filter id="blueGlow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="3" result="blur" />
+      <feColorMatrix in="blur" type="matrix" values="0 0 0 0 0  0 0.6 1 0 0  0 0.6 1 0 0  0 0 0 1 0" result="coloredBlur" />
+      <feMerge>
+        <feMergeNode in="coloredBlur" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+    
+     <filter id="goldGlow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="3" result="blur" />
+      <feColorMatrix in="blur" type="matrix" values="1 0.8 0 0 0  0.8 0.6 0 0 0  0 0 0 0 0  0 0 0 1 0" result="coloredBlur" />
+       <feMerge>
+        <feMergeNode in="coloredBlur" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+
+    <marker id="arrowBlue" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M2,2 L8,5 L2,8 L5,5 Z" fill="#94a3b8" />
+    </marker>
+
+     <marker id="arrowGold" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M2,2 L8,5 L2,8 L5,5 Z" fill="#f0c674" />
+    </marker>
+
+    <style>
+      /* 容器样式 */
+      .box-container { fill: url(#blueGradient); stroke: #94a3b8; stroke-width: 1; rx: 4; }
+      .box-blue { stroke: #94a3b8; }
+      .box-gold { fill: url(#blueGradient); stroke: url(#goldGradient); stroke-width: 2; }
+      .sub-box { fill: url(#blueGradient); stroke: #94a3b8; stroke-width: 1; rx: 4; opacity: 0.8; }
+
+      /* 文本样式 */
+      .main-title { font-family: 'Microsoft YaHei', sans-serif; font-size: 64px; font-weight: bold; fill: #bfdbfe; text-anchor: middle; }
+      .box-title { font-family: 'Microsoft YaHei', sans-serif; font-size: 26px; font-weight: bold; fill: #e2e8f0; text-anchor: middle; }
+      .box-title-gold { font-family: 'Microsoft YaHei', sans-serif; font-size: 26px; font-weight: bold; fill: #fef08a; text-anchor: middle; }
+      .section-header { font-family: 'Microsoft YaHei', sans-serif; font-size: 20px; font-weight: bold; fill: #bfdbfe; }
+      .section-header-gold { font-family: 'Microsoft YaHei', sans-serif; font-size: 20px; font-weight: bold; fill: #fef08a; }
+      .body-text { font-family: 'Microsoft YaHei', sans-serif; font-size: 18px; fill: #e2e8f0; }
+      
+      /* 连接线样式 */
+      .connector-blue { stroke: #334155; stroke-width: 3; fill: none; marker-end: url(#arrowBlue); opacity: 0.6; }
+      .connector-gold { stroke: #f0c674; stroke-width: 3; fill: none; marker-end: url(#arrowGold); opacity: 0.8; }
+    </style>
+  </defs>
+
+  <rect width="100%" height="100%" fill="url(#bgGradient)" />
+  
+  <g stroke="#334155" stroke-width="1" opacity="0.3">
+    <line x1="0" y1="100" x2="1000" y2="100" />
+    <line x1="0" y1="200" x2="1000" y2="200" />
+    <line x1="0" y1="300" x2="1000" y2="300" />
+    <line x1="0" y1="400" x2="1000" y2="400" />
+    <line x1="0" y1="500" x2="1000" y2="500" />
+    <line x1="0" y1="600" x2="1000" y2="600" />
+    <line x1="0" y1="700" x2="1000" y2="700" />
+    <line x1="0" y1="800" x2="1000" y2="800" />
+    <line x1="0" y1="900" x2="1000" y2="900" />
+    <line x1="0" y1="1000" x2="1000" y2="1000" />
+    <line x1="0" y1="1100" x2="1000" y2="1100" />
+    <line x1="0" y1="1200" x2="1000" y2="1200" />
+    <line x1="0" y1="1300" x2="1000" y2="1300" />
+  </g>
+
+  <text x="500" y="100" class="main-title">Code-Flow 训练流程：</text>
+  <text x="500" y="170" class="main-title">分三阶段锻造智能</text>
+
+  <g transform="translate(50, 250)">
+    
+    <g transform="translate(0, 0)">
+      <rect x="0" y="0" width="260" height="680" class="box-container box-blue" />
+      
+      <text x="130" y="50" class="box-title">Stage 1:</text>
+      <text x="130" y="85" class="box-title">预训练与退火</text>
+      <text x="130" y="115" class="box-title" font-size="18">(Pre-training &amp;</text>
+      <text x="130" y="140" class="box-title" font-size="18">Annealing)</text>
+      
+      <g transform="translate(20, 200)">
+        <text x="0" y="0" class="body-text">
+            <tspan class="section-header">目标：</tspan>奠定坚实的语言
+            <tspan x="0" dy="28">与代码基础。</tspan>
+        </text>
+        
+        <text x="0" y="80" class="body-text">
+            <tspan class="section-header">流程：</tspan>从通用数据/代码
+            <tspan x="0" dy="28">混合预训练，过渡到高质</tspan>
+            <tspan x="0" dy="28">量精选代码的“退火”阶</tspan>
+            <tspan x="0" dy="28">段，确保模型表征的纯净</tspan>
+            <tspan x="0" dy="28">与高效。</tspan>
+        </text>
+      </g>
+    </g>
+
+    <path d="M 260 340 L 310 340" class="connector-blue" />
+
+    <g transform="translate(310, 0)">
+      <rect x="0" y="0" width="280" height="680" class="box-container box-blue" />
+      
+      <text x="140" y="50" class="box-title">Stage 2:</text>
+      <text x="140" y="85" class="box-title">双阶段中间训练</text>
+      <text x="140" y="115" class="box-title" font-size="18">(Dual-Phase</text>
+      <text x="140" y="140" class="box-title" font-size="18">Mid-training)</text>
+      
+       <g transform="translate(20, 190)">
+         <text x="0" y="0" class="body-text">
+            <tspan class="section-header">目标：</tspan>注入逻辑推理与
+            <tspan x="0" dy="28">智能体能力。</tspan>
+         </text>
+      </g>
+
+      <g transform="translate(20, 250)">
+        <rect x="0" y="0" width="240" height="180" class="sub-box" />
+        <text x="120" y="35" class="box-title" font-size="22">Phase 1</text>
+        <text x="120" y="60" class="box-title" font-size="18">(32k 上下文)</text>
+        <text x="15" y="100" class="body-text" font-size="17">
+            <tspan x="15" dy="0">学习推理、智能体轨迹</tspan>
+            <tspan x="15" dy="26">与代码数据，构建逻辑</tspan>
+            <tspan x="15" dy="26">支架。</tspan>
+        </text>
+      </g>
+
+      <g transform="translate(20, 460)">
+        <rect x="0" y="0" width="240" height="180" class="sub-box" />
+        <text x="120" y="35" class="box-title" font-size="22">Phase 2</text>
+        <text x="120" y="60" class="box-title" font-size="18">(128k 上下文)</text>
+        <text x="15" y="100" class="body-text" font-size="17">
+            <tspan x="15" dy="0">将能力扩展至仓库级长</tspan>
+            <tspan x="15" dy="26">上下文，处理复杂依赖。</tspan>
+        </text>
+      </g>
+    </g>
+
+    <path d="M 590 150 L 650 150" class="connector-gold" />
+
+    <path d="M 590 520 L 650 520" class="connector-blue" />
+
+    <g transform="translate(650, 0)">
+      
+      <g transform="translate(0, 0)">
+        <rect x="0" y="0" width="260" height="320" class="box-container box-gold" />
+        
+        <text x="130" y="40" class="box-title-gold">Path A</text>
+        <text x="130" y="70" class="box-title-gold" font-size="20">(思考路径 -</text>
+        <text x="130" y="95" class="box-title-gold" font-size="20">Thinking Path)</text>
+
+        <g transform="translate(20, 140)">
+          <text x="0" y="0" class="body-text">
+            <tspan class="section-header-gold">技术：</tspan>采用基于强化
+            <tspan x="0" dy="28">学习 (RL) 的推理优化。</tspan>
+          </text>
+
+          <text x="0" y="80" class="body-text">
+            <tspan class="section-header-gold">产出：</tspan>Thinking
+            <tspan x="0" dy="28">Models，擅长复杂逻辑</tspan>
+            <tspan x="0" dy="28">推理、自主错误修正。</tspan>
+          </text>
+        </g>
+      </g>
+
+      <g transform="translate(0, 360)">
+        <rect x="0" y="0" width="260" height="320" class="box-container box-blue" />
+        
+        <text x="130" y="40" class="box-title">Path B</text>
+        <text x="130" y="70" class="box-title" font-size="20">(指令路径 -</text>
+        <text x="130" y="95" class="box-title" font-size="20">Instruct Path)</text>
+
+        <g transform="translate(20, 140)">
+          <text x="0" y="0" class="body-text">
+            <tspan class="section-header">技术：</tspan>采用指令微调
+            <tspan x="0" dy="28">(SFT) 与 RL 优化。</tspan>
+          </text>
+
+          <text x="0" y="80" class="body-text">
+             <tspan class="section-header">产出：</tspan>Instruct
+             <tspan x="0" dy="28">Models，优化通用编程</tspan>
+             <tspan x="0" dy="28">辅助与指令遵循能力。</tspan>
+          </text>
+        </g>
+      </g>
+
+    </g> </g> </svg>
