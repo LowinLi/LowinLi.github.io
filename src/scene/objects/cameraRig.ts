@@ -61,7 +61,7 @@ export const cameraRig: SceneObject = ({ camera, bus }) => {
         // 视线中心往右挪到两者中间，距离按这 4.2 米的宽度算；竖屏放不下，先对着显示器，靠缩放和旋转看其余部分
         const base = wide ? Math.max(2.72, 2.4 / (tan * aspect) + 0.3) : Math.min(0.64 / (tan * aspect), 4.6);
         const cx = wide ? 1.0 : 0;
-        const out = smooth(zoom, 1.15, 2.4), near = smooth(1 - zoom, 0, 0.55);
+        const out = smooth(zoom, 1.1, 1.8), near = smooth(1 - zoom, 0, 0.55);
         const dist = base * zoom;
         // 横屏退得远，抬高一点越过书桌前的圈椅往下看
         const e = (wide ? 0.19 : 0.1) + el + out * 0.26;
@@ -69,6 +69,11 @@ export const cameraRig: SceneObject = ({ camera, bus }) => {
         tl.set(cx * (1 - near), lerp(wide ? 0.5 : 0.62, 0.34, near) - out * 0.15, m.z + out * 0.5);
         tp.set(tl.x + Math.sin(a) * Math.cos(e) * dist, tl.y + Math.sin(e) * dist + py * 0.06, tl.z + Math.cos(a) * Math.cos(e) * dist);
         tp.y = Math.max(tp.y, L.floorY + 0.25);
+        // 镜头不出屋：房间没有天花板、朝镜头那面敞开，拉远或转到外面会看到窗外场景的地面边缘、稻田的背面（用户截图指出过「穿模」）。
+        // 左右不过两面侧墙（内表面 ±3.2），往后不过敞开的那一面（z = 4.6），高度不过墙顶（2.9）
+        tp.x = THREE.MathUtils.clamp(tp.x, -3.0, 3.0);
+        tp.z = Math.min(tp.z, 4.45);
+        tp.y = Math.min(tp.y, 2.6);
       }
       if (mode === 'book') { tp.lerp(new THREE.Vector3(-0.7, 0.5, 1.5), 0.3); tl.lerp(new THREE.Vector3(-0.7, 0.15, L.books.z), 0.3); }
       if (first) { pos.copy(tp); look.copy(tl); first = false; }

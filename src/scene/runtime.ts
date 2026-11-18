@@ -105,7 +105,7 @@ export function start(canvas: HTMLCanvasElement, tier: Exclude<Tier, 'low'>, dat
   let monitorFocused = false, windowFocused = false, bookOpen = false, cupFocused = false, fridgeOpen = false, shelfFocused = false;
   const shelfFocus = new THREE.Vector3(L.trophyShelf.x, L.floorY + L.trophyShelf.h + 0.15, L.trophyShelf.z);
   // 缩放：1 是默认距离。只在自由视角下生效（没在看显示器 / 窗外 / 书）
-  const ZOOM_MIN = 0.45, ZOOM_MAX = 2.4;
+  const ZOOM_MIN = 0.45, ZOOM_MAX = 1.8; // 再远镜头就贴着屋子的边界（cameraRig 里夹住了），拉不动了
   let zoomK = 1;
   const free = () => !monitorFocused && !windowFocused && !bookOpen && !cupFocused && !fridgeOpen && !shelfFocused;
   const setZoom = (k: number) => {
