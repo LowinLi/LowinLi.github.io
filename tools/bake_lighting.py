@@ -145,13 +145,16 @@ box('gramophone', (0.8, 0.07, -0.2), (0.36, 0.14, 0.36), m_wood)
 bpy.ops.mesh.primitive_uv_sphere_add(radius=0.17, location=bl(0.72, 0.6, -0.1)); bpy.context.object.data.materials.append(m_brass)
 bpy.ops.mesh.primitive_uv_sphere_add(radius=0.13, location=bl(-1.03, 0.24, 0.33)); bpy.context.object.data.materials.append(m_green)
 box('plant_floor_pot', (2.72, FLOOR_Y + 0.31, -0.62), (0.36, 0.3, 0.36), m_cloth)
-box('plant_floor_leaves', (2.72, FLOOR_Y + 0.9, -0.62), (0.3, 0.8, 0.3), m_green)
+# 虎尾兰的叶子：两片交叉的薄板（实心的盒子在右墙上投出一大块黑影，书架视角里很显眼）
+box('plant_floor_leaves', (2.72, FLOOR_Y + 0.9, -0.62), (0.3, 0.8, 0.02), m_green, 0.6)
+box('plant_floor_leaves2', (2.72, FLOOR_Y + 0.85, -0.62), (0.26, 0.7, 0.02), m_green, -0.7)
 # 冰箱（靠后墙，福字下面）和它左边的垃圾桶：见 layout.ts 的 fridge / trash
 box('fridge', (1.95, FLOOR_Y + 0.71, -0.83), (0.6, 1.42, 0.67), m_cloth)
 box('trash', (1.42, FLOOR_Y + 0.2, -0.9), (0.24, 0.4, 0.24), m_mid)
 # 右墙边的书架（虎尾兰和落地镜之间，见 layout.ts 的 trophyShelf）和顶上的两座奖杯
 box('trophy_shelf', (3.2 - 0.165, FLOOR_Y + 0.775, 0.15), (0.32, 1.55, 0.9), m_wood)
-box('trophies', (3.2 - 0.165, FLOOR_Y + 1.55 + 0.15, 0.15), (0.08, 0.3, 0.55), m_mid)
+# 奖杯是水晶的，只算两个黑色底座
+for tz in (-0.05, 0.35): box('trophy_base', (3.2 - 0.185, FLOOR_Y + 1.55 + 0.035, tz), (0.07, 0.07, 0.12), m_mid)
 # 圈椅（斜着推开）
 box('chair_seat', (0.62, FLOOR_Y + 0.36, 1.42), (0.44, 0.05, 0.42), m_wood, -0.55)
 box('chair_back', (0.62 + 0.2 * math.sin(-0.55), FLOOR_Y + 0.75, 1.42 + 0.2 * math.cos(-0.55)), (0.42, 0.75, 0.04), m_wood, -0.55)
@@ -221,6 +224,18 @@ for name, (ob, (w, h)) in targets.items():
     bpy.ops.object.bake(type='DIFFUSE')
     px = np.array(img.pixels[:], dtype=np.float32).reshape(h, w, 4)[::-1, :, :3]
     print(name, 'p50 %.3f p90 %.3f p99 %.3f max %.3f' % tuple(np.percentile(px, q) for q in (50, 90, 99, 100)))
+    if name == 'wall_right':
+        # 书架背后那块墙几乎没光；下面的强模糊会把这块黑渗到书架四周（书架视角里是一大片黑影）。
+        # 模糊前先把被挡住的矩形按左右两侧墙面的竖向明暗插值填上
+        # 落地镜背后同理（镜子斜靠着墙）
+        def col(z): return int(round((z - Z0) / (Z1 - Z0) * w))
+        for z0, z1, hgt in ((0.15 - 0.45 - 0.04, 0.15 + 0.45 + 0.04, 1.58), (1.0 - 0.37 - 0.04, 1.0 + 0.37 + 0.04, 1.86)):
+            za, zb, top = col(z0), col(z1), int(round((1 - hgt / H) * h))
+            if 0 < za < zb < w - 1:
+                left, right = px[top:, za - 1].copy(), px[top:, zb + 1].copy()
+                for c in range(za, zb + 1):
+                    t = (c - za) / max(1, zb - za)
+                    px[top:, c] = left * (1 - t) + right * t
     # 墙面的光照变化很平缓，平滑得狠一些才能去掉采样噪点；地板要保留光斑和家具脚下阴影的边缘
     out = (np.clip(srgb(np.clip(blur(px, 2.2 if name == 'floor' else 6.0) / RANGE, 0, 1)), 0, 1) * 255 + 0.5).astype(np.uint8)
     Image.fromarray(out).save(f'{args.out}/{name}.jpg', quality=88, optimize=True)

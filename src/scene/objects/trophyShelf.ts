@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { Bin, type SceneObject } from '../types';
+import { Bin, emit, on, type SceneObject } from '../types';
 import { L } from '../layout';
 import { Batch, blob, canvasTex, contactMaterial, rbox, rng, speckle, usePhotoTexture } from '../util';
 
@@ -103,8 +103,7 @@ const panelShape = (bw: number, tw: number, top: [number, number][]) => {
   return s;
 };
 
-export const trophyShelf: SceneObject = ({ scene, tier, pick }) => {
-  void pick;
+export const trophyShelf: SceneObject = ({ scene, tier, pick, bus }) => {
   const bin = new Bin();
   const high = tier === 'high';
   const fy = L.floorY;
@@ -215,8 +214,16 @@ export const trophyShelf: SceneObject = ({ scene, tier, pick }) => {
   });
 
   root.traverse((o) => { o.userData.noAO = true; });
+  // 点书架：镜头走到书架正前方看奖杯（cameraRig 的 shelf 模式）；底下提示两座奖杯的名字。点别处 / ESC / 返回回座位
+  root.userData.keepsShelf = true;
+  pick(root, { click: () => emit(bus, 'shelf:focus') });
+  let focused = false;
+  const offs = [
+    on(bus, 'shelf:focus', () => { focused = true; emit(bus, 'cup:state', { msg: AWARDS.map((a) => `${a.title} · ${a.base.replace(/(\d)/, ' $1 ')} · ${a.date}`).join('\n') }); }), // 两行：竖屏一行放不下
+    on(bus, 'shelf:blur', () => { if (focused) { focused = false; emit(bus, 'cup:state', null); } }),
+  ];
   return {
     frame() {},
-    stop() { scene.remove(root); bin.dispose(); },
+    stop() { offs.forEach((f) => f()); scene.remove(root); bin.dispose(); },
   };
 };

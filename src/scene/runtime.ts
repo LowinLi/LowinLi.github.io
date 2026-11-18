@@ -93,11 +93,12 @@ export function start(canvas: HTMLCanvasElement, tier: Exclude<Tier, 'low'>, dat
   send({ type: 'resize', width, height });
 
   const fridgeFocus = new THREE.Vector3(L.fridge.x, L.floorY + 0.7, L.fridge.z + L.fridge.d / 2);
-  let monitorFocused = false, windowFocused = false, bookOpen = false, cupFocused = false, fridgeOpen = false;
+  let monitorFocused = false, windowFocused = false, bookOpen = false, cupFocused = false, fridgeOpen = false, shelfFocused = false;
+  const shelfFocus = new THREE.Vector3(L.trophyShelf.x, L.floorY + L.trophyShelf.h + 0.15, L.trophyShelf.z);
   // 缩放：1 是默认距离。只在自由视角下生效（没在看显示器 / 窗外 / 书）
   const ZOOM_MIN = 0.45, ZOOM_MAX = 2.4;
   let zoomK = 1;
-  const free = () => !monitorFocused && !windowFocused && !bookOpen && !cupFocused && !fridgeOpen;
+  const free = () => !monitorFocused && !windowFocused && !bookOpen && !cupFocused && !fridgeOpen && !shelfFocused;
   const setZoom = (k: number) => {
     const next = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, k));
     if (next === zoomK) return false;
@@ -119,6 +120,9 @@ export function start(canvas: HTMLCanvasElement, tier: Exclude<Tier, 'low'>, dat
     on<{ dir: number }>(bus, 'view:zoom', ({ dir }) => { if (free()) setZoom(zoomK * (dir > 0 ? 0.75 : 1 / 0.75)); }),
     on(bus, 'view:reset', () => setZoom(1)),
     on(bus, 'window:focus', () => { windowFocused = true; post?.setFarBlur(false); }),
+    // 看书架：景深对焦在书架顶上的奖杯
+    on(bus, 'shelf:focus', () => { shelfFocused = true; post?.setFocus(shelfFocus); }),
+    on(bus, 'shelf:blur', () => { shelfFocused = false; post?.setFocus(null); }),
     on(bus, 'window:blur', () => { windowFocused = false; post?.setFarBlur(true); }),
   ];
 
@@ -166,6 +170,7 @@ export function start(canvas: HTMLCanvasElement, tier: Exclude<Tier, 'low'>, dat
     if (windowFocused) { if (res?.owner.userData.keepsWindow) pickables.get(res.owner)?.click?.(res.hit); else emit(bus, 'window:blur'); return; }
     if (monitorFocused && !res?.owner.userData.keepsMonitor) { emit(bus, 'monitor:blur'); return; }
     if (fridgeOpen && !res?.owner.userData.keepsFridge) { emit(bus, 'fridge:close'); return; }
+    if (shelfFocused && !res?.owner.userData.keepsShelf) { emit(bus, 'shelf:blur'); return; }
     if (cupFocused && !res?.owner.userData.keepsCup && !res?.owner.userData.keepsMachine) { emit(bus, 'cup:blur'); return; }
     if (res) pickables.get(res.owner)?.click?.(res.hit);
   };

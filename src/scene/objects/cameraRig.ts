@@ -12,7 +12,7 @@ const AZ_MAX = 1.1, EL_MIN = -0.07, EL_MAX = 0.8;
  * monitor：推近到显示器；book：稍微靠向书架；window：走到窗前看菜园。
  */
 export const cameraRig: SceneObject = ({ camera, bus }) => {
-  let mode: 'home' | 'monitor' | 'book' | 'window' | 'fridge' = 'home';
+  let mode: 'home' | 'monitor' | 'book' | 'window' | 'fridge' | 'shelf' = 'home';
   let px = 0, py = 0, aspect = camera.aspect, first = true;
   let az = 0, el = 0, zoom = 1;
   const pos = new THREE.Vector3(), look = new THREE.Vector3();
@@ -26,6 +26,8 @@ export const cameraRig: SceneObject = ({ camera, bus }) => {
     on(bus, 'window:blur', () => { if (mode === 'window') mode = 'home'; }),
     on(bus, 'fridge:open', () => { mode = 'fridge'; }),
     on(bus, 'fridge:close', () => { if (mode === 'fridge') mode = 'home'; }),
+    on(bus, 'shelf:focus', () => { mode = 'shelf'; }),
+    on(bus, 'shelf:blur', () => { if (mode === 'shelf') mode = 'home'; }),
     on(bus, 'view:reset', () => { az = 0; el = 0; }),
   ];
   const smooth = THREE.MathUtils.smoothstep, lerp = THREE.MathUtils.lerp;
@@ -42,6 +44,13 @@ export const cameraRig: SceneObject = ({ camera, bus }) => {
         const f = L.fridge, dist = Math.max(2.3, 0.45 / (tan * aspect));
         tl.set(f.x - 0.15 + px * 0.05, L.floorY + 0.7 + py * 0.04, f.z + 0.1);
         tp.set(f.x - 0.38, L.floorY + 1.05, f.z + f.d / 2 + dist);
+      } else if (mode === 'shelf') {
+        // 站到右墙边书架的正前方，对着书架上半截和顶上的两座奖杯（竖屏时退远一点，宽度放得下）
+        // 竖屏放不下整个书架宽度：只框住顶上的奖杯和最上面一格，走近一点
+        const S = L.trophyShelf, tall = aspect < 1, dist = tall ? Math.max(1.1, 0.36 / (tan * aspect)) : Math.max(1.6, 0.62 / (tan * aspect));
+        const cy = tall ? 1.58 : 1.4;
+        tl.set(S.x, L.floorY + cy + py * 0.05, S.z + px * 0.05);
+        tp.set(S.x - S.d / 2 - dist, L.floorY + cy + 0.12 + py * 0.04, S.z + px * 0.08);
       } else if (mode === 'monitor') {
         const dist = Math.max(m.h / 0.78, m.w / 0.92 / aspect) / 2 / tan;
         tl.set(m.x, m.cy, m.z);
