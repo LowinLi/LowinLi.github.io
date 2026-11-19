@@ -43,6 +43,8 @@ export const plants: SceneObject = ({ scene, tier, pick, bus }) => {
     const finish = () => {
       statics.build(root, bin, { cast: high, receive: high, noCast: [contact], collapse: true });
       leaves.forEach((b, i) => b.build(plant.parts[i].obj, bin, { cast: high, receive: high }));
+      // 叶子一直在轻轻晃：不让它们触发阴影贴图重画（runtime 的 castersMoved 跳过 swayOnly）
+      plant.parts.forEach((pt) => pt.obj.traverse((o) => { o.userData.swayOnly = true; }));
     };
     return { statics, leaves, finish, root, plant };
   };
@@ -79,6 +81,7 @@ export const plants: SceneObject = ({ scene, tier, pick, bus }) => {
         sway.parent!.add(pivot);
         pivot.attach(sway);
         target.plant.parts = [{ obj: pivot, k: o.stiff, gain: 1, ax: 0, az: 0, vx: 0, vz: 0 }];
+        pivot.traverse((c) => { c.userData.swayOnly = true; });
       } else target.plant.parts = [];
       models.push(model);
       emit(bus, 'scene:changed');

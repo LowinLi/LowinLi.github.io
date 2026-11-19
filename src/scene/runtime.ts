@@ -238,7 +238,8 @@ export function start(canvas: HTMLCanvasElement, tier: Exclude<Tier, 'low'>, dat
   let stillFor = 0;
   // 投影网格的世界矩阵 + 显隐的快照（每帧比一遍，几百个网格不到 0.1 毫秒）
   let casters: THREE.Mesh[] = [], snap = new Float32Array(0);
-  const collectCasters = () => { casters = []; scene.traverse((o) => { if ((o as THREE.Mesh).isMesh && o.castShadow) casters.push(o as THREE.Mesh); }); snap = new Float32Array(casters.length * 17); };
+  // userData.swayOnly：一直在轻轻晃的东西（盆栽的叶子），不算「动过」，不然阴影贴图隔帧就得重画一次；它们的影子跟着每 120 帧的定期重画走
+  const collectCasters = () => { casters = []; scene.traverse((o) => { if ((o as THREE.Mesh).isMesh && o.castShadow && !o.userData.swayOnly) casters.push(o as THREE.Mesh); }); snap = new Float32Array(casters.length * 17); };
   const castersMoved = () => {
     let moved = false;
     for (let i = 0; i < casters.length; i++) {
