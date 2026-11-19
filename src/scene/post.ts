@@ -130,6 +130,12 @@ export function createPost(renderer: THREE.WebGLRenderer, scene: THREE.Scene, ca
   });
   composer.addPass(rays);
   composer.addPass(new OutputPass());
+  // 调试：?nopass=ao,dof,bloom,rays 关掉其中几道，查哪一道出的问题
+  const nopass = new URLSearchParams(location.search).get('nopass')?.split(',') ?? [];
+  if (nopass.includes('ao')) gtao.enabled = false;
+  if (nopass.includes('dof')) dof.enabled = false;
+  if (nopass.includes('bloom')) bloom.enabled = false;
+  if (nopass.includes('rays')) rays.enabled = false;
 
   const sunWorld = new THREE.Vector3(), v = new THREE.Vector3(), dir = new THREE.Vector3();
   const monitorAt = new THREE.Vector3(L.monitor.x, L.monitor.cy, L.monitor.z), focusAt = monitorAt.clone();

@@ -396,3 +396,5 @@ URL 加 `?tier=high|mid|low` 可以强制指定档位。
 - 查内存泄漏的办法：`HeapProfiler.collectGarbage` 之后每 20 秒记一次 `performance.memory`、`__scene.info.memory`（几何体、贴图）、`info.programs.length`、`Memory.getDOMCounters`（节点、监听器），同时反复开关冰箱、黄历、拉近拉远。2026-11 查过一次，都是平的。
 - **往桌上加东西前先查那个位置有没有别的东西**（`desk.ts`、`plants.ts`、`layout.ts` 里搜坐标）。黄历当初直接放在了笔筒的位置，笔筒和毛笔从日历页里穿出来，看着像一团黑影（用户截图指出过）；笔筒后来挪到了 (-0.95, 0.08)。
 - Hexo 的标签插件（`{% ... %}`）迁移后不会被渲染，需要手动改写。
+- **画布必须是不透明的**：three 自己建 WebGL 上下文时总是 `alpha: true`（构造参数里的 `alpha: false` 只管清屏的透明度）。high 档后期处理以后，照片公告板（稻子、树、草、玉米）镂空的边缘透明度小于 1，画布后面 `.scene` 的浅杏色底就透出来，夜里成了满屏「荧光黄」的描边（用户截图指出过）；白天也有，只是不显眼。现在 `runtime.ts` 自己用 `canvas.getContext('webgl2', { alpha: false, ... })` 建上下文再交给 `WebGLRenderer`。排查办法：给画布设一个品红色的 CSS 背景，透出品红的地方就是透明度不对。
+- 调试后期处理：URL 加 `?nopass=ao,dof,bloom,rays`（任选几项）关掉对应的那道，查是哪一道出的问题。

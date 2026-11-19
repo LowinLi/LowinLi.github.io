@@ -33,7 +33,11 @@ const OBJECTS: SceneObject[] = [sky, countryside, animals, room, furniture, mirr
 
 export function start(canvas: HTMLCanvasElement, tier: Exclude<Tier, 'low'>, data: SiteData, bus: EventTarget) {
   // high 档的抗锯齿在后期处理的离屏缓冲里做（多重采样），画布本身再开一份全屏多重采样缓冲是白占显存
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
+  // 画布不透明（alpha: false）：three 自己建的上下文总是带透明通道，high 档后期处理以后，照片公告板（稻子、树、草）镂空的边缘
+  // 透明度小于 1，页面上画布后面的底色（.scene 的浅杏色）就透出来，夜里成了一圈圈「荧光黄」的描边（用户截图指出过）
+  const gl = canvas.getContext('webgl2', { alpha: false, antialias: false, depth: true, stencil: false, premultipliedAlpha: true, powerPreference: 'high-performance' });
+  if (!gl) throw new Error('WebGL2 不可用');
+  const renderer = new THREE.WebGLRenderer({ canvas, context: gl, antialias: false, powerPreference: 'high-performance' });
   const basePR = Math.min(devicePixelRatio, BUDGETS.maxPixelRatio[tier]);
   let prScale = 1; // 自动降档时往下乘
   /** 像素比：设备像素比、档位上限、每帧像素上限三者取最小 */
