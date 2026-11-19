@@ -56,7 +56,7 @@ const pct = (n: number) => `${(n * 100).toFixed(2)}%`;
       <p class="tp-tip">在表盘上拖动指针拨时间：分针转一圈是一小时，拖时针更快</p>
       <button type="button" class="tp-now">回到现在</button>
     </div>
-    <p class="hint"><span class="wide">拖动旋转 · 滚轮缩放 · 点窗外看菜园 · 点书、磁带、咖啡、饭菜、黄历、座钟（拨时间）、冰箱上的火车票、左墙的青海湖、书顶上的掌机、右墙书架、显示器 · 录音机上的「波段」旋钮切收音机</span><span class="narrow">拖动旋转 · 双指缩放 · 点一点桌上的东西</span></p>
+    <p class="hint"><span class="wide">拖动旋转 · 滚轮缩放 · 点窗外看菜园 · 点书、磁带、咖啡、饭菜、黄历、座钟（拨时间）、茶几（泡茶）、冰箱上的便利贴和火车票、左墙的青海湖、书顶上的掌机、右墙书架、显示器 · 录音机上的「波段」旋钮切收音机</span><span class="narrow">拖动旋转 · 双指缩放 · 点一点桌上的东西</span></p>
   </div>
 
   <!-- 镜头推到显示器时，真正的输入框叠在屏幕上画的搜索框上 -->
@@ -212,7 +212,7 @@ const pct = (n: number) => `${(n * 100).toFixed(2)}%`;
     if (!r) return;
     Object.assign(screenUi.style, { left: `${r.x}px`, top: `${r.y}px`, width: `${r.w}px`, height: `${r.h}px`, fontSize: `${r.h * 0.017}px` });
   });
-  back.addEventListener('click', () => { emit('monitor:blur'); emit('window:blur'); emit('cup:blur'); emit('calendar:close'); emit('fridge:close'); emit('shelf:blur'); emit('clock:blur'); });
+  back.addEventListener('click', () => { emit('monitor:blur'); emit('window:blur'); emit('cup:blur'); emit('calendar:close'); emit('fridge:close'); emit('shelf:blur'); emit('clock:blur'); emit('inspect:blur'); emit('tea:blur'); });
   // ---- 看右墙边的书架（顶上的奖杯）----
   on('shelf:focus', () => {
     for (const t of ['monitor:blur', 'window:blur', 'cup:blur', 'calendar:close', 'fridge:close']) emit(t);
@@ -457,9 +457,24 @@ const pct = (n: number) => `${(n * 100).toFixed(2)}%`;
   });
   timeUi.querySelector('.tp-now')!.addEventListener('click', () => emit('time:real'));
 
+  // 凑近看便利贴（inspect）、站到茶几前泡茶（tea）：和座钟一样的「聚焦」——返回按钮、ESC、打开别的视角时退出
+  const simpleFocus = (name: 'inspect' | 'tea') => {
+    on(`${name}:focus`, () => {
+      for (const t of ['monitor:blur', 'window:blur', 'cup:blur', 'calendar:close', 'shelf:blur', 'fridge:close', 'clock:blur', name === 'tea' ? 'inspect:blur' : 'tea:blur']) emit(t);
+      root.dataset.mode = name; back.hidden = false;
+    });
+    for (const t of ['window:focus', 'monitor:focus', 'cup:focus', 'book:open', 'calendar:open', 'handheld:open', 'shelf:focus', 'fridge:open', 'clock:focus']) on(t, () => emit(`${name}:blur`));
+    on(`${name}:blur`, () => {
+      if (root.dataset.mode !== name) return;
+      root.dataset.mode = ''; back.hidden = true;
+      if (name === 'tea') emit('cup:state', null);
+    });
+  };
+  simpleFocus('inspect'); simpleFocus('tea');
+
   addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && !projUi.hidden) { emit('project:close'); return; }
-    if (e.key === 'Escape') { emit('handheld:close'); emit('calendar:close'); emit('book:close'); emit('monitor:blur'); emit('window:blur'); emit('cup:blur'); emit('fridge:close'); emit('shelf:blur'); emit('clock:blur'); }
+    if (e.key === 'Escape') { emit('handheld:close'); emit('calendar:close'); emit('book:close'); emit('monitor:blur'); emit('window:blur'); emit('cup:blur'); emit('fridge:close'); emit('shelf:blur'); emit('clock:blur'); emit('inspect:blur'); emit('tea:blur'); }
     if (open && e.key === 'ArrowRight') turn(open.classList.contains('classic') ? -1 : 1);
     if (open && e.key === 'ArrowLeft') turn(open.classList.contains('classic') ? 1 : -1);
   });
@@ -620,7 +635,7 @@ const pct = (n: number) => `${(n * 100).toFixed(2)}%`;
   .tp-now:disabled { opacity: .45; cursor: default; }
   .tp-now:focus-visible { outline: 2px solid #ffd27a; outline-offset: 2px; }
   /* 拨时间时底部那行按钮和提示让开 */
-  .scene[data-mode='clock'] :is(.chips, .hint, .zoom) { display: none; }
+  .scene:is([data-mode='clock'], [data-mode='inspect'], [data-mode='tea']) :is(.chips, .hint, .zoom) { display: none; }
   .radio {
     position: absolute; left: 50%; top: 20px; transform: translateX(-50%); width: min(460px, calc(100% - 32px)); box-sizing: border-box;
     display: flex; align-items: center; gap: 8px; padding: 8px 10px; color: #fff;

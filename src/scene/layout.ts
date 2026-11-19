@@ -18,6 +18,8 @@ export const L = {
   trophyShelf: { x: 3.2 - 0.165, z: 0.15, w: 0.9, d: 0.32, h: 1.55 },
   /** 窗边座钟的表盘中心（从模型的时针分针节点量的），表盘朝 +z，指针长约 0.2 米 */
   clockDial: { x: -2.15, y: 0.982, z: -0.704, r: 0.2 },
+  /** 右后方的茶几（furniture 放模型，tea.ts 管茶具、煮水壶、茶叶罐和泡茶）。y 从地面算，top 是桌面高度；rot 绕 y 转 */
+  teaTable: { x: 2.3, z: 2.7, rot: 0.3, top: 0.5, half: 0.42 },
   /** 园子里放菜篮的地方（basket.ts）：踏脚石小路和右边菜畦之间。countryside 在这一圈里不种草，免得草从筐里穿出来 */
   gardenBasket: { x: 1.21, z: -6.9, clear: 0.5 },
   cam: { pos: [0, 0.86, 2.5], look: [0, 0.55, -0.2] },

@@ -8,7 +8,8 @@ import { asset, Batch, blob, canvasTex, contactMaterial, rbox, rng, speckle } fr
 /**
  * 右后方靠墙的冰箱（奶油色的老式双门冰箱）和它左边的脚踏垃圾桶。用户要的一套小交互：
  * - 点冰箱：两扇门打开，镜头走到冰箱跟前（fridge:open）。点门、点旁边、ESC、返回：关门回座位（fridge:close）。
- * - 冰箱里：冷冻室两根冰棍儿，冷藏室两个苹果、三罐可乐；另有牛奶、饺子、鸡蛋、菜筐里的番茄黄瓜当摆设。
+ * - 冰箱里：冷冻室两根冰棍儿和一袋饺子，冷藏室两个苹果、三罐可乐、一盒牛奶、菜筐里三个番茄，都能拿出来吃；鸡蛋和冰格当摆设。
+ * - 冷冻室门上贴着一张便利贴，关着门时点它，镜头凑过去看（inspect:focus）。
  * - 点一样东西：拿到镜头跟前。再点：
  *   苹果：咬一口、再咬一口、第三口只剩苹果核；再点扔进垃圾桶。
  *   冰棍儿：先撕开包装（包装纸飞进垃圾桶），再咬三口剩一根棍儿；再点扔进垃圾桶。
@@ -17,7 +18,7 @@ import { asset, Batch, blob, canvasTex, contactMaterial, rbox, rng, speckle } fr
  * - 往垃圾桶扔东西时，桶盖弹开（脚踏板踩下去），东西落到桶底，攒着。吃掉的就没了，刷新页面才补货。
  * 提示文字借用 cup:state（HTML 层现成的那条提示）；fridge:hold {p} 让后期的景深对焦到手里的东西。
  */
-type Kind = 'apple' | 'cola' | 'pop';
+type Kind = 'apple' | 'cola' | 'pop' | 'milk' | 'tomato' | 'dumpling';
 const F = L.fridge, T = L.trash, FY = L.floorY;
 const SANS = '"PingFang SC","Noto Sans CJK SC","Microsoft YaHei",system-ui,sans-serif';
 const HAND = '"Kaiti SC","STKaiti","KaiTi",' + SANS;
@@ -75,8 +76,7 @@ export const fridge: SceneObject = ({ scene, camera, tier, bus, pick, audio }) =
   }
   // 菜筐：半透明的抽屉，左前角三个番茄；其余地方空着，留给从园子里摘回来的菜（objects/basket.ts 往这里放）
   S(rbox(IW - 0.02, 0.2, ID - 0.06, 0.01), glass, 0, 0.215, SH / 2 - 0.02, inside);
-  const tomatoM = std({ color: 0xd23a22, roughness: 0.25 });
-  for (const [x, z] of [[-0.2, 0.12], [-0.13, 0.17], [-0.21, 0.04]]) S(new THREE.SphereGeometry(0.032, 14, 10).scale(1, 0.85, 1), tomatoM, x, 0.145, z, inside);
+  // 番茄（能吃）在后面「冰箱里的东西」里建
   // 上层：一盒牛奶
   const milkTex = bin.add(canvasTex(128, 256, (g, w, h) => {
     g.fillStyle = '#f6f6f2'; g.fillRect(0, 0, w, h);
@@ -85,24 +85,26 @@ export const fridge: SceneObject = ({ scene, camera, tier, bus, pick, audio }) =
     g.fillStyle = '#2d6fb8'; g.font = `bold 34px ${SANS}`; g.textAlign = 'center'; g.fillText('鲜牛奶', w / 2, h * 0.42);
     g.fillStyle = '#fff'; g.font = `18px ${SANS}`; g.fillText('950ml', w / 2, h * 0.86);
   }));
-  S(new THREE.BoxGeometry(0.07, 0.19, 0.07), std({ map: milkTex, roughness: 0.6 }), 0.17, SHELF[1] + 0.098, -0.12, inside);
-  S(new THREE.ConeGeometry(0.05, 0.04, 4).rotateY(Math.PI / 4), std({ color: 0xf6f6f2, roughness: 0.6 }), 0.17, SHELF[1] + 0.21, -0.12, inside);
+  // 牛奶盒（能喝）在后面建
   // 冷冻室：一袋速冻饺子、一格冰块
   const dumpTex = bin.add(canvasTex(256, 160, (g, w, h) => {
     g.fillStyle = '#c9302a'; g.fillRect(0, 0, w, h); speckle(g, w, h, 5, 600, '255,255,255', 0.15);
     g.fillStyle = '#ffe9b0'; g.font = `bold 50px ${SANS}`; g.textAlign = 'center'; g.fillText('水饺', w / 2, 70);
     g.font = `22px ${SANS}`; g.fillText('猪肉白菜馅 · 500g', w / 2, 112);
   }));
-  S(rbox(0.16, 0.05, 0.12, 0.02), std({ map: dumpTex, roughness: 0.4 }), 0.13, DIV_Y + 0.07, -0.08, inside, 0, -0.2);
+  // 饺子袋（能吃）在后面建
   S(rbox(0.11, 0.025, 0.07, 0.006), std({ color: 0xbfe6f2, roughness: 0.15, transparent: true, opacity: 0.8 }), -0.15, DIV_Y + 0.058, -0.12, inside);
 
   // ---- 两扇门：合页在右边（+x），往外、往右打开 ----
   const gasket = std({ color: 0xbfbcb4, roughness: 0.8 });
-  const noteTex = bin.add(canvasTex(200, 200, (g, w, h) => {
-    g.fillStyle = '#fbe58a'; g.fillRect(0, 0, w, h); speckle(g, w, h, 9, 500, '120,90,0', 0.08);
-    g.fillStyle = '#2b2b46'; g.font = `30px ${HAND}`; g.textAlign = 'left';
-    ['冰棍儿在上层', '可乐、苹果', '在下面 :)'].forEach((s, i) => g.fillText(s, 16, 52 + i * 46));
+  // 便利贴：拉近能看清，字写多一点（冰箱里有什么、在哪一层）
+  const noteTex = bin.add(canvasTex(320, 320, (g, w, h) => {
+    g.fillStyle = '#fbe58a'; g.fillRect(0, 0, w, h); speckle(g, w, h, 9, 700, '120,90,0', 0.08);
+    g.fillStyle = 'rgba(0,0,0,.06)'; g.fillRect(0, 0, w, 26); // 背胶那一条
+    g.fillStyle = '#2b2b46'; g.font = `34px ${HAND}`; g.textAlign = 'left';
+    ['上层：冰棍儿、饺子', '中间：牛奶、苹果', '下面：可乐', '菜筐里有番茄', '——饿了自己拿 :)'].forEach((s, i) => g.fillText(s, 18, 70 + i * 54));
   }));
+  let noteMesh: THREE.Mesh | null = null;
   type Door = { pivot: THREE.Group; inner: THREE.Group; open: number; lag: number };
   const magnetM = std({ color: 0xd8342a, roughness: 0.3 });
   const makeDoor = (y0: number, y1: number, lag: number, rack: boolean, note: boolean): Door => {
@@ -118,7 +120,7 @@ export const fridge: SceneObject = ({ scene, camera, tier, bus, pick, audio }) =
     S(new THREE.CapsuleGeometry(0.009, hl, 4, 10), chrome, -W + 0.04, hy, 0.075, pivot);
     for (const s of [-1, 1]) S(new THREE.CylinderGeometry(0.006, 0.006, 0.03, 8).rotateX(Math.PI / 2), chrome, -W + 0.04, hy + s * hl / 2, 0.06, pivot);
     if (note) {
-      S(new THREE.PlaneGeometry(0.1, 0.1), std({ map: noteTex, roughness: 0.9 }), -W / 2 + 0.06, y1 - 0.12, 0.0512, pivot, 0, 0, 0.06);
+      noteMesh = add(new THREE.PlaneGeometry(0.1, 0.1), std({ map: noteTex, roughness: 0.9 }), -W / 2 + 0.06, y1 - 0.12, 0.0512, pivot, 0, 0, 0.06);
       S(new THREE.CylinderGeometry(0.012, 0.012, 0.006, 16).rotateX(Math.PI / 2), magnetM, -W / 2 + 0.06, y1 - 0.075, 0.055, pivot);
       S(new THREE.CylinderGeometry(0.014, 0.014, 0.006, 16).rotateX(Math.PI / 2), magnetM, -W / 2 - 0.13, y1 - 0.2, 0.054, pivot);
     }
@@ -155,6 +157,15 @@ export const fridge: SceneObject = ({ scene, camera, tier, bus, pick, audio }) =
   doors[0].pivot.add(ticket);
   S(new THREE.CylinderGeometry(0.011, 0.011, 0.006, 16).rotateX(Math.PI / 2), magnetM, -W / 2 - 0.02 - 0.045, DIV_Y - 0.17 + 0.022, 0.055, doors[0].pivot);
   pick(ticket, { click: () => emit(bus, 'book:open', { id: 'vol-road' }) });
+  // 便利贴：关着门时点它，镜头凑到跟前看清上面的字（开着门时它跟着门转到侧面去了，点门照常关门）
+  if (noteMesh) {
+    const nm = noteMesh as THREE.Mesh;
+    nm.userData.keepsInspect = true;
+    pick(nm, { click: () => {
+      if (isOpen) { emit(bus, 'fridge:close'); return; }
+      emit(bus, 'inspect:focus', { p: nm.getWorldPosition(new THREE.Vector3()).toArray(), n: [0, 0, 1], dist: 0.32 });
+    } });
+  }
   S(blob(W * 0.7, D * 0.65), contactMaterial(bin, high ? 0.35 : 0.6), 0, 0.012, 0);
   box.userData.keepsFridge = true; box.name = 'fridge';
 
@@ -172,7 +183,11 @@ export const fridge: SceneObject = ({ scene, camera, tier, bus, pick, audio }) =
   S(blob(T.r * 1.3, T.r * 1.3), contactMaterial(bin, high ? 0.35 : 0.6), 0, 0.012, 0, can);
   can.userData.keepsFridge = true;
   // 只让大块的外壳、门板和垃圾桶投影；把手、磁贴、鸡蛋这些小东西投影看不出来，在阴影通道里却各占一次 draw call
-  for (const [parent, b] of statics) for (const m of b.build(parent, bin, { receive: high, collapse: true, keep: [cream, steel] })) m.castShadow = high && (m.material === cream || m.material === steel);
+  for (const [parent, b] of statics) for (const m of b.build(parent, bin, { receive: high, collapse: true, keep: [cream, steel] })) {
+    m.castShadow = high && (m.material === cream || m.material === steel);
+    // 玻璃隔板、菜筐抽屉的玻璃不挡点击：点得到里面的番茄、隔板上的东西
+    if (m.material === glass) m.raycast = () => {};
+  }
   let lidOpen = 0, lidHold = 0;
   pick(can, { click() { lidHold = 1.2; sfx('clank'); } });
 
@@ -231,7 +246,7 @@ export const fridge: SceneObject = ({ scene, camera, tier, bus, pick, audio }) =
     const root = new THREE.Group(), body = new THREE.Group(); root.add(body);
     const slot = box.localToWorld(new THREE.Vector3(...local)), slotQ = new THREE.Quaternion().setFromEuler(new THREE.Euler(...rot));
     root.position.copy(slot); root.quaternion.copy(slotQ);
-    const it: Item = { kind, root, body, slot, slotQ, state: 'fridge', step: 0, opened: kind === 'apple', action: null, t: 0, spin: 0 };
+    const it: Item = { kind, root, body, slot, slotQ, state: 'fridge', step: 0, opened: kind === 'apple' || kind === 'tomato', action: null, t: 0, spin: 0 };
     build(body, it);
     // 吃的东西都很小，不投影（省掉阴影通道里的 draw call）
     root.userData.keepsFridge = true; root.userData.fridgeItem = kind; root.userData.itemId = `${kind}${items.filter((i) => i.kind === kind).length}`;
@@ -470,6 +485,85 @@ export const fridge: SceneObject = ({ scene, camera, tier, bus, pick, audio }) =
     }
   }).catch(() => {});
 
+  // ---------------- 番茄、牛奶、饺子（用户要的「冰箱里的牛奶和其他吃的也都可以吃」）----------------
+  // 番茄：和苹果一样每口在朝着你的那面咬出一个带牙印的坑，露出红色的果肉和籽；第三口吃完，什么都不剩
+  const TOM_R = 0.032;
+  const makeTomato = (seed: number) => (body: THREE.Group, it: Item) => {
+    const geo = bin.add(new THREE.SphereGeometry(1, 28, 20));
+    const p = geo.attributes.position, base = Float32Array.from(p.array as Float32Array);
+    const r = rng(seed), skin: number[] = [];
+    for (let i = 0; i < p.count; i++) {
+      const x = base[i * 3], y = base[i * 3 + 1], z = base[i * 3 + 2], a = Math.atan2(z, x);
+      // 扁一点、顶上一圈浅浅的棱
+      const sh = 1 + 0.03 * Math.cos(a * 6) * Math.max(0, y);
+      base[i * 3] = x * sh; base[i * 3 + 1] = y * 0.82 * (1 - 0.12 * Math.exp(-(((1 - y) / 0.15) ** 2))); base[i * 3 + 2] = z * sh;
+      const c = new THREE.Color(0xc8261a).lerp(new THREE.Color(0xe8752a), Math.max(0, y) * 0.25 * (0.6 + r() * 0.3));
+      skin.push(c.r, c.g, c.b);
+    }
+    geo.setAttribute('color', new THREE.Float32BufferAttribute(skin.slice(), 3));
+    const mesh = new THREE.Mesh(geo, std({ vertexColors: true, roughness: 0.22 }));
+    mesh.scale.setScalar(TOM_R); body.add(mesh);
+    // 顶上的绿蒂：五片小尖叶 + 一截短梗
+    const calyx = new THREE.Group(); calyx.position.y = TOM_R * 0.8; body.add(calyx);
+    const green = std({ color: 0x3f7a2a, roughness: 0.6 });
+    for (let k = 0; k < 5; k++) add(new THREE.ConeGeometry(0.004, 0.016, 3).rotateZ(Math.PI / 2).translate(0.008, 0, 0), green, 0, 0, 0, calyx, 0, (k / 5) * Math.PI * 2, -0.25);
+    add(new THREE.CylinderGeometry(0.0018, 0.0022, 0.008, 5), green, 0, 0.004, 0, calyx);
+    const bites: THREE.Vector3[] = [];
+    const flesh = new THREE.Color(0xe0453a), seedC = new THREE.Color(0xe8c35a);
+    const shape = () => {
+      const col = geo.attributes.color as THREE.BufferAttribute;
+      for (let i = 0; i < p.count; i++) {
+        let x = base[i * 3], y = base[i * 3 + 1], z = base[i * 3 + 2], bitten = false;
+        for (const b of bites) {
+          const v = new THREE.Vector3(x, y, z), d = v.distanceTo(b), ang = Math.atan2(y - b.y, (x - b.x) + (z - b.z));
+          const R = 0.66 + 0.05 * Math.sin(ang * 9);
+          if (d < R) { const push = (R - d) * 0.8; const n = b.clone().normalize(); x -= n.x * push; y -= n.y * push * 0.6; z -= n.z * push; bitten = true; }
+        }
+        p.setXYZ(i, x, y, z);
+        // 果肉：红色里一圈圈的籽腔（黄绿色的籽）
+        const seedy = bitten && Math.sin(Math.atan2(z, x) * 3) > 0.55 && Math.hypot(x, z) < 0.55;
+        const c = bitten ? (seedy ? seedC : flesh) : null;
+        if (c) col.setXYZ(i, c.r, c.g, c.b); else col.setXYZ(i, skin[i * 3], skin[i * 3 + 1], skin[i * 3 + 2]);
+      }
+      p.needsUpdate = true; col.needsUpdate = true; geo.computeVertexNormals();
+    };
+    shape();
+    it.onStep = (n) => {
+      if (n < 3) { const a = -it.spin; bites.push(new THREE.Vector3(Math.sin(a), 0.05 * (n - 1), Math.cos(a)).multiplyScalar(1.02)); shape(); }
+      else body.visible = false; // 最后一口吃完
+    };
+  };
+  for (const [i, [x, z]] of ([[-0.2, 0.12], [-0.13, 0.17], [-0.21, 0.04]] as const).entries()) makeItem('tomato', [x, 0.118 + TOM_R * 0.82, z], [0, i * 1.7, 0], makeTomato(31 + i * 3));
+
+  // 牛奶：屋脊顶的纸盒，侧面有一个蓝色的拧盖。第一下拧开（盖子扔进垃圾桶），再喝三口，喝完自己扔掉
+  const makeMilk = (body: THREE.Group, it: Item) => {
+    add(new THREE.BoxGeometry(0.07, 0.19, 0.07).translate(0, 0.095, 0), std({ map: milkTex, roughness: 0.6 }), 0, 0, 0, body);
+    // 屋脊顶：两个斜面合起来的三棱柱
+    const roof = new THREE.Shape([new THREE.Vector2(-0.035, 0), new THREE.Vector2(0.035, 0), new THREE.Vector2(0.0015, 0.035), new THREE.Vector2(-0.0015, 0.035)]);
+    add(new THREE.ExtrudeGeometry(roof, { depth: 0.07, bevelEnabled: false }).translate(0, 0, -0.035), std({ color: 0xf6f6f2, roughness: 0.6 }), 0, 0.19, 0, body);
+    add(new THREE.BoxGeometry(0.004, 0.012, 0.07), std({ color: 0xeeeeea, roughness: 0.6 }), 0, 0.229, 0, body); // 封口的折边
+    const cap = add(new THREE.CylinderGeometry(0.011, 0.011, 0.012, 14).rotateX(Math.PI / 2 - 0.78), std({ color: 0x2d6fb8, roughness: 0.4 }), 0, 0.205, 0.022, body);
+    it.onOpen = () => { setTimeout(() => toss(cap), 500); };
+    it.anim = (k, a) => { if (a === 'open') cap.rotation.z = k * 4; };
+  };
+  makeItem('milk', [0.17, SHELF[1] + 0.003, -0.12], [0, -0.3, 0], makeMilk);
+
+  // 速冻水饺：一袋。第一下撕开，袋口上露出三个饺子，一口吃一个（就当是煮好了的）；吃完空袋子扔掉
+  const makeDumpling = (body: THREE.Group, it: Item) => {
+    add(rbox(0.16, 0.05, 0.12, 0.02), std({ map: dumpTex, roughness: 0.4 }), 0, 0, 0, body);
+    const doughM = std({ color: 0xf3ecdc, roughness: 0.55 });
+    const dumplings = [-0.04, 0, 0.04].map((x, i) => {
+      // 半个椭球当饺子身，顶上一道捏出来的褶边
+      const d = new THREE.Group(); d.position.set(x, 0.026, (i - 1) * 0.012); d.rotation.y = 0.4 - i * 0.4; d.visible = false; body.add(d);
+      add(new THREE.SphereGeometry(1, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2).scale(0.024, 0.015, 0.013), doughM, 0, 0, 0, d);
+      add(new THREE.TorusGeometry(0.02, 0.0025, 4, 16, Math.PI).rotateX(Math.PI / 2).scale(1, 1, 0.5), doughM, 0, 0.012, 0, d, Math.PI / 2, 0, 0);
+      return d;
+    });
+    it.onOpen = () => { dumplings.forEach((d) => { d.visible = true; }); };
+    it.onStep = (n) => { const d = dumplings[n - 1]; if (d) d.visible = false; };
+  };
+  makeItem('dumpling', [0.13, DIV_Y + 0.07, -0.08], [0, -0.2, 0], makeDumpling);
+
   // ---------------- 交互 ----------------
   let isOpen = false, held: Item | null = null;
   const say = (msg: string | null) => emit(bus, 'cup:state', msg ? { msg } : null);
@@ -483,9 +577,12 @@ export const fridge: SceneObject = ({ scene, camera, tier, bus, pick, audio }) =
   const hint0 = (it: Item): string => {
     if (it.kind === 'apple') return it.step < 3 ? `点一下咬一口${it.step ? ' · ' + left[it.step] : ''}` : '只剩苹果核了 · 点一下扔进垃圾桶';
     if (it.kind === 'pop') return !it.opened ? '点一下撕开包装' : it.step < 3 ? `点一下咬一口${it.step ? ' · ' + left[it.step] : ''}` : '只剩一根棍儿了 · 点一下扔进垃圾桶';
+    if (it.kind === 'tomato') return it.step < 3 ? `点一下咬一口${it.step ? ' · ' + left[it.step] : ''}` : '番茄吃完了';
+    if (it.kind === 'milk') return !it.opened ? '点一下拧开盖子' : it.step < 3 ? `点一下喝一口${it.step ? ' · ' + left[it.step] : ''}` : '喝完了，扔进垃圾桶';
+    if (it.kind === 'dumpling') return !it.opened ? '点一下撕开袋子' : it.step < 3 ? `点一下吃一个饺子（就当是煮好了的）${it.step ? ' · 还剩 ' + (3 - it.step) + ' 个' : ''}` : '吃完了，空袋子扔掉';
     return !it.opened ? '点一下拉开拉环' : it.step < 3 ? `点一下喝一口${it.step ? ' · ' + left[it.step] : ''}` : '喝完了，扔进垃圾桶';
   };
-  const idleHint = () => items.some((i) => i.state === 'fridge') ? '点苹果、可乐或冰棍儿拿出来 · 点冰箱门关上' : '冰箱空了 · 点冰箱门关上';
+  const idleHint = () => items.some((i) => i.state === 'fridge') ? '点冰箱里吃的、喝的拿出来 · 点冰箱门关上' : '冰箱空了 · 点冰箱门关上';
   const done = (it: Item) => it.step >= 3;
   const focusP = new THREE.Vector3(F.x, FY + 0.7, F.z + D / 2);
   const putBack = (it: Item) => {
@@ -512,8 +609,8 @@ export const fridge: SceneObject = ({ scene, camera, tier, bus, pick, audio }) =
     if (it.state !== 'held' || it.action) return;
     ac ??= audio();
     if (done(it)) { throwAway(it); say(idleHint()); emit(bus, 'fridge:hold', null); return; }
-    if (!it.opened) { it.action = it.kind === 'pop' ? 'tear' : 'open'; it.t = 0; if (it.kind === 'cola') sfx('fizz'); it.onOpen?.(); it.opened = true; say(hint(it)); return; }
-    it.action = it.kind === 'cola' ? 'sip' : 'bite'; it.t = 0;
+    if (!it.opened) { it.action = it.kind === 'pop' || it.kind === 'dumpling' ? 'tear' : 'open'; it.t = 0; if (it.kind === 'cola') sfx('fizz'); if (it.kind === 'dumpling') sfx('tear'); it.onOpen?.(); it.opened = true; say(hint(it)); return; }
+    it.action = it.kind === 'cola' || it.kind === 'milk' ? 'sip' : 'bite'; it.t = 0;
   };
   const openFridge = () => { if (isOpen) return; isOpen = true; sfx('door'); say(idleHint()); };
   const closeFridge = () => {
@@ -543,7 +640,7 @@ export const fridge: SceneObject = ({ scene, camera, tier, bus, pick, audio }) =
   const tmpQ = new THREE.Quaternion(), tmpE = new THREE.Euler(), want = new THREE.Vector3(), wantQ = new THREE.Quaternion();
   const holdPose = (it: Item, k: number) => {
     const far = Math.max(1, 0.75 / camera.aspect);
-    const cfg = { apple: [-0.06, 0.28, 0.25, 0], cola: [-0.075, 0.3, 0.15, 1.0], pop: [-0.06, 0.28, 0.1, 0.3] }[it.kind];
+    const cfg = { apple: [-0.06, 0.28, 0.25, 0], cola: [-0.075, 0.3, 0.15, 1.0], pop: [-0.06, 0.28, 0.1, 0.3], tomato: [-0.06, 0.27, 0.3, 0], milk: [-0.09, 0.52, 0.1, 0.9], dumpling: [-0.06, 0.46, 1.0, 0.1] }[it.kind];
     want.set(0, cfg[0] + k * 0.03, -cfg[1] * far + k * 0.1).applyMatrix4(camera.matrixWorld);
     // 可乐喝的时候罐口朝你倾过来；其余的微微前倾
     wantQ.copy(camera.quaternion).multiply(tmpQ.setFromEuler(tmpE.set(cfg[2] + k * cfg[3], it.spin, 0, 'YXZ')));
@@ -580,6 +677,7 @@ export const fridge: SceneObject = ({ scene, camera, tier, bus, pick, audio }) =
         if (f.t >= 1) { flies.splice(i, 1); f.done?.(); }
       }
       for (const it of items) {
+        if (it.kind === 'tomato' && it.state === 'bin') { it.root.visible = false; continue; }
         if (it.state === 'fly' || it.state === 'bin') { it.root.userData.state = it.state; it.root.userData.action = null; continue; }
         let k = 0;
         if (it.action) {
@@ -597,10 +695,13 @@ export const fridge: SceneObject = ({ scene, camera, tier, bus, pick, audio }) =
           it.anim?.(it.t, it.action);
           if (it.t >= 1) {
             const a = it.action; it.action = null; it.anim?.(1, null);
-            if (a === 'bite') it.spin += 2.2; // 转一下，下一口咬在新的地方
+            if (a === 'bite' && (it.kind === 'apple' || it.kind === 'tomato')) it.spin += 2.2; // 转一下，下一口咬在新的地方（饺子袋、冰棍不转：袋口的饺子要一直朝着你）
             if (a === 'tear' || a === 'open') say(hint(it));
             // 可乐喝完自己扔掉
-            if (it.kind === 'cola' && done(it)) { throwAway(it); setTimeout(() => { say(isOpen ? idleHint() : null); }, 1200); emit(bus, 'fridge:hold', null); }
+            // 可乐、牛奶喝完，饺子吃完：空罐、空盒、空袋自己扔掉
+            if ((it.kind === 'cola' || it.kind === 'milk' || it.kind === 'dumpling') && done(it)) { throwAway(it); setTimeout(() => { say(isOpen ? idleHint() : null); }, 1200); emit(bus, 'fridge:hold', null); }
+            // 番茄最后一口吃完就没了（不往垃圾桶扔东西）
+            if (it.kind === 'tomato' && done(it)) { held = null; it.state = 'bin'; it.root.visible = false; it.root.traverse((o) => { o.userData.binned = true; }); setTimeout(() => { say(isOpen ? idleHint() : null); }, 900); emit(bus, 'fridge:hold', null); }
           }
         }
         if (it.state === 'held') holdPose(it, k); else { want.copy(it.slot); wantQ.copy(it.slotQ); }

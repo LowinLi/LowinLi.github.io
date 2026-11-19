@@ -12,7 +12,9 @@ const AZ_MAX = 1.1, EL_MIN = -0.07, EL_MAX = 0.8;
  * monitor：推近到显示器；book：稍微靠向书架；window：走到窗前看菜园。
  */
 export const cameraRig: SceneObject = ({ camera, bus }) => {
-  let mode: 'home' | 'monitor' | 'book' | 'window' | 'fridge' | 'shelf' | 'clock' = 'home';
+  let mode: 'home' | 'monitor' | 'book' | 'window' | 'fridge' | 'shelf' | 'clock' | 'inspect' | 'tea' = 'home';
+  // inspect：凑近看一样小东西（冰箱上的便利贴），p 是它的位置、n 是正面朝向、dist 是离多远
+  const ins = { p: new THREE.Vector3(), n: new THREE.Vector3(0, 0, 1), dist: 0.3 };
   let px = 0, py = 0, aspect = camera.aspect, first = true;
   let az = 0, el = 0, zoom = 1;
   const pos = new THREE.Vector3(), look = new THREE.Vector3();
@@ -28,6 +30,10 @@ export const cameraRig: SceneObject = ({ camera, bus }) => {
     on(bus, 'fridge:close', () => { if (mode === 'fridge') mode = 'home'; }),
     on(bus, 'shelf:focus', () => { mode = 'shelf'; }),
     on(bus, 'shelf:blur', () => { if (mode === 'shelf') mode = 'home'; }),
+    on<{ p: number[]; n: number[]; dist?: number }>(bus, 'inspect:focus', (d) => { ins.p.fromArray(d.p); ins.n.fromArray(d.n).normalize(); ins.dist = d.dist ?? 0.3; mode = 'inspect'; }),
+    on(bus, 'inspect:blur', () => { if (mode === 'inspect') mode = 'home'; }),
+    on(bus, 'tea:focus', () => { mode = 'tea'; }),
+    on(bus, 'tea:blur', () => { if (mode === 'tea') mode = 'home'; }),
     on(bus, 'clock:focus', () => { mode = 'clock'; }),
     on(bus, 'clock:blur', () => { if (mode === 'clock') mode = 'home'; }),
     on(bus, 'view:reset', () => { az = 0; el = 0; }),
@@ -57,6 +63,19 @@ export const cameraRig: SceneObject = ({ camera, bus }) => {
         const cy = tall ? 1.58 : 1.4;
         tl.set(S.x, L.floorY + cy + py * 0.05, S.z + px * 0.05);
         tp.set(S.x - S.d / 2 - dist, L.floorY + cy + 0.12 + py * 0.04, S.z + px * 0.08);
+      } else if (mode === 'inspect') {
+        // 正对着它、凑近（竖屏退远一点，宽度放得下）
+        const dist = Math.max(ins.dist, ins.dist * 0.7 / aspect);
+        tl.copy(ins.p).add(new THREE.Vector3(px * 0.005, py * 0.005, 0));
+        tp.copy(ins.p).addScaledVector(ins.n, dist);
+      } else if (mode === 'tea') {
+        // 站到茶几跟前、背对着窗户，对着右后方的墙角（用户要的「点茶水桌调换视角，对着墙这边、对着茶水桌」）。
+        // 从茶几往屋子中间退，抬高一点往下看整张桌面；竖屏退远一点
+        const T = L.teaTable, c = new THREE.Vector3(T.x, L.floorY + T.top + 0.04, T.z);
+        const away = new THREE.Vector3(-T.x, 0, 1.2 - T.z).normalize();
+        const dist = Math.max(1.0, 0.5 / (tan * aspect));
+        tl.set(c.x + px * 0.04, c.y + py * 0.03, c.z);
+        tp.copy(c).addScaledVector(away, dist).setY(L.floorY + T.top + 0.62 + py * 0.03);
       } else if (mode === 'clock') {
         // 站到座钟的表盘正前方（拨时间）：表盘上下左右各留出一点，竖屏按宽度算
         const D = L.clockDial, half = D.r * 1.6, dist = Math.max(half / tan, half / (tan * aspect));

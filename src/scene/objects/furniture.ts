@@ -173,9 +173,9 @@ export const furniture: SceneObject = ({ scene, camera, renderer, tier, bus, pic
   useModel('antique_ceramic_vase_01', { pos: [tableX, tableTop, pz - 0.5] });
   useModel('ceramic_vase_01', { pos: [tableX, tableTop, pz + 0.55], scale: 0.7 });
   // 右后方的茶角：茶几、两只凳子、一套茶具
-  const teaX = 2.3, teaZ = 2.7;
-  useModel('chinese_tea_table', { pos: [teaX, fy, teaZ], rotY: 0.3, shadow: [0.5, 0.5] });
-  useModel('tea_set_01', { pos: [teaX, fy + 0.5, teaZ], rotY: 0.3, scale: 0.72 });
+  // 茶几上的茶具、煮水壶、茶叶罐在 objects/tea.ts（能泡茶喝茶）；点茶几本身也走到茶几前
+  const { x: teaX, z: teaZ } = L.teaTable;
+  useModel('chinese_tea_table', { pos: [teaX, fy, teaZ], rotY: L.teaTable.rot, shadow: [0.5, 0.5], then: (m) => { m.userData.keepsTea = true; pick(m, { click: () => emit(bus, 'tea:focus') }); } });
   useModel('chinese_stool', { pos: [teaX - 0.85, fy, teaZ - 0.2], rotY: 0.4, shadow: [0.3, 0.3] });
   useModel('chinese_stool', { pos: [teaX + 0.2, fy, teaZ + 0.85], rotY: -0.5, shadow: [0.3, 0.3] });
   // 窗边的落地座钟：时针和分针是独立的节点，走真实时间。模型里指针摆在 10:37，先记下各自的初始角度（从 12 点起顺时针）
