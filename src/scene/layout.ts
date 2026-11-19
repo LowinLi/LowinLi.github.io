@@ -20,6 +20,8 @@ export const L = {
   clockDial: { x: -2.15, y: 0.982, z: -0.704, r: 0.2 },
   /** 右后方的茶几（furniture 放模型，tea.ts 管茶具、煮水壶、茶叶罐和泡茶）。y 从地面算，top 是桌面高度；rot 绕 y 转 */
   teaTable: { x: 2.3, z: 2.7, rot: 0.3, top: 0.5, half: 0.42 },
+  /** 左墙前段的灶台（kitchen.ts）：背靠左墙、正面朝 +x，沿墙长 len、进深 depth、台面高 h（从地面算）。条案和山水横幅在 z 0.4–2.1，这里在它们和前墙之间 */
+  kitchen: { x: -3.2 + 0.3, z: 3.35, len: 1.3, depth: 0.6, h: 0.82 },
   /** 园子里放菜篮的地方（basket.ts）：踏脚石小路和右边菜畦之间。countryside 在这一圈里不种草，免得草从筐里穿出来 */
   gardenBasket: { x: 1.21, z: -6.9, clear: 0.5 },
   cam: { pos: [0, 0.86, 2.5], look: [0, 0.55, -0.2] },

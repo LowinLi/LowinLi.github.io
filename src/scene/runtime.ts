@@ -26,10 +26,11 @@ import { handheld } from './objects/handheld';
 import { trophyShelf } from './objects/trophyShelf';
 import { basket } from './objects/basket';
 import { tea } from './objects/tea';
+import { kitchen } from './objects/kitchen';
 import { cameraRig } from './objects/cameraRig';
 
 /** 场景里挂载的物件清单。新物件：在 objects/ 下建文件，然后加到这里。cameraRig 放最后。 */
-const OBJECTS: SceneObject[] = [sky, countryside, animals, room, furniture, mirror, desk, monitor, bookshelf, recorder, coffee, cups, meal, calendar, fridge, handheld, trophyShelf, basket, plants, dust, tea, cameraRig];
+const OBJECTS: SceneObject[] = [sky, countryside, animals, room, furniture, mirror, desk, monitor, bookshelf, recorder, coffee, cups, meal, calendar, fridge, handheld, trophyShelf, basket, plants, dust, tea, kitchen, cameraRig];
 
 export function start(canvas: HTMLCanvasElement, tier: Exclude<Tier, 'low'>, data: SiteData, bus: EventTarget) {
   // high 档的抗锯齿在后期处理的离屏缓冲里做（多重采样），画布本身再开一份全屏多重采样缓冲是白占显存
@@ -108,14 +109,15 @@ export function start(canvas: HTMLCanvasElement, tier: Exclude<Tier, 'low'>, dat
   send({ type: 'resize', width, height });
 
   const fridgeFocus = new THREE.Vector3(L.fridge.x, L.floorY + 0.7, L.fridge.z + L.fridge.d / 2);
-  let monitorFocused = false, windowFocused = false, bookOpen = false, cupFocused = false, fridgeOpen = false, shelfFocused = false, clockFocused = false, inspectFocused = false, teaFocused = false;
+  let monitorFocused = false, windowFocused = false, bookOpen = false, cupFocused = false, fridgeOpen = false, shelfFocused = false, clockFocused = false, inspectFocused = false, teaFocused = false, stoveFocused = false;
+  const stoveFocus = new THREE.Vector3(L.kitchen.x, L.floorY + L.kitchen.h + 0.06, L.kitchen.z);
   const teaFocus = new THREE.Vector3(L.teaTable.x, L.floorY + L.teaTable.top + 0.06, L.teaTable.z);
   const clockFocus = new THREE.Vector3(L.clockDial.x, L.clockDial.y, L.clockDial.z);
   const shelfFocus = new THREE.Vector3(L.trophyShelf.x, L.floorY + L.trophyShelf.h + 0.15, L.trophyShelf.z);
   // 缩放：1 是默认距离。只在自由视角下生效（没在看显示器 / 窗外 / 书）
   const ZOOM_MIN = 0.45, ZOOM_MAX = 2.4; // 镜头位置夹在屋里（cameraRig），拉远到后面主要靠视角变广
   let zoomK = 1;
-  const free = () => !monitorFocused && !windowFocused && !bookOpen && !cupFocused && !fridgeOpen && !shelfFocused && !clockFocused && !inspectFocused && !teaFocused;
+  const free = () => !monitorFocused && !windowFocused && !bookOpen && !cupFocused && !fridgeOpen && !shelfFocused && !clockFocused && !inspectFocused && !teaFocused && !stoveFocused;
   const setZoom = (k: number) => {
     const next = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, k));
     if (next === zoomK) return false;
@@ -135,6 +137,8 @@ export function start(canvas: HTMLCanvasElement, tier: Exclude<Tier, 'low'>, dat
     on<{ p: number[] }>(bus, 'inspect:focus', ({ p }) => { inspectFocused = true; post?.setFocus(new THREE.Vector3().fromArray(p)); }),
     on(bus, 'inspect:blur', () => { inspectFocused = false; post?.setFocus(null); }),
     on(bus, 'tea:focus', () => { teaFocused = true; post?.setFocus(teaFocus); }),
+    on(bus, 'stove:focus', () => { stoveFocused = true; post?.setFocus(stoveFocus); }),
+    on(bus, 'stove:blur', () => { stoveFocused = false; post?.setFocus(null); }),
     on(bus, 'tea:blur', () => { teaFocused = false; post?.setFocus(null); }),
     on<{ p: number[] } | null>(bus, 'tea:hold', (d) => { if (teaFocused) post?.setFocus(d ? new THREE.Vector3().fromArray(d.p) : teaFocus); }),
     on(bus, 'clock:blur', () => { clockFocused = false; post?.setFocus(null); }),
@@ -204,6 +208,7 @@ export function start(canvas: HTMLCanvasElement, tier: Exclude<Tier, 'low'>, dat
     if (clockFocused && !res?.owner.userData.keepsClock) { emit(bus, 'clock:blur'); return; }
     if (inspectFocused && !res?.owner.userData.keepsInspect) { emit(bus, 'inspect:blur'); return; }
     if (teaFocused && !res?.owner.userData.keepsTea) { emit(bus, 'tea:blur'); return; }
+    if (stoveFocused && !res?.owner.userData.keepsStove) { emit(bus, 'stove:blur'); return; }
     if (cupFocused && !res?.owner.userData.keepsCup && !res?.owner.userData.keepsMachine) { emit(bus, 'cup:blur'); return; }
     if (res) pickables.get(res.owner)?.click?.(res.hit);
   };

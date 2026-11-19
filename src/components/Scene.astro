@@ -43,6 +43,7 @@ const pct = (n: number) => `${(n * 100).toFixed(2)}%`;
       <a href="#" data-action="fridge" data-webgl-only>冰箱</a>
       <a href="#" data-action="games">游戏</a>
       <a href="#" data-action="time" data-webgl-only>时间</a>
+      <a href="#" data-action="cook" data-webgl-only>做饭</a>
     </nav>
     <div class="zoom" data-webgl-only role="group" aria-label="视角">
       <button type="button" data-zoom="1" aria-label="拉近">＋</button>
@@ -50,6 +51,11 @@ const pct = (n: number) => `${(n * 100).toFixed(2)}%`;
       <button type="button" data-zoom="0" aria-label="复位视角">⟲</button>
     </div>
     <p class="cup-hint" aria-live="polite" hidden></p>
+    <div class="dish" role="status" aria-live="polite" hidden>
+      <p class="dish-name"></p>
+      <p class="dish-hearts" role="img"></p>
+      <p class="dish-comment"></p>
+    </div>
     <div class="radio" role="group" aria-label="收音机" hidden>
       <button type="button" data-seek="-1" aria-label="上一个台">◀</button>
       <div class="dial">
@@ -65,7 +71,7 @@ const pct = (n: number) => `${(n * 100).toFixed(2)}%`;
       <p class="tp-tip">在表盘上拖动指针拨时间：分针转一圈是一小时，拖时针更快</p>
       <button type="button" class="tp-now">回到现在</button>
     </div>
-    <p class="hint"><span class="wide">拖动旋转 · 滚轮缩放 · 点窗外看菜园 · 点书、磁带、咖啡、饭菜、黄历、座钟（拨时间）、茶几（泡茶）、冰箱上的便利贴和火车票、左墙的青海湖、书顶上的掌机、右墙书架、显示器 · 录音机上的「波段」旋钮切收音机</span><span class="narrow">拖动旋转 · 双指缩放 · 点一点桌上的东西</span></p>
+    <p class="hint"><span class="wide">拖动旋转 · 滚轮缩放 · 点窗外看菜园 · 点书、磁带、咖啡、饭菜、黄历、座钟（拨时间）、茶几（泡茶）、左墙前面的灶台（炒菜）、冰箱上的便利贴和火车票、左墙的青海湖、书顶上的掌机、右墙书架、显示器 · 录音机上的「波段」旋钮切收音机</span><span class="narrow">拖动旋转 · 双指缩放 · 点一点桌上的东西</span></p>
   </div>
 
   <!-- 镜头推到显示器时，真正的输入框叠在屏幕上画的搜索框上 -->
@@ -221,7 +227,7 @@ const pct = (n: number) => `${(n * 100).toFixed(2)}%`;
     if (!r) return;
     Object.assign(screenUi.style, { left: `${r.x}px`, top: `${r.y}px`, width: `${r.w}px`, height: `${r.h}px`, fontSize: `${r.h * 0.017}px` });
   });
-  back.addEventListener('click', () => { emit('monitor:blur'); emit('window:blur'); emit('cup:blur'); emit('calendar:close'); emit('fridge:close'); emit('shelf:blur'); emit('clock:blur'); emit('inspect:blur'); emit('tea:blur'); });
+  back.addEventListener('click', () => { emit('monitor:blur'); emit('window:blur'); emit('cup:blur'); emit('calendar:close'); emit('fridge:close'); emit('shelf:blur'); emit('clock:blur'); emit('inspect:blur'); emit('tea:blur'); emit('stove:blur'); });
   // ---- 看右墙边的书架（顶上的奖杯）----
   on('shelf:focus', () => {
     for (const t of ['monitor:blur', 'window:blur', 'cup:blur', 'calendar:close', 'fridge:close']) emit(t);
@@ -466,24 +472,37 @@ const pct = (n: number) => `${(n * 100).toFixed(2)}%`;
   });
   timeUi.querySelector('.tp-now')!.addEventListener('click', () => emit('time:real'));
 
-  // 凑近看便利贴（inspect）、站到茶几前泡茶（tea）：和座钟一样的「聚焦」——返回按钮、ESC、打开别的视角时退出
-  const simpleFocus = (name: 'inspect' | 'tea') => {
+  // 凑近看便利贴（inspect）、站到茶几前泡茶（tea）、站到灶台前炒菜（stove）：和座钟一样的「聚焦」——返回按钮、ESC、打开别的视角时退出
+  const SIMPLE = ['inspect', 'tea', 'stove'] as const;
+  const simpleFocus = (name: (typeof SIMPLE)[number]) => {
     on(`${name}:focus`, () => {
-      for (const t of ['monitor:blur', 'window:blur', 'cup:blur', 'calendar:close', 'shelf:blur', 'fridge:close', 'clock:blur', name === 'tea' ? 'inspect:blur' : 'tea:blur']) emit(t);
+      for (const t of ['monitor:blur', 'window:blur', 'cup:blur', 'calendar:close', 'shelf:blur', 'fridge:close', 'clock:blur', ...SIMPLE.filter((x) => x !== name).map((x) => `${x}:blur`)]) emit(t);
       root.dataset.mode = name; back.hidden = false;
     });
     for (const t of ['window:focus', 'monitor:focus', 'cup:focus', 'book:open', 'calendar:open', 'handheld:open', 'shelf:focus', 'fridge:open', 'clock:focus']) on(t, () => emit(`${name}:blur`));
     on(`${name}:blur`, () => {
       if (root.dataset.mode !== name) return;
       root.dataset.mode = ''; back.hidden = true;
-      if (name === 'tea') emit('cup:state', null);
+      if (name !== 'inspect') emit('cup:state', null);
     });
   };
-  simpleFocus('inspect'); simpleFocus('tea');
+  SIMPLE.forEach(simpleFocus);
+
+  // 炒好的菜：菜名、n 颗红心、一句评价（kitchen 发 dish:show）
+  const dishUi = $<HTMLDivElement>('.dish');
+  on<{ name: string; hearts: number; comment: string; burnt: boolean }>('dish:show', (d) => {
+    dishUi.querySelector('.dish-name')!.textContent = d.name;
+    dishUi.querySelector('.dish-hearts')!.innerHTML = Array.from({ length: 5 }, (_, i) => `<span class="${i < d.hearts ? 'on' : ''}">${i < d.hearts ? '❤' : '♡'}</span>`).join('');
+    dishUi.querySelector('.dish-hearts')!.setAttribute('aria-label', `喜欢程度 ${d.hearts} / 5`);
+    dishUi.querySelector('.dish-comment')!.textContent = d.comment;
+    dishUi.classList.toggle('burnt', d.burnt);
+    dishUi.hidden = false;
+  });
+  on('dish:hide', () => { dishUi.hidden = true; });
 
   addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && !projUi.hidden) { emit('project:close'); return; }
-    if (e.key === 'Escape') { emit('handheld:close'); emit('calendar:close'); emit('book:close'); emit('monitor:blur'); emit('window:blur'); emit('cup:blur'); emit('fridge:close'); emit('shelf:blur'); emit('clock:blur'); emit('inspect:blur'); emit('tea:blur'); }
+    if (e.key === 'Escape') { emit('handheld:close'); emit('calendar:close'); emit('book:close'); emit('monitor:blur'); emit('window:blur'); emit('cup:blur'); emit('fridge:close'); emit('shelf:blur'); emit('clock:blur'); emit('inspect:blur'); emit('tea:blur'); emit('stove:blur'); }
     if (open && e.key === 'ArrowRight') turn(open.classList.contains('classic') ? -1 : 1);
     if (open && e.key === 'ArrowLeft') turn(open.classList.contains('classic') ? 1 : -1);
   });
@@ -509,6 +528,7 @@ const pct = (n: number) => `${(n * 100).toFixed(2)}%`;
       }));
       $('[data-action="fridge"]').addEventListener('click', (e) => { e.preventDefault(); emit('fridge:open'); });
       $('[data-action="time"]').addEventListener('click', (e) => { e.preventDefault(); emit('clock:focus'); });
+      $('[data-action="cook"]').addEventListener('click', (e) => { e.preventDefault(); emit('stove:focus'); });
       $('[data-action="radio"]').addEventListener('click', (e) => { e.preventDefault(); emit(radioOn ? 'radio:off' : 'radio:on'); });
       $('[data-action="music"]').addEventListener('click', (e) => {
         e.preventDefault();
@@ -664,7 +684,22 @@ const pct = (n: number) => `${(n * 100).toFixed(2)}%`;
   .tp-now:disabled { opacity: .45; cursor: default; }
   .tp-now:focus-visible { outline: 2px solid #ffd27a; outline-offset: 2px; }
   /* 拨时间时底部那行按钮和提示让开 */
-  .scene:is([data-mode='clock'], [data-mode='inspect'], [data-mode='tea']) :is(.chips, .hint, .zoom) { display: none; }
+  .scene:is([data-mode='clock'], [data-mode='inspect'], [data-mode='tea'], [data-mode='stove']) :is(.chips, .hint, .zoom) { display: none; }
+  .dish {
+    position: absolute; left: 50%; top: 18px; transform: translateX(-50%); max-width: calc(100% - 32px); box-sizing: border-box; text-align: center;
+    padding: 10px 18px 12px; color: #fff; background: #10203ad9; border: 1px solid #ffffff40; border-radius: 14px; backdrop-filter: blur(6px);
+    animation: dish-in .45s ease-out;
+  }
+  .dish[hidden] { display: none; }
+  .dish p { margin: 0; }
+  .dish-name { font-size: 18px; font-weight: 600; letter-spacing: .08em; }
+  .dish-hearts { margin: 4px 0 2px !important; font-size: 20px; letter-spacing: 3px; }
+  .dish-hearts :global(span) { color: #ffffff55; }
+  .dish-hearts :global(span.on) { color: #ff4b5c; text-shadow: 0 0 8px #ff4b5c80; }
+  .dish-comment { font-size: 13px; color: #ffffffc8; }
+  .dish.burnt .dish-name { color: #c9b7a0; }
+  @keyframes dish-in { from { opacity: 0; transform: translate(-50%, -8px); } }
+  @media (prefers-reduced-motion: reduce) { .dish { animation: none; } }
   .radio {
     position: absolute; left: 50%; top: 20px; transform: translateX(-50%); width: min(460px, calc(100% - 32px)); box-sizing: border-box;
     display: flex; align-items: center; gap: 8px; padding: 8px 10px; color: #fff;
