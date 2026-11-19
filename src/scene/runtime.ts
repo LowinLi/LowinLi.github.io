@@ -243,6 +243,28 @@ export function start(canvas: HTMLCanvasElement, tier: Exclude<Tier, 'low'>, dat
 
   // 调试：?prof 统计每帧物件逻辑（js）和渲染提交（render）的耗时、draw call（含阴影、遮蔽、镜子的重画）
   const prof = new URLSearchParams(location.search).has('prof') ? { n: 0, js: 0, render: 0, calls: 0 } : null;
+  // ---- 加载进度（用户要的「页面没加载好的时候显示加载中，不要展示加载一半的状态」）----
+  // 所有贴图、模型都走 three 的默认 LoadingManager：数它的进度，发 load:progress；
+  // 「好了」= 没有在下的东西、并且 0.7 秒内没有新的下载开始、也没有新模型放进场景（scene:changed），再多画几帧（着色器编译完）。
+  // 最多等 25 秒：网很慢或者哪个文件卡住时，照样把房间露出来（剩下的东西照常异步补上）。
+  const mgr = THREE.DefaultLoadingManager;
+  let ldTotal = 0, ldDone = 0, ldChange = performance.now(), ldFrames = 0, ldFinished = false, ldShown = -1;
+  const t0Load = performance.now();
+  mgr.onStart = (_u, l, t) => { ldDone = l; ldTotal = t; ldChange = performance.now(); };
+  mgr.onProgress = (_u, l, t) => { ldDone = l; ldTotal = t; ldChange = performance.now(); };
+  mgr.onLoad = () => { ldChange = performance.now(); };
+  mgr.onError = () => { ldChange = performance.now(); };
+  offs.push(on(bus, 'scene:changed', () => { ldChange = performance.now(); }));
+  const checkLoaded = (now: number) => {
+    if (ldFinished) return;
+    ldFrames++;
+    const p = ldTotal ? ldDone / ldTotal : 0;
+    // 一批下完又会接着下下一批（光照贴图是一张到了再要下一张），比例会往回掉：显示的进度只增不减，到齐之前最多 95%
+    const pct = Math.max(ldShown, Math.min(95, Math.floor(p * 95)));
+    if (pct !== ldShown) { ldShown = pct; emit(bus, 'load:progress', { p: pct / 100 }); }
+    const idle = ldDone >= ldTotal && now - ldChange > 700;
+    if ((idle && ldFrames > 12) || now - t0Load > 25000) { ldFinished = true; emit(bus, 'load:done'); }
+  };
   const sameMat = (a: Float32Array, b: THREE.Matrix4) => { const e = b.elements; for (let i = 0; i < 16; i++) if (Math.abs(a[i] - e[i]) > 1e-5) return false; return true; };
   const camPrev = new Float32Array(16), projPrev = new Float32Array(16);
   let stillFor = 0;
@@ -293,6 +315,7 @@ export function start(canvas: HTMLCanvasElement, tier: Exclude<Tier, 'low'>, dat
     if (tier === 'high') renderer.shadowMap.needsUpdate = tick < 120 || (shadowEvery > 0 && tick % shadowEvery === 0 && (castersMoved() || tick % 120 === 0));
     tick++;
     if (post && usePost) post.render(dt, still); else renderer.render(scene, camera);
+    checkLoaded(performance.now());
     if (prof) { prof.n++; prof.js += t1 - t0; prof.render += performance.now() - t1; prof.calls += renderer.info.render.calls; }
     if (skip > 0) { skip--; return; }
     if (idle) { frames = 0; acc = 0; slow = 0; }

@@ -14,6 +14,7 @@
 
 ## 架构
 - **站内链接一律用 `url('/path')`（`src/lib/url.ts`），不要直接写 `/path`。** 项目仓库的 Pages 地址在 `/<repo>/` 子路径下，直接写死的根路径会 404。可以用 `BASE=/test/ npm run build` 检查。
+- **加载中**（用户要的「页面没有加载好的时候显示加载中，不要展示加载一半的状态」）：`Scene.astro` 的 `.loading` 一层盖住画布和所有按钮（暗底、一盏发光的小灯笼、「书房收拾中…」、进度条）。`runtime.ts` 数 three 默认 `LoadingManager` 的进度发 `load:progress {p}`（只增不减、到齐前最多 95%）；没有在下的东西、0.7 秒内没有新下载也没有 `scene:changed`、并且画过十几帧（着色器编译完）以后发 `load:done`，这时才设 `data-ready="true"` 揭开。最多等 25 秒。low 档不显示这一层。**新加的素材要用 three 的加载器（或者加载完发 `scene:changed`），不然不会被等**；`fetch` 不经过 LoadingManager。截图脚本等的 `data-ready` 现在表示「到齐了」，截图环境里 mid 约 23 秒、high 约 30 秒。
 - 一个站，路由分治：`/` 是主页，**整页只有房间**（一屏，不滚动，没有页脚；用户明确要求去掉房间以外的内容），带唯一一个 3D island（`src/components/Scene.astro`）；`/posts/**` 是零 JS 的静态页。**文章页不允许出现 `<script>`。**
 - 文章在 `src/content/posts/`，schema 在 `src/content.config.ts`。
 - 3D 代码全在 `src/scene/`。three.js 只能通过 `runtime.ts` 动态 import 进来，不能被首页的首屏 bundle 静态引用。
@@ -122,6 +123,7 @@
 | `clock:focus` / `clock:blur` | 座钟 / 「时间」按钮 / ESC、返回、点别处、打开别的视角 | 镜头走到座钟表盘前拨时间 / 回座位。cameraRig（`clock` 模式）、runtime（景深对焦表盘、「点旁边退回」：带 `keepsClock` 的不退）、furniture（拖指针）、HTML 层都监听 |
 | `time:nudge {dh}` | furniture（在表盘上拖指针） | 往前 / 往后拨 dh 小时，显示的时刻立刻跟上（指针跟手）。差值保持在 ±12 小时内 |
 | `time:set {h}` 或 `{at}` / `time:real` | 调试 / 「回到现在」 | 拨到今天的 h 点（`at` 是 `sunrise` / `noon` / `sunset` / `night`，按今天的日出日落算）/ 回到真实时间。runtime 转给 `daytime.ts` |
+| `load:progress {p}` / `load:done` | runtime | 素材加载进度（0–0.95）/ 都到齐了，HTML 层揭开加载中那一层 |
 | `time:state {h, real}` | sky（每半秒） | 当前显示的时刻、是不是真实时间，表盘前的底部提示据此显示 |
 | `radio:on` / `radio:off` | 波段旋钮 / HTML 按钮 / 面板 ✕ | 打开 / 关掉收音机 |
 | `radio:tune {mhz}` | 面板滑杆 | 直接调到某个频率 |

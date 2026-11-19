@@ -14,6 +14,15 @@ const pct = (n: number) => `${(n * 100).toFixed(2)}%`;
     <div class="mullion" style="left:66%"></div>
   </div>
   <canvas aria-hidden="true"></canvas>
+  <!-- 加载中：3D 的贴图、模型都到齐、画过几帧以后才揭开（用户要的「没加载好的时候显示加载中，不要展示加载一半的状态」） -->
+  <div class="loading" role="status" aria-live="polite">
+    <div class="ld-box">
+      <div class="ld-lamp" aria-hidden="true"></div>
+      <p class="ld-title">书房收拾中…</p>
+      <div class="ld-bar"><i></i></div>
+      <p class="ld-pct">0%</p>
+    </div>
+  </div>
 
   <div class="overlay">
     <div class="intro">
@@ -486,8 +495,12 @@ const pct = (n: number) => `${(n * 100).toFixed(2)}%`;
   { const hr = new Date().getHours(); root.dataset.tod = hr >= 19 || hr < 5 ? 'night' : hr < 8 ? 'dawn' : hr < 16 ? 'day' : 'dusk'; }
   if (tier !== 'low') {
     import('../scene/runtime').then(({ start }) => {
+      // 进度条：runtime 数 three 的加载器（load:progress），全部到齐、画过几帧后发 load:done 才揭开
+      const ldBar = $<HTMLElement>('.ld-bar i'), ldPct = $<HTMLElement>('.ld-pct');
+      on<{ p: number }>('load:progress', ({ p }) => { ldBar.style.width = `${Math.round(p * 100)}%`; ldPct.textContent = `${Math.round(p * 100)}%`; });
+      on('load:done', () => { ldBar.style.width = '100%'; ldPct.textContent = '100%'; root.dataset.ready = 'true'; });
       start(root.querySelector('canvas')!, tier, data, bus);
-      root.dataset.ready = 'true'; has3d = true;
+      has3d = true;
       $('[data-action="search"]').addEventListener('click', (e) => { e.preventDefault(); emit('monitor:focus'); });
       $('[data-action="window"]').addEventListener('click', (e) => { e.preventDefault(); emit('window:focus'); });
       root.querySelectorAll<HTMLButtonElement>('[data-zoom]').forEach((b) => b.addEventListener('click', () => {
@@ -504,7 +517,7 @@ const pct = (n: number) => `${(n * 100).toFixed(2)}%`;
       });
     }).catch((err) => {
       console.error('[scene] 初始化失败，退回静态版', err);
-      root.dataset.tier = 'low';
+      root.dataset.tier = 'low'; root.dataset.ready = 'true';
     });
   }
 </script>
@@ -533,6 +546,22 @@ const pct = (n: number) => `${(n * 100).toFixed(2)}%`;
   .scene[data-tod='night'] .fallback { background: radial-gradient(circle at 62% 28%, #fffbe8 0 3vmin, #c9d4ff33 3.4vmin, transparent 12vmin), linear-gradient(#02040c 0%, #0a1430 50%, #121d38 57%, #0d1410 57%, #10180e 62%, #0d150b 62%, #090f08 100%); }
   .scene[data-tod='night'] .sun { display: none; }
   .scene[data-ready='true'] .fallback { opacity: 0; pointer-events: none; }
+  /* 加载中：盖住画布和上面所有按钮，到齐了淡出。low 档没有 3D，不显示 */
+  .loading {
+    position: absolute; inset: 0; z-index: 50; display: grid; place-items: center;
+    background: radial-gradient(ellipse at 50% 42%, #3a2a1c 0%, #1d1611 55%, #120d0a 100%); color: #f3e6cf;
+    transition: opacity .7s ease, visibility 0s linear .7s;
+  }
+  .scene:is([data-ready='true'], [data-tier='low']) .loading { opacity: 0; visibility: hidden; pointer-events: none; }
+  .ld-box { display: grid; justify-items: center; gap: 12px; width: min(260px, 70vw); }
+  .ld-lamp { width: 34px; height: 46px; border-radius: 12px; background: radial-gradient(circle at 50% 45%, #ffd79a 0%, #e8913a 55%, #9e3a1c 100%);
+    box-shadow: 0 0 36px 10px #ffb4604d; animation: ld-flicker 1.6s ease-in-out infinite; }
+  .ld-title { margin: 0; font-size: 15px; letter-spacing: .2em; }
+  .ld-bar { width: 100%; height: 3px; border-radius: 3px; background: #ffffff1f; overflow: hidden; }
+  .ld-bar i { display: block; width: 0; height: 100%; background: #ffbe6a; transition: width .3s ease; }
+  .ld-pct { margin: 0; font: 12px ui-monospace, monospace; color: #f3e6cfa0; }
+  @keyframes ld-flicker { 50% { box-shadow: 0 0 46px 14px #ffb46066; filter: brightness(1.08); } }
+  @media (prefers-reduced-motion: reduce) { .ld-lamp { animation: none; } }
   .scene[data-tier='low'] > canvas { display: none; }
   .scene[data-tier='low'] [data-webgl-only], .scene[data-tier='low'] .hint { display: none; }
 
