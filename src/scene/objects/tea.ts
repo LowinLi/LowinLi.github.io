@@ -265,6 +265,7 @@ export const tea: SceneObject = ({ scene, camera, tier, bus, pick, audio }) => {
 
   // ---------------- 每帧 ----------------
   const v = new THREE.Vector3(), q = new THREE.Quaternion(), e = new THREE.Euler(0, 0, 0, 'YXZ'), want = new THREE.Vector3(), wantQ = new THREE.Quaternion();
+  const AX = new THREE.Vector3(1, 0, 0), YAW = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), -Math.PI / 2);
   const smooth = THREE.MathUtils.smootherstep, clamp = THREE.MathUtils.clamp;
   const ph = (k: number, a: number, b: number) => clamp((k - a) / (b - a), 0, 1);
   /** 茶壶口（倒开水、放茶叶的目标），世界坐标 */
@@ -382,7 +383,10 @@ export const tea: SceneObject = ({ scene, camera, tier, bus, pick, audio }) => {
           const sipK = sipT >= 0 ? Math.sin(sipT * Math.PI) : 0;
           const far = Math.max(1, 0.75 / camera.aspect);
           want.set(0, -0.045 + sipK * 0.025, -0.38 * far + sipK * 0.12).applyMatrix4(camera.matrixWorld);
-          wantQ.copy(camera.quaternion).multiply(q.setFromEuler(e.set(0.35 + sipK * 0.6, Math.PI, 0, 'YXZ')));
+          // 杯口朝着人倾（看得见杯里的茶），喝的时候再倾多一点；杯把转到右手边。
+          // 先在杯子自己的坐标里把杯把（-z）转到右边，再在镜头坐标里绕 x 轴把杯口往镜头这边倾
+          // （以前是 Euler(倾角, π) 一起给：先倾后转半圈，杯口反而朝外，用户说「喝茶的姿势不对」）
+          wantQ.copy(camera.quaternion).multiply(q.setFromAxisAngle(AX, 0.5 + sipK * 0.55)).multiply(YAW);
         } else { want.copy(c.home); wantQ.copy(c.homeQ); }
         const f = 1 - Math.exp(-(c.state === 'held' ? 8 : 6) * dt);
         c.node.position.lerp(want, f); c.node.quaternion.slerp(wantQ, f);

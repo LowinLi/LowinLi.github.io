@@ -220,7 +220,7 @@ export const room: SceneObject = ({ scene, camera, tier, bus, pick }) => {
   const fillColor = new THREE.Color(0xffe2c4), lampColor = new THREE.Color(0xffb470);
   group.add(sun, sun.target, hemi, fill, bounce);
   const SUN_BASE = sun.intensity, sunWarm = new THREE.Color(0xffbe82), sunWhite = new THREE.Color(0xfff1dc);
-  const hemiDay = new THREE.Color(0xdcdff2), hemiNight = new THREE.Color(0x5a6a9a);
+  const hemiDay = new THREE.Color(0xdcdff2), hemiNight = new THREE.Color(0x5a6a9a), hemiLamp = new THREE.Color(0xffd3a0);
 
   // ---- 天花板（深色木梁）和朝镜头那面墙 ----
   // 镜头可以在屋里拉远、换广角往下看（用户要的「能拉远一点，但限制在房屋内」），屋子得是封闭的，
@@ -281,22 +281,23 @@ export const room: SceneObject = ({ scene, camera, tier, bus, pick }) => {
       const day = SKY.day, sunIn = SKY.sunIn, lampOn = SKY.lamp;
       const flicker = 1 + Math.sin(t * 7.3) * 0.015 + Math.sin(t * 13.1) * 0.01; // 灯火轻轻跳
       sun.intensity = SUN_BASE * sunIn; sun.color.copy(sunWhite).lerp(sunWarm, Math.min(1, SKY.gold * 1.4));
-      hemi.intensity = 0.55 * (0.1 + 0.9 * day) + 0.05; hemi.color.copy(hemiNight).lerp(hemiDay, day);
+      // 夜里屋里留一层暖一点的底光（用户说「晚上屋子里太黑了」）：宫灯照不到的角落也不至于全黑
+      hemi.intensity = 0.55 * (0.1 + 0.9 * day) + 0.05 + 0.3 * lampOn; hemi.color.copy(hemiNight).lerp(hemiDay, day).lerp(hemiLamp, lampOn * (1 - day) * 0.6);
       // 补光 ↔ 宫灯：白天在身后补暖光，天黑挪进灯笼
       fill.position.lerpVectors(FILL_POS, LAMP_POS, lampOn);
       fill.color.lerpColors(fillColor, lampColor, lampOn);
       fill.distance = 8 + lampOn; fill.decay = 1.2 + 0.3 * lampOn;
-      fill.intensity = THREE.MathUtils.lerp(1.0 * (0.12 + 0.88 * day), 7 * flicker, lampOn);
+      fill.intensity = THREE.MathUtils.lerp(1.0 * (0.12 + 0.88 * day), 14 * flicker, lampOn);
       bounce.intensity = 0.8 * (0.25 * day + 0.75 * sunIn) + 0.25 * lampOn;
       paperMat.emissiveIntensity = 1.6 * lampOn * flicker;
-      shellMat.emissive.copy(SHELL_GLOW).multiplyScalar(0.15 + 0.85 * day);
+      shellMat.emissive.copy(SHELL_GLOW).multiplyScalar(0.15 + 0.85 * day + 0.5 * lampOn);
       glass.opacity = 0.09 * (0.4 + 0.6 * day);
       // 天光：白天太阳照不进窗以后只剩天光那套，少了阳光在屋里的反弹，又暗又偏绿（屋外菜地反上来的光），
       // 按截图量过的墙色补回来：正午的白墙要和清晨差不多亮、偏中性
       const noonish = day * (1 - sunIn);
       K.sky.value.set(SKY.tint.r * (0.92 + 1.54 * noonish), SKY.tint.g * (0.92 + 1.08 * noonish), SKY.tint.b * (0.92 + 1.44 * noonish));
       K.sun.value.setScalar(sunIn);
-      K.lamp.value.setScalar(0.42 * lampOn * flicker);
+      K.lamp.value.setScalar(0.88 * lampOn * flicker);
       // 实拍贴图可能比光照贴图晚到：把颜色贴图同步到烘焙材质上
       for (const b of baked) if (b.basic.map !== b.src.map) { b.basic.map = b.src.map; b.basic.color.copy(b.src.color); b.basic.needsUpdate = true; }
     },
