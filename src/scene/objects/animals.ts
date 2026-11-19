@@ -3,7 +3,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { asset } from '../util';
 import { addFace, addFur } from '../animalDetail';
-import { Bin, on, type SceneObject } from '../types';
+import { Bin, emit, HIT_LAYER, on, type SceneObject } from '../types';
 import { bark, cluck, crow, meow } from '../animalSounds';
 import { L } from '../layout';
 import { applyDayTint, SKY } from '../daytime';
@@ -40,7 +40,7 @@ interface Spec { len: number; legLen: number; bodyR: number; headR: number; coat
  *   天黑以后鸡、猫、狗、水牛、蝴蝶、鸟群都不出来；隔一阵有一只猫头鹰从月亮那边的天上扑扇着飞过，远处树上时不时「呼——呼呼」叫；
  *   窗根底下被屋里灯光照亮的那一小块地上，偶尔窜过一只老鼠，跑跑停停，吱吱叫。白天窗前有一层轻轻的蛐蛐叫。
  */
-export const animals: SceneObject = ({ scene, tier, camera, bus, audio }) => {
+export const animals: SceneObject = ({ scene, tier, camera, bus, audio, pick }) => {
   const bin = new Bin();
   const group = new THREE.Group();
   const mat = bin.add(new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide }));
@@ -212,8 +212,24 @@ export const animals: SceneObject = ({ scene, tier, camera, bus, audio }) => {
     root.position.set(-4.5 + i * 1.3, gy, -8.2 + (i % 2) * 0.35);
     root.rotation.y = i * 2;
     group.add(root);
-    return { root, head, tx: root.position.x, tz: root.position.z, state: 'peck' as 'peck' | 'walk', timer: 1 + i, seed: i * 2.1 };
+    return { root, head, tx: root.position.x, tz: root.position.z, state: 'peck' as 'peck' | 'walk', timer: 1 + i, seed: i * 2.1, caught: false, flyT: -1, from: new THREE.Vector3() };
   });
+  // 抓鸡（用户要的「也可以把窗外的鸡抓回来做成鸡肉，和蔬菜一起炒」）：站在窗前点一只鸡，它扑腾着飞进屋，
+  // 灶台上多一盘鸡肉（kitchen 收 pantry:add）。一共三只，抓完就没了，刷新页面才回来。
+  // 每只鸡一个看不见的大一圈点击球（HIT_LAYER，不画）；带 keepsWindow：在窗前点它不会回座位
+  const henHit = new THREE.SphereGeometry(0.3, 8, 6), henHitMat = new THREE.MeshBasicMaterial();
+  hens.forEach((h) => {
+    const hit = new THREE.Mesh(henHit, henHitMat); hit.position.y = 0.18; hit.layers.set(HIT_LAYER); hit.userData.keepsWindow = true;
+    h.root.add(hit);
+    pick(hit, { click: () => {
+      if (h.caught || h.flyT >= 0 || SKY.day <= 0.45) return;
+      if (!atWindow) { emit(bus, 'window:focus'); return; }
+      h.flyT = 0; h.from.copy(h.root.position);
+      emitAt(h.root.getWorldPosition(tmp), voice('cluck'), 1.6);
+      emit(bus, 'cup:state', { msg: '抓到一只鸡！' });
+    } });
+  });
+  bin.add(henHit); bin.add(henHitMat);
 
   // ---------- 蝴蝶：两片翅膀扇动，在菜地上绕来绕去 ----------
   const wing = (side: number, hex: number) => {
@@ -394,7 +410,7 @@ export const animals: SceneObject = ({ scene, tier, camera, bus, audio }) => {
       return;
     }
     timers.hen -= dt; timers.rooster -= dt; timers.dog -= dt; timers.cat -= dt;
-    if (timers.hen <= 0) { timers.hen = 4 + Math.random() * 7; const h = hens[Math.floor(Math.random() * hens.length)]; emitAt(h.root.getWorldPosition(tmp), voice('cluck'), 0.8); }
+    if (timers.hen <= 0) { timers.hen = 4 + Math.random() * 7; const free = hens.filter((x) => !x.caught); const h = free[Math.floor(Math.random() * free.length)]; if (h) emitAt(h.root.getWorldPosition(tmp), voice('cluck'), 0.8); }
     // 公鸡不在画面里：是远处哪户人家的，声音从左后方远远传来
     if (timers.rooster <= 0) { timers.rooster = 25 + Math.random() * 30; emitAt(tmp.set(-14, gy + 1, -26), voice('crow'), 1.6); }
     for (const [a, key] of [[dog, 'dog'], [cat, 'cat']] as const) {
@@ -462,7 +478,7 @@ export const animals: SceneObject = ({ scene, tier, camera, bus, audio }) => {
       sounds(dt);
       if (loaded.length !== tintedModels) { tintedModels = loaded.length; tintTree(group); }
       const dayOut = SKY.day > 0.45 || debugPets, night = !dayOut;
-      for (const h of hens) h.root.visible = dayOut;
+      for (const h of hens) h.root.visible = dayOut && !h.caught;
       for (const b of butterflies) b.root.visible = SKY.day > 0.6;
       if (buffalo) buffalo.visible = dayOut;
       nightLife(dt, t, night);
@@ -509,6 +525,22 @@ export const animals: SceneObject = ({ scene, tier, camera, bus, audio }) => {
       }
 
       for (const h of hens) {
+        // 被抓的鸡：扑腾着往窗口飞（一路打转、越来越小），到了窗口就进屋了
+        if (h.flyT >= 0) {
+          h.flyT = Math.min(1, h.flyT + dt / 1.4);
+          const k = h.flyT, to = tmp.set(0.3, 0.2, L.wallZ - 0.35);
+          h.root.position.lerpVectors(h.from, to, k); h.root.position.y += Math.sin(k * Math.PI) * 1.2;
+          h.root.rotation.y += dt * 9; h.root.scale.setScalar(1 - 0.7 * k * k);
+          h.head.rotation.x = Math.sin(t * 30) * 0.4;
+          if (h.flyT >= 1) {
+            h.flyT = -1; h.caught = true; h.root.visible = false;
+            emit(bus, 'pantry:add', { item: 'chicken' });
+            emit(bus, 'cup:state', { msg: hens.every((x) => x.caught) ? '三只鸡都抓回来了 · 去灶台（底部「做饭」）用鸡肉炒菜' : '抓回来了 · 灶台上多了一盘鸡肉（底部「做饭」）' });
+            setTimeout(() => emit(bus, 'cup:state', null), 3200);
+          }
+          continue;
+        }
+        if (h.caught) continue;
         h.timer -= dt;
         if (h.state === 'peck') {
           // 低头啄两下，抬头看看
