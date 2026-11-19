@@ -6,6 +6,7 @@ import { addFace, addFur } from '../animalDetail';
 import { Bin, on, type SceneObject } from '../types';
 import { bark, cluck, crow, meow } from '../animalSounds';
 import { L } from '../layout';
+import { applyDayTint, SKY } from '../daytime';
 
 type Tint = number | ((x: number, y: number, z: number) => number);
 /** 给几何体上顶点色：朝上的面亮一些（屋外的东西不吃室内灯光）。颜色可以按位置给，用来画花纹 */
@@ -35,6 +36,9 @@ interface Spec { len: number; legLen: number; bodyR: number; headR: number; coat
  * - 隔一阵有一小群鸟从远处的天上飞过。
  * - 走到窗前看窗外时有叫声（用户要的）：鸡隔一会儿咯咯几声、远处偶尔一声公鸡打鸣；狗、猫在画面里走过时偶尔叫，
  *   停下来朝屋里看的时候更容易叫。声音按左右位置做声像、按距离变小。只在窗前时有，回座位就停。
+ * - 跟着一天里的时刻（daytime.ts，用户要的「晚上鸡猫狗都不出来了，只有偶尔飞过的猫头鹰和老鼠，也都配有声音；白天加一点蛐蛐叫」）：
+ *   天黑以后鸡、猫、狗、水牛、蝴蝶、鸟群都不出来；隔一阵有一只猫头鹰从月亮那边的天上扑扇着飞过，远处树上时不时「呼——呼呼」叫；
+ *   窗根底下被屋里灯光照亮的那一小块地上，偶尔窜过一只老鼠，跑跑停停，吱吱叫。白天窗前有一层轻轻的蛐蛐叫。
  */
 export const animals: SceneObject = ({ scene, tier, camera, bus, audio }) => {
   const bin = new Bin();
@@ -112,7 +116,7 @@ export const animals: SceneObject = ({ scene, tier, camera, bus, audio }) => {
 
   // ---------- 带骨骼动画的模型 ----------
   // 屋外的东西不吃室内的灯：材质换成以自发光为主的 Lambert，只留一点受光，好让身体有明暗
-  let stopped = false;
+  let stopped = false, buffalo: THREE.Object3D | null = null;
   const loaded: THREE.Object3D[] = [], mixers: THREE.AnimationMixer[] = [];
   const loader = new GLTFLoader();
   const prepare = (model: THREE.Object3D, recolor: Record<string, number>, height: number) => {
@@ -178,7 +182,7 @@ export const animals: SceneObject = ({ scene, tier, camera, bus, audio }) => {
     if (stopped) return;
     const model = prepare(gltf.scene, { White: 0x4a4a54, Black: 0x33333b, Pink: 0x6a5a5e }, 1.45);
     model.position.set(8.5, gy, -30); model.rotation.y = 2.2;
-    group.add(model);
+    group.add(model); buffalo = model;
     const mixer = new THREE.AnimationMixer(model); mixers.push(mixer);
     const idle = gltf.animations.find((c) => c.name === 'Idle');
     if (idle) mixer.clipAction(idle).play();
@@ -239,15 +243,61 @@ export const animals: SceneObject = ({ scene, tier, camera, bus, audio }) => {
   });
   const flight = { active: false, wait: 8, x: 0, dir: 1, y: 14, z: -70 };
 
+  // ---------- 夜里：猫头鹰 ----------
+  // 代码拼的：圆滚滚的身子、大圆脸（浅色面盘 + 两只亮黄的眼睛）、两撮耳羽、两片能扇的宽翅膀。
+  // 不乘夜色（夜里一切都压得很暗，它要在月光天空前看得出剪影和眼睛），颜色本身就按月光下调暗
+  const owlMat = bin.add(new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide }));
+  const owl = new THREE.Group();
+  owl.add(new THREE.Mesh(bin.add(merge([
+    paint(new THREE.SphereGeometry(1, 12, 9).scale(0.16, 0.2, 0.15), 0x3b3128),
+    paint(new THREE.SphereGeometry(0.13, 10, 8).translate(0, 0.2, 0.03), 0x463a2e),
+    paint(new THREE.CircleGeometry(0.1, 14).translate(0, 0.2, 0.15), 0x8a7a64),                         // 面盘
+    ...[-1, 1].map((k) => paint(new THREE.CircleGeometry(0.03, 10).translate(k * 0.045, 0.215, 0.152), 0xe8b830)), // 眼睛
+    ...[-1, 1].map((k) => paint(new THREE.ConeGeometry(0.03, 0.09, 4).rotateZ(-k * 0.35).translate(k * 0.08, 0.33, 0.02), 0x2e2620)), // 耳羽
+    paint(new THREE.ConeGeometry(0.06, 0.14, 5).rotateX(-Math.PI / 2 - 0.4).translate(0, -0.08, -0.17), 0x2e2620), // 尾
+  ])), owlMat));
+  const owlWing = (side: number) => {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute([0, 0, 0.1, side * 0.62, 0.02, 0.02, side * 0.5, 0, -0.14, 0, 0, 0.1, side * 0.5, 0, -0.14, 0, 0, -0.1], 3));
+    g.computeVertexNormals();
+    const m = new THREE.Mesh(bin.add(paint(g, 0x352b23)), owlMat); m.position.set(side * 0.1, 0.05, 0); owl.add(m); return m;
+  };
+  const owlL = owlWing(-1), owlR = owlWing(1);
+  owl.visible = false; group.add(owl);
+  const owlFly = { active: false, wait: 6, x: 0, dir: 1, y: 7, z: -30, hooted: false };
+
+  // ---------- 夜里：菜园横路上的老鼠 ----------
+  // 窗根底下那块地从屋里看不到（窗台挡着，坐在桌前往外看，最近也只看到五六米开外），所以老鼠在白天猫狗走的那条横路上跑
+  // 老鼠：灰褐色的小身子、粉耳朵、细长尾巴，四条腿是快速倒腾的短条
+  const mouseMat = bin.add(new THREE.MeshBasicMaterial({ vertexColors: true }));
+  const mouse = new THREE.Group();
+  mouse.add(new THREE.Mesh(bin.add(merge([
+    paint(new THREE.SphereGeometry(1, 10, 8).scale(0.032, 0.028, 0.06).translate(0, 0.03, 0), 0x6e6258),
+    paint(new THREE.ConeGeometry(0.022, 0.05, 8).rotateX(Math.PI / 2).translate(0, 0.03, 0.075), 0x6e6258),   // 尖嘴
+    ...[-1, 1].map((k) => paint(new THREE.CircleGeometry(0.014, 8).translate(k * 0.016, 0.058, 0.045), 0xd8a0a0)), // 耳朵
+    paint(new THREE.SphereGeometry(0.005, 5, 4).translate(0, 0.032, 0.1), 0x201818),                           // 鼻尖
+    paint(new THREE.TubeGeometry(new THREE.CatmullRomCurve3([new THREE.Vector3(0, 0.025, -0.055), new THREE.Vector3(0.01, 0.012, -0.1), new THREE.Vector3(-0.012, 0.006, -0.15), new THREE.Vector3(0.006, 0.004, -0.2)]), 8, 0.003, 4), 0xb89890),
+  ])), mouseMat));
+  const mouseLegs = [-1, 1].flatMap((k) => [0.03, -0.03].map((z) => { const m = new THREE.Mesh(bin.add(paint(new THREE.BoxGeometry(0.008, 0.02, 0.012).translate(0, -0.01, 0), 0x5a4e46)), mouseMat); m.position.set(k * 0.02, 0.018, z); mouse.add(m); return m; }));
+  mouse.visible = false; group.add(mouse);
+  mouse.scale.setScalar(2.2); // 七八米外看，真实大小只有几个像素
+  const mouseRun = { active: false, wait: 5, x: 0, dir: 1, z: -8, stopT: 0, nextStop: 0, phase: 0 };
+
   // 屋外的东西不参与环境光遮蔽
   group.traverse((o) => { o.userData.noAO = true; });
+  // 一天里的色调（夜里压暗）：猫头鹰、老鼠自己管颜色，不乘
+  const tintTree = (root: THREE.Object3D) => root.traverse((o) => { const m = (o as THREE.Mesh).material as THREE.Material | undefined;
+    if (m && !Array.isArray(m) && m !== owlMat && m !== mouseMat) applyDayTint(m); });
+  tintTree(group);
+  let tintedModels = 0;
   scene.add(group);
 
   const EDGE = 9.6;
 
   // ---- 叫声：只在窗前时排。AudioContext 要在用户点击里拿（window:focus 是点击触发的，同步派发）----
   let actx: AudioContext | null = null, out: GainNode | null = null, atWindow = false;
-  const timers = { hen: 0, rooster: 0, dog: 0, cat: 0 };
+  const timers = { hen: 0, rooster: 0, dog: 0, cat: 0, owl: 0, squeak: 0 };
+  let crickets: { src: AudioBufferSourceNode; gain: GainNode } | null = null;
   const offs = [
     on(bus, 'window:focus', () => {
       try { actx = audio(); } catch { actx = null; }
@@ -255,11 +305,12 @@ export const animals: SceneObject = ({ scene, tier, camera, bus, audio }) => {
       if (actx) loadSprite(actx);
       atWindow = true;
       timers.hen = 1 + Math.random() * 2; timers.rooster = 3 + Math.random() * 4; timers.dog = 1.5 + Math.random() * 3; timers.cat = 2 + Math.random() * 4;
+      timers.owl = 2 + Math.random() * 4; timers.squeak = 1;
     }),
     on(bus, 'window:blur', () => { atWindow = false; }),
   ];
   // 录音（tools/build_animal_sounds.py 拼的声音精灵：一个 mp3 + 每段的起止），第一次走到窗前才下载；到之前、失败时用合成的
-  type Kind = 'crow' | 'cluck' | 'bark' | 'meow';
+  type Kind = 'crow' | 'cluck' | 'bark' | 'meow' | 'owl' | 'squeak' | 'cricket';
   let sprite: { buf: AudioBuffer; clips: Record<Kind, [number, number][]> } | null = null, spriteLoading = false;
   const loadSprite = (ctx: AudioContext) => {
     if (spriteLoading) return; spriteLoading = true;
@@ -268,11 +319,15 @@ export const animals: SceneObject = ({ scene, tier, camera, bus, audio }) => {
       fetch(asset('sounds/animals.mp3')).then((r) => r.arrayBuffer()).then((b) => ctx.decodeAudioData(b)),
     ]).then(([clips, buf]) => { if (!stopped) sprite = { buf, clips }; }).catch(() => {});
   };
-  const SYNTH: Record<Kind, (ctx: AudioContext, dest: AudioNode, t0: number) => void> = { crow, cluck, bark, meow };
+  // 猫头鹰、老鼠、蛐蛐只有录音：录音没到就不出声
+  const none = () => {};
+  const SYNTH: Record<Kind, (ctx: AudioContext, dest: AudioNode, t0: number) => void> = { crow, cluck, bark, meow, owl: none, squeak: none, cricket: none };
   /** 播一声：有录音就随机挑一段（音高随机差一点，听着不像同一段），狗叫连着来一到三下 */
   const voice = (kind: Kind) => (ctx: AudioContext, dest: AudioNode, t0: number) => {
     if (!sprite) { SYNTH[kind](ctx, dest, t0); return; }
-    const list = sprite.clips[kind], n = kind === 'bark' ? 1 + Math.floor(Math.random() * 3) : 1;
+    const list = sprite.clips[kind];
+    if (!list) return;
+    const n = kind === 'bark' || kind === 'squeak' ? 1 + Math.floor(Math.random() * 3) : 1;
     let t = t0;
     for (let i = 0; i < n; i++) {
       const [off, dur] = list[Math.floor(Math.random() * list.length)];
@@ -293,8 +348,32 @@ export const animals: SceneObject = ({ scene, tier, camera, bus, audio }) => {
     setTimeout(() => { g.disconnect(); pan.disconnect(); }, 6000);
   };
   const tmp = new THREE.Vector3();
+  /** 蛐蛐：白天在窗前时一层循环的底噪，跟着天色淡入淡出（夜里只有猫头鹰和老鼠） */
+  const cricketBed = (dt: number) => {
+    const want = atWindow && actx && sprite?.clips.cricket ? 0.13 * SKY.day : 0;
+    if (!crickets && want > 0.005 && actx && out && sprite) {
+      const [off, dur] = sprite.clips.cricket[0];
+      const src = actx.createBufferSource(); src.buffer = sprite.buf; src.loop = true; src.loopStart = off + 0.05; src.loopEnd = off + dur - 0.05;
+      const gain = actx.createGain(); gain.gain.value = 0;
+      src.connect(gain).connect(out); src.start(actx.currentTime + 0.02, off + Math.random() * (dur - 1));
+      crickets = { src, gain };
+    }
+    if (crickets) {
+      const g = crickets.gain.gain; g.value += (want - g.value) * Math.min(1, dt * 1.5);
+      if (want === 0 && g.value < 0.003) { crickets.src.stop(); crickets.src.disconnect(); crickets.gain.disconnect(); crickets = null; }
+    }
+  };
   const sounds = (dt: number) => {
+    cricketBed(dt);
     if (!atWindow || !actx) return;
+    const dayOut = SKY.day > 0.45;
+    timers.owl -= dt; timers.squeak -= dt;
+    if (!dayOut) {
+      // 远处树上的猫头鹰：左右两边随机，隔十几二十秒一声
+      if (timers.owl <= 0) { timers.owl = 14 + Math.random() * 18; emitAt(tmp.set((Math.random() < 0.5 ? -1 : 1) * (10 + Math.random() * 8), gy + 6, -24 - Math.random() * 10), voice('owl'), 1.3); }
+      if (mouseRun.active && timers.squeak <= 0) { timers.squeak = 1.5 + Math.random() * 3; emitAt(mouse.getWorldPosition(tmp), voice('squeak'), 0.55); }
+      return;
+    }
     timers.hen -= dt; timers.rooster -= dt; timers.dog -= dt; timers.cat -= dt;
     if (timers.hen <= 0) { timers.hen = 4 + Math.random() * 7; const h = hens[Math.floor(Math.random() * hens.length)]; emitAt(h.root.getWorldPosition(tmp), voice('cluck'), 0.8); }
     // 公鸡不在画面里：是远处哪户人家的，声音从左后方远远传来
@@ -310,16 +389,71 @@ export const animals: SceneObject = ({ scene, tier, camera, bus, audio }) => {
     }
   };
 
+  /** 夜里的猫头鹰和老鼠 */
+  const nightLife = (dt: number, t: number, night: boolean) => {
+    // 猫头鹰：从月亮那边的天上横着飞过，扇几下、滑一段
+    if (!owlFly.active) {
+      owlFly.wait -= dt;
+      if (owlFly.wait <= 0 && night) {
+        owlFly.active = true; owlFly.dir = Math.random() < 0.5 ? 1 : -1; owlFly.x = -owlFly.dir * 32; owlFly.hooted = false;
+        owlFly.y = 5 + Math.random() * 3; owlFly.z = -22 - Math.random() * 8; owl.visible = true;
+        // 斜着朝屋子这边飞、身子往下压一点：从窗里看得到张开的翅膀和圆脸，正侧面飞只看得到一条
+        owl.rotation.set(0.35, owlFly.dir * (Math.PI / 2 - 0.75), 0, 'YXZ');
+      } else if (owlFly.wait <= 0) owlFly.wait = 4;
+    } else {
+      owlFly.x += owlFly.dir * 5.5 * dt;
+      const cyc = (t * 0.55) % 1, flapping = cyc < 0.55;   // 扇一阵、滑一阵
+      const flap = flapping ? Math.sin(t * 9) * 0.75 + 0.1 : 0.1;
+      owlL.rotation.z = flap; owlR.rotation.z = -flap;
+      owl.position.set(owlFly.x, owlFly.y + Math.sin(t * 1.3) * 0.5 - (flapping ? 0 : (cyc - 0.55) * 0.6), owlFly.z);
+      owl.scale.setScalar(3); // 远处看着太小，放大一点
+      if (!owlFly.hooted && Math.abs(owlFly.x) < 6 && atWindow) { owlFly.hooted = true; emitAt(owl.position, voice('owl'), 1.2); }
+      if (Math.abs(owlFly.x) > 34) { owlFly.active = false; owl.visible = false; owlFly.wait = 22 + Math.random() * 25; }
+    }
+    // 老鼠：沿窗根从一头窜到另一头，跑一段停一下、左右张望
+    if (!mouseRun.active) {
+      mouseRun.wait -= dt;
+      if (mouseRun.wait <= 0 && night) {
+        mouseRun.active = true; mouseRun.dir = Math.random() < 0.5 ? 1 : -1; mouseRun.x = -mouseRun.dir * 3.2;
+        mouseRun.z = -7.95 - Math.random() * 0.35; // 白天猫狗走的那条横路 mouseRun.stopT = 0; mouseRun.nextStop = 0.6 + Math.random() * 0.8;
+        mouse.visible = true; mouse.rotation.y = mouseRun.dir * Math.PI / 2; timers.squeak = 0.4;
+      } else if (mouseRun.wait <= 0) mouseRun.wait = 4;
+    } else {
+      if (mouseRun.stopT > 0) {
+        mouseRun.stopT -= dt;
+        mouse.rotation.y = mouseRun.dir * Math.PI / 2 + Math.sin(t * 9) * 0.35; // 停下来东张西望
+      } else {
+        mouseRun.x += mouseRun.dir * 2.0 * dt; mouseRun.phase += dt * 40;
+        mouse.rotation.y = mouseRun.dir * Math.PI / 2;
+        mouseRun.nextStop -= dt;
+        if (mouseRun.nextStop <= 0) { mouseRun.stopT = 0.4 + Math.random() * 0.9; mouseRun.nextStop = 0.5 + Math.random() * 1.0; }
+      }
+      mouse.position.set(mouseRun.x, gy + Math.abs(Math.sin(mouseRun.phase)) * 0.006, mouseRun.z);
+      mouseLegs.forEach((m, i) => { m.rotation.x = mouseRun.stopT > 0 ? 0 : Math.sin(mouseRun.phase + i * 1.6) * 0.9; });
+      // 月光下：比周围的菜地稍亮一点（灰褐色的毛被月光照着），看得出一个小东西在动
+      mouseMat.color.setScalar(SKY.day > 0.5 ? 1 : 0.42);
+      if (Math.abs(mouseRun.x) > 3.3) { mouseRun.active = false; mouse.visible = false; mouseRun.wait = 14 + Math.random() * 18; }
+    }
+    // 猫头鹰在月光下是剪影：颜色按天色压，但不像其他东西压得那么狠，眼睛还看得出
+    owlMat.color.setScalar(0.35 + 0.65 * SKY.day);
+  };
+
   return {
     frame(dt, t) {
       sounds(dt);
+      if (loaded.length !== tintedModels) { tintedModels = loaded.length; tintTree(group); }
+      const dayOut = SKY.day > 0.45 || debugPets, night = !dayOut;
+      for (const h of hens) h.root.visible = dayOut;
+      for (const b of butterflies) b.root.visible = SKY.day > 0.6;
+      if (buffalo) buffalo.visible = dayOut;
+      nightLife(dt, t, night);
       for (const m of mixers) m.update(dt);
       for (const b of blinks) b(dt);
       for (const a of [cat, dog]) {
         const isCat = a.spec.kind === 'cat';
         if (a.state === 'wait') {
           a.timer -= dt;
-          if (a.timer > 0) continue;
+          if (a.timer > 0 || night) continue; // 天黑了猫狗不出来
           a.state = 'walk'; a.dir = Math.random() < 0.5 ? 1 : -1; a.paused = false;
           // 猫有时贴着窗根走；其余时候都走菜园中间的横路
           a.z = isCat && Math.random() < 0.3 ? -2.5 : -8.2 + (Math.random() - 0.5) * 0.3;
@@ -384,6 +518,7 @@ export const animals: SceneObject = ({ scene, tier, camera, bus, audio }) => {
 
       if (!flight.active) {
         flight.wait -= dt;
+        if (flight.wait <= 0 && night) flight.wait = 5;
         if (flight.wait <= 0) { flight.active = true; flight.dir = Math.random() < 0.5 ? 1 : -1; flight.x = -flight.dir * 75; flight.y = 12 + Math.random() * 8; flight.z = -60 - Math.random() * 40; flock.forEach((f) => { f.root.visible = true; f.root.rotation.y = flight.dir * Math.PI / 2; }); }
       } else {
         flight.x += flight.dir * 9 * dt;
@@ -397,6 +532,7 @@ export const animals: SceneObject = ({ scene, tier, camera, bus, audio }) => {
     },
     stop() {
       stopped = true; offs.forEach((f) => f()); out?.disconnect();
+      if (crickets) { crickets.src.stop(); crickets.src.disconnect(); crickets.gain.disconnect(); }
       mixers.forEach((m) => m.stopAllAction());
       for (const m of loaded) m.traverse((o) => { const x = o as THREE.Mesh; if (x.isMesh) { x.geometry.dispose(); const mm = x.material as THREE.MeshLambertMaterial; mm.map?.dispose?.(); } });
       scene.remove(group); bin.dispose();

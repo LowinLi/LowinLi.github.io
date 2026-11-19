@@ -33,6 +33,7 @@ const pct = (n: number) => `${(n * 100).toFixed(2)}%`;
       <a href="#" data-action="radio" data-webgl-only>收音机</a>
       <a href="#" data-action="fridge" data-webgl-only>冰箱</a>
       <a href="#" data-action="games">游戏</a>
+      <a href="#" data-action="time" data-webgl-only>时间</a>
     </nav>
     <div class="zoom" data-webgl-only role="group" aria-label="视角">
       <button type="button" data-zoom="1" aria-label="拉近">＋</button>
@@ -49,7 +50,21 @@ const pct = (n: number) => `${(n * 100).toFixed(2)}%`;
       <button type="button" data-seek="1" aria-label="下一个台">▶</button>
       <button type="button" class="radio-off" aria-label="关掉收音机">✕</button>
     </div>
-    <p class="hint"><span class="wide">拖动旋转 · 滚轮缩放 · 点窗外看菜园 · 点书、磁带、咖啡、饭菜、黄历、冰箱上的火车票、左墙的青海湖、书顶上的掌机、右墙书架、显示器 · 录音机上的「波段」旋钮切收音机</span><span class="narrow">拖动旋转 · 双指缩放 · 点一点桌上的东西</span></p>
+    <div class="timepanel" role="group" aria-label="拨时间" hidden>
+      <div class="tp-row">
+        <p><b class="tp-time">清晨 6:30</b> <span class="tp-real"></span></p>
+        <button type="button" class="tp-close" aria-label="关掉">✕</button>
+      </div>
+      <input type="range" min="0" max="23.75" step="0.25" value="6.5" aria-label="一天里的时刻" />
+      <div class="tp-presets">
+        <button type="button" data-at="sunrise">日出</button>
+        <button type="button" data-at="noon">正午</button>
+        <button type="button" data-at="sunset">黄昏</button>
+        <button type="button" data-at="night">深夜</button>
+        <button type="button" class="tp-now">现在</button>
+      </div>
+    </div>
+    <p class="hint"><span class="wide">拖动旋转 · 滚轮缩放 · 点窗外看菜园 · 点书、磁带、咖啡、饭菜、黄历、座钟（拨时间）、冰箱上的火车票、左墙的青海湖、书顶上的掌机、右墙书架、显示器 · 录音机上的「波段」旋钮切收音机</span><span class="narrow">拖动旋转 · 双指缩放 · 点一点桌上的东西</span></p>
   </div>
 
   <!-- 镜头推到显示器时，真正的输入框叠在屏幕上画的搜索框上 -->
@@ -425,7 +440,29 @@ const pct = (n: number) => `${(n * 100).toFixed(2)}%`;
   radioUi.querySelectorAll<HTMLButtonElement>('[data-seek]').forEach((b) => b.addEventListener('click', () => emit('radio:seek', { dir: Number(b.dataset.seek) })));
   radioUi.querySelector('.radio-off')!.addEventListener('click', () => emit('radio:off'));
 
+  // ---- 拨时间（点座钟或「时间」按钮）：3D 层每半秒发一次 time:state 报当前时刻 ----
+  const timeUi = $<HTMLDivElement>('.timepanel');
+  const timeSlider = timeUi.querySelector<HTMLInputElement>('input')!;
+  const fmtH = (h: number) => {
+    const hh = Math.floor(h) % 24, mm = Math.floor((h - Math.floor(h)) * 60);
+    const part = hh < 5 ? '凌晨' : hh < 8 ? '清晨' : hh < 11 ? '上午' : hh < 13 ? '中午' : hh < 17 ? '下午' : hh < 19 ? '傍晚' : '晚上';
+    return `${part} ${hh % 12 === 0 ? 12 : hh % 12}:${String(mm).padStart(2, '0')}`;
+  };
+  on<{ h: number; real: boolean }>('time:state', ({ h, real }) => {
+    timeUi.querySelector('.tp-time')!.textContent = fmtH(h);
+    timeUi.querySelector('.tp-real')!.textContent = real ? '· 现在的时间' : '· 拨过的时间';
+    timeUi.querySelector<HTMLButtonElement>('.tp-now')!.disabled = real;
+    if (document.activeElement !== timeSlider) timeSlider.value = String(Math.round(h * 4) / 4);
+  });
+  on('time:open', () => { timeUi.hidden = false; });
+  on('time:close', () => { timeUi.hidden = true; });
+  timeSlider.addEventListener('input', () => emit('time:set', { h: Number(timeSlider.value) }));
+  timeUi.querySelectorAll<HTMLButtonElement>('[data-at]').forEach((b) => b.addEventListener('click', () => emit('time:set', { at: b.dataset.at })));
+  timeUi.querySelector('.tp-now')!.addEventListener('click', () => emit('time:real'));
+  timeUi.querySelector('.tp-close')!.addEventListener('click', () => emit('time:close'));
+
   addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !timeUi.hidden) { emit('time:close'); return; }
     if (e.key === 'Escape' && !projUi.hidden) { emit('project:close'); return; }
     if (e.key === 'Escape') { emit('handheld:close'); emit('calendar:close'); emit('book:close'); emit('monitor:blur'); emit('window:blur'); emit('cup:blur'); emit('fridge:close'); emit('shelf:blur'); }
     if (open && e.key === 'ArrowRight') turn(open.classList.contains('classic') ? -1 : 1);
@@ -435,6 +472,8 @@ const pct = (n: number) => `${(n * 100).toFixed(2)}%`;
   // ---- 3D 场景 ----
   const tier = detectTier();
   root.dataset.tier = tier;
+  // low 档 / 加载前的 CSS 窗外也跟着时刻变：白天蓝天，傍晚晚霞，夜里黑天和月亮（粗分四段，3D 里是连续的）
+  { const hr = new Date().getHours(); root.dataset.tod = hr >= 19 || hr < 5 ? 'night' : hr < 8 ? 'dawn' : hr < 16 ? 'day' : 'dusk'; }
   if (tier !== 'low') {
     import('../scene/runtime').then(({ start }) => {
       start(root.querySelector('canvas')!, tier, data, bus);
@@ -446,6 +485,7 @@ const pct = (n: number) => `${(n * 100).toFixed(2)}%`;
         if (dir) emit('view:zoom', { dir }); else emit('view:reset');
       }));
       $('[data-action="fridge"]').addEventListener('click', (e) => { e.preventDefault(); emit('fridge:open'); });
+      $('[data-action="time"]').addEventListener('click', (e) => { e.preventDefault(); emit($('.timepanel').hidden ? 'time:open' : 'time:close'); });
       $('[data-action="radio"]').addEventListener('click', (e) => { e.preventDefault(); emit(radioOn ? 'radio:off' : 'radio:on'); });
       $('[data-action="music"]').addEventListener('click', (e) => {
         e.preventDefault();
@@ -476,6 +516,12 @@ const pct = (n: number) => `${(n * 100).toFixed(2)}%`;
   .sea { position: absolute; left: 0; right: 0; top: 62%; bottom: 0; /* 稻田：一垄一垄的稻子 */
     background: repeating-linear-gradient(90deg, #ffffff10 0 3px, transparent 3px 14px), repeating-linear-gradient(#0000000d 0 2px, transparent 2px 22px); }
   .mullion { position: absolute; top: 0; bottom: 0; width: 8px; background: #4a2618; }
+  .scene[data-tod='day'] .fallback { background: linear-gradient(#3f6fb8 0%, #8fb1dc 40%, #cfdbe6 57%, #8fa89a 57%, #9bb07a 62%, #86a83e 62%, #5f8a34 100%); }
+  .scene[data-tod='day'] .sun { top: 18%; left: 70%; clip-path: none; }
+  .scene[data-tod='dusk'] .fallback { background: linear-gradient(#4a5a8f 0%, #b48aa8 32%, #f2a98a 52%, #e8b39a 57%, #6f7f72 57%, #75865a 62%, #5f7a30 62%, #44622a 100%); }
+  .scene[data-tod='dusk'] .sun { display: none; }
+  .scene[data-tod='night'] .fallback { background: radial-gradient(circle at 62% 28%, #fffbe8 0 3vmin, #c9d4ff33 3.4vmin, transparent 12vmin), linear-gradient(#02040c 0%, #0a1430 50%, #121d38 57%, #0d1410 57%, #10180e 62%, #0d150b 62%, #090f08 100%); }
+  .scene[data-tod='night'] .sun { display: none; }
   .scene[data-ready='true'] .fallback { opacity: 0; pointer-events: none; }
   .scene[data-tier='low'] > canvas { display: none; }
   .scene[data-tier='low'] [data-webgl-only], .scene[data-tier='low'] .hint { display: none; }
@@ -483,7 +529,7 @@ const pct = (n: number) => `${(n * 100).toFixed(2)}%`;
   .overlay { position: absolute; inset: 0; pointer-events: none; padding: 16px; display: flex; flex-direction: column;
     background: radial-gradient(ellipse 60% 45% at 0 0, #0b1c3a80, transparent 70%); }
   /* 覆盖层本身不拦点击：只有按钮和链接接收，其余位置的点击和拖动都落到 3D 画面上 */
-  .overlay :is(a, button), .overlay .radio { pointer-events: auto; }
+  .overlay :is(a, button), .overlay .radio, .overlay .timepanel { pointer-events: auto; }
   .intro { max-width: 520px; transition: opacity .4s; pointer-events: none; text-shadow: 0 1px 12px #0b1c3a99, 0 0 2px #0b1c3a66; }
   .intro h1 { margin: 28px 0 4px; font-size: clamp(28px, 5vw, 44px); letter-spacing: .02em; }
   .intro p { margin: 0; opacity: .92; }
@@ -564,6 +610,23 @@ const pct = (n: number) => `${(n * 100).toFixed(2)}%`;
   .almanac-text { margin: 0; padding: 12px 14px; display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; font-size: 13px; line-height: 1.5; color: #f3ede0; background: #10203acc; border-radius: 10px; }
   .almanac-text dt { color: #ffd27a; white-space: nowrap; }
   .almanac-text dd { margin: 0; }
+  .timepanel {
+    position: absolute; right: 16px; top: 64px; width: min(320px, calc(100% - 32px)); box-sizing: border-box;
+    padding: 10px 12px 12px; color: #fff; background: #10203acc; border: 1px solid #ffffff40; border-radius: 14px; backdrop-filter: blur(6px);
+  }
+  .timepanel[hidden], .scene:is([data-mode='monitor'], [data-mode='cup']) .timepanel { display: none; }
+  .tp-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .tp-row p { margin: 0; font-size: 13px; white-space: nowrap; }
+  .tp-time { font: 600 16px ui-monospace, monospace; color: #ffd27a; margin-right: 4px; }
+  .tp-real { color: #ffffffb0; }
+  .timepanel input { width: 100%; margin: 10px 0 8px; accent-color: #ffb24a; }
+  .tp-presets { display: flex; gap: 6px; }
+  .tp-presets button { flex: 1; padding: 6px 0; border: 1px solid #ffffff40; border-radius: 999px; color: #fff; background: #ffffff14; font: inherit; font-size: 13px; cursor: pointer; }
+  .tp-presets button:hover:not(:disabled) { background: #1b3560; }
+  .tp-presets button:disabled { opacity: .45; cursor: default; }
+  .tp-close { flex: none; width: 28px; height: 28px; border: 0; border-radius: 50%; color: #fff; background: #ffffff1a; cursor: pointer; }
+  .timepanel :is(button, input):focus-visible { outline: 2px solid #ffd27a; outline-offset: 2px; }
+  @media (max-width: 700px) { .timepanel { top: 124px; right: 16px; } }
   .radio {
     position: absolute; left: 50%; top: 20px; transform: translateX(-50%); width: min(460px, calc(100% - 32px)); box-sizing: border-box;
     display: flex; align-items: center; gap: 8px; padding: 8px 10px; color: #fff;

@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { Bin, emit, HIT_LAYER, type SceneObject } from '../types';
 import { L } from '../layout';
+import { SKY } from '../daytime';
 import { asset, Batch, blob, canvasTex, contactMaterial, speckle, type V3 } from '../util';
 
 const SERIF = '"Kaiti SC","STKaiti","KaiTi","Songti SC","Noto Serif CJK SC","SimSun",serif';
@@ -9,7 +10,7 @@ const SERIF = '"Kaiti SC","STKaiti","KaiTi","Songti SC","Noto Serif CJK SC","Sim
 /**
  * 中式书房里的家具（都是 Poly Haven 的扫描模型，CC0，异步加载）：
  * 书桌前的圈椅、左墙边的条案和上面的瓷瓶、右后方的茶几、两只凳子和一套茶具、
- * 窗边的落地座钟（时针分针走访客电脑上的真实时间，钟摆左右摆动），以及左墙上的一幅水墨山水横幅。
+ * 窗边的落地座钟（时针分针走场景里的时刻，默认是访客电脑上的真实时间；点它拨时间，钟摆左右摆动），以及左墙上的一幅水墨山水横幅。
  */
 export const furniture: SceneObject = ({ scene, camera, renderer, tier, bus, pick }) => {
   const bin = new Bin();
@@ -107,6 +108,11 @@ export const furniture: SceneObject = ({ scene, camera, renderer, tier, bus, pic
   clockWindow.add(glassPane);
   clockWindow.visible = false; // 钟的模型到了再显示
   group.add(clockWindow);
+  // 点座钟拨时间（用户要的：「可以点钟表修改当前时间，外面的阳光、景色跟着变」）：整只钟一个看不见的点击区，HTML 层弹出拨时间的面板
+  const clockHit = new THREE.Mesh(bin.add(new THREE.BoxGeometry(0.62, 2.2, 0.46)), bin.add(new THREE.MeshBasicMaterial()));
+  clockHit.position.set(clockX, fy + 1.1, clockZ); clockHit.layers.set(HIT_LAYER);
+  group.add(clockHit);
+  pick(clockHit, { click: () => emit(bus, 'time:open') });
   batch.build(group, bin, { receive: high });
 
   // ---- 扫描模型 ----
@@ -173,7 +179,8 @@ export const furniture: SceneObject = ({ scene, camera, renderer, tier, bus, pic
   scene.add(group);
   return {
     frame(_dt, t) {
-      const d = new Date(), s = d.getSeconds() + d.getMilliseconds() / 1000, mm = d.getMinutes() + s / 60, h = (d.getHours() % 12) + mm / 60;
+      // 指针走场景里的时刻（拨时间时跟着天色一起快速转过去）
+      const h = SKY.hours % 12, mm = (SKY.hours * 60) % 60;
       // 钟面朝 +z：从正面看顺时针 = 绕 z 轴负方向
       for (const k of hands) k.node.rotation.z = -(k.turns(h, mm) * Math.PI * 2 - k.base);
       // 两秒一个来回

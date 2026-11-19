@@ -6,6 +6,7 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { L, SUN_DIR } from './layout';
+import { SKY } from './daytime';
 
 const VERT = 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.); }';
 
@@ -159,9 +160,11 @@ export function createPost(renderer: THREE.WebGLRenderer, scene: THREE.Scene, ca
       if (dof.uniforms.uFocus.value <= 0.25) dof.uniforms.uFocus.value = 4;
       dof.uniforms.uFarBlur.value += (farBlur - dof.uniforms.uFarBlur.value) * Math.min(1, dt * 3);
       // 太阳在屏幕上的位置；背对太阳或太阳出画太远时关掉光束
-      sunWorld.copy(camera.position).addScaledVector(SUN_DIR, 300);
+      // 清晨的天空是实拍照片，太阳在照片里的位置（SUN_DIR）；之后用真实的太阳方向。太阳落山 / 夜里没有光束
+      const sd = SKY.morning > 0.5 ? SUN_DIR : SKY.sunDir;
+      sunWorld.copy(camera.position).addScaledVector(sd, 300);
       v.copy(sunWorld).project(camera);
-      const facing = camera.getWorldDirection(dir).dot(SUN_DIR);
+      const facing = camera.getWorldDirection(dir).dot(sd) * (SKY.morning > 0.5 ? 1 : SKY.day * THREE.MathUtils.smoothstep(SKY.sunEl, -0.01, 0.05));
       const inView = THREE.MathUtils.smoothstep(1.6 - Math.max(Math.abs(v.x), Math.abs(v.y)), 0, 0.6);
       rays.uniforms.uSun.value.set(v.x * 0.5 + 0.5, v.y * 0.5 + 0.5);
       rays.uniforms.uStrength.value = facing > 0 && !lite ? 0.2 * inView : 0;

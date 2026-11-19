@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { Bin, emit, HIT_LAYER, on, type SceneObject } from '../types';
 import { L, SUN_LIGHT_DIR } from '../layout';
+import { SKY } from '../daytime';
 import { asset, Batch, canvasTex, rbox, rng, speckle, usePhotoTexture, woodGrain } from '../util';
 
 const SERIF = '"Kaiti SC","STKaiti","KaiTi","Songti SC","Noto Serif CJK SC","SimSun",serif';
@@ -116,17 +117,39 @@ export const room: SceneObject = ({ scene, camera, tier, bus, pick }) => {
   const baked: { mesh: THREE.Mesh; src: THREE.MeshStandardMaterial; basic: THREE.MeshBasicMaterial }[] = [];
   let stopped = false;
   // paint：墙面烘焙后改成干净的乳胶漆白墙（不再叠灰泥照片：照片的颗粒乘上光照贴图会显脏），并用偏冷的底色抵消地板反弹上来的暖色
+  // 一天里的时刻（daytime.ts）：三套光照贴图按权重混合
+  //   full = 天光 + 清晨的阳光（原来那套）、sky = 只有天光、lamp = 只有宫灯
+  //   结果 = sky × 天光色调 + (full − sky) × 照进窗的阳光 + lamp × 宫灯亮度
+  // 三个权重是所有烘焙材质共用的 uniform 对象，frame 里每帧改一次
+  const K = { sky: { value: new THREE.Vector3(1, 1, 1) }, sun: { value: new THREE.Vector3(1, 1, 1) }, lamp: { value: new THREE.Vector3(0, 0, 0) } };
+  const black = bin.add(new THREE.DataTexture(new Uint8Array([0, 0, 0, 255]), 1, 1)); black.needsUpdate = true;
+  const loadLM = (file: string) => new THREE.TextureLoader().loadAsync(asset(`light/${file}.jpg`)).then((tex) => {
+    if (stopped) { tex.dispose(); return null; }
+    tex.colorSpace = THREE.SRGBColorSpace; tex.channel = 1; bin.add(tex); return tex;
+  });
   const bake = (mesh: THREE.Mesh, name: string, uv: (x: number, y: number, z: number) => [number, number], paint?: THREE.Color) => {
-    new THREE.TextureLoader().loadAsync(asset(`light/${name}.jpg`)).then((tex) => {
-      if (stopped) { tex.dispose(); return; }
-      tex.colorSpace = THREE.SRGBColorSpace; tex.channel = 1; bin.add(tex);
+    loadLM(name).then((tex) => {
+      if (!tex) return;
       const pos = mesh.geometry.attributes.position, uv1 = new Float32Array(pos.count * 2);
       for (let i = 0; i < pos.count; i++) uv1.set(uv(pos.getX(i) + mesh.position.x, pos.getY(i) + mesh.position.y, pos.getZ(i) + mesh.position.z), i * 2);
       mesh.geometry.setAttribute('uv1', new THREE.BufferAttribute(uv1, 2));
       const src = mesh.material as THREE.MeshStandardMaterial;
       const basic = bin.add(new THREE.MeshBasicMaterial({ map: paint ? null : src.map, color: paint ?? src.color.clone(), lightMap: tex, lightMapIntensity: LM_INTENSITY }));
+      // 另外两套贴图到之前：sky 先用 full 顶着（只是白天地板上还留着晨光的光斑），lamp 是全黑
+      const texSky = { value: tex as THREE.Texture }, texLamp = { value: black as THREE.Texture };
+      basic.onBeforeCompile = (sh) => {
+        Object.assign(sh.uniforms, { uLmSky: texSky, uLmLamp: texLamp, uKSky: K.sky, uKSun: K.sun, uKLamp: K.lamp });
+        sh.fragmentShader = sh.fragmentShader
+          .replace('#include <common>', '#include <common>\nuniform sampler2D uLmSky, uLmLamp;\nuniform vec3 uKSky, uKSun, uKLamp;')
+          .replace('vec4 lightMapTexel = texture2D( lightMap, vLightMapUv );', `
+            vec3 lmFull = texture2D( lightMap, vLightMapUv ).rgb, lmSky = texture2D( uLmSky, vLightMapUv ).rgb, lmLamp = texture2D( uLmLamp, vLightMapUv ).rgb;
+            vec4 lightMapTexel = vec4( lmSky * uKSky + max( lmFull - lmSky, 0.0 ) * uKSun + lmLamp * uKLamp, 1.0 );`);
+      };
+      basic.customProgramCacheKey = () => 'baked-daytime';
       mesh.material = basic; mesh.receiveShadow = false;
       if (!paint) baked.push({ mesh, src, basic });
+      loadLM(`${name}_sky`).then((t) => { if (t) texSky.value = t; }).catch(() => {});
+      loadLM(`${name}_lamp`).then((t) => { if (t) texLamp.value = t; }).catch(() => {});
     }).catch((e) => console.warn(`[scene] 光照贴图 ${name} 加载失败，继续用实时光照`, e));
   };
   // 采样位置夹在室内：墙体厚度里的那部分贴图是被室外天光照亮的，不夹住的话墙角会渗出一条亮边
@@ -190,7 +213,13 @@ export const room: SceneObject = ({ scene, camera, tier, bus, pick }) => {
   // 阳光打在桌面上再弹起来的暖光，照亮书脊、屏幕下方这些背光面
   const bounce = new THREE.PointLight(0xffc48c, 0.8, 2.4, 1.4);
   bounce.position.set(0, 0.4, 0.3);
-  group.add(sun, sun.target, hemi, fill, bounce);
+  // 夜里的宫灯（书桌前沿上方的横梁下吊着，见下文）：一直在场景里，白天亮度为 0——灯的数量变了所有材质都要重新编译
+  const LANTERN = new THREE.Vector3(0, 2.3, 0.25); // 和 tools/bake_lighting.py 的 LANTERN 一致（贴图是按 2.15 烘的，差 15 厘米看不出）
+  const lamp = new THREE.PointLight(0xffb470, 0, 9, 1.5);
+  lamp.position.copy(LANTERN).setY(LANTERN.y - 0.05);
+  group.add(sun, sun.target, hemi, fill, bounce, lamp);
+  const SUN_BASE = sun.intensity, sunWarm = new THREE.Color(0xffbe82), sunWhite = new THREE.Color(0xfff1dc);
+  const hemiDay = new THREE.Color(0xdcdff2), hemiNight = new THREE.Color(0x5a6a9a);
 
   // ---- 天花板（深色木梁）和朝镜头那面墙 ----
   // 镜头可以在屋里拉远、换广角往下看（用户要的「能拉远一点，但限制在房屋内」），屋子得是封闭的，
@@ -216,11 +245,54 @@ export const room: SceneObject = ({ scene, camera, tier, bus, pick }) => {
   shell.add(shellMat, tint(new THREE.PlaneGeometry(RX * 2, H).rotateY(Math.PI), 0xd8d1c4), [0, yc, RZ]);
   shell.add(shellMat, tint(new THREE.PlaneGeometry(RX * 2, 0.1).rotateY(Math.PI), 0xf3efe6), [0, floorY + 0.05, RZ - 0.009]);
   shell.build(group, bin, { cast: false, receive: false });
+  const SHELL_GLOW = new THREE.Color(0x2a241c);
+
+  // ---- 宫灯：横梁下吊着的一盏六角纱灯（深色木框、米黄的纱、红穗子），天黑了自己点上 ----
+  const lanternGroup = new THREE.Group(); lanternGroup.position.copy(LANTERN);
+  const lb = new Batch(['position', 'normal', 'uv', 'color']);
+  const frameMat = bin.add(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6 }));
+  const paperMat = bin.add(new THREE.MeshStandardMaterial({ color: 0xf2e2c0, roughness: 0.9, emissive: 0xffa94d, emissiveIntensity: 0, side: THREE.DoubleSide,
+    map: bin.add(canvasTex(256, 128, (g, w, h) => {
+      g.fillStyle = '#f4e6c6'; g.fillRect(0, 0, w, h); speckle(g, w, h, 2, 900, '150,110,60', 0.06);
+      // 纱面上淡淡的红色题字和回纹边
+      g.strokeStyle = 'rgba(150,40,30,.55)'; g.lineWidth = 3; g.strokeRect(6, 8, w - 12, h - 16);
+      g.fillStyle = 'rgba(160,40,30,.7)'; g.font = `bold 56px ${SERIF}`; g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.fillText('福', w * 0.25, h / 2); g.fillText('安', w * 0.75, h / 2);
+    })) }));
+  const tintG = (geo: THREE.BufferGeometry, hex: number) => tint(geo, hex);
+  const LH = 0.3, LR = 0.15;
+  lb.add(paperMat, new THREE.CylinderGeometry(LR, LR, LH, 6, 1, true));
+  for (const y of [LH / 2, -LH / 2]) lb.add(frameMat, tintG(new THREE.CylinderGeometry(LR + 0.02, LR + 0.02, 0.035, 6), 0x3a2416), [0, y, 0]);
+  for (let i = 0; i < 6; i++) { const a = (i / 6) * Math.PI * 2; lb.add(frameMat, tintG(new THREE.BoxGeometry(0.018, LH, 0.018), 0x3a2416), [Math.cos(a) * LR, 0, Math.sin(a) * LR], [0, -a, 0]); }
+  lb.add(frameMat, tintG(new THREE.CylinderGeometry(0.035, 0.08, 0.07, 6), 0x3a2416), [0, LH / 2 + 0.05, 0]);   // 顶盖
+  lb.add(frameMat, tintG(new THREE.CylinderGeometry(0.006, 0.006, top - 0.17 - (LANTERN.y + LH / 2 + 0.08), 4), 0x2a1a10), [0, (top - 0.17 - LANTERN.y + LH / 2 + 0.08) / 2, 0]); // 吊绳
+  lb.add(frameMat, tintG(new THREE.SphereGeometry(0.03, 8, 6), 0xb0261c), [0, -LH / 2 - 0.04, 0]);               // 红结
+  lb.add(frameMat, tintG(new THREE.ConeGeometry(0.035, 0.16, 8, 1, true), 0xa8231a), [0, -LH / 2 - 0.13, 0]);     // 穗子
+  const lanternMeshes = lb.build(lanternGroup, bin, { cast: false, receive: false });
+  lanternMeshes.forEach((m) => { m.userData.noAO = true; });
+  group.add(lanternGroup);
 
   scene.add(group);
   return {
-    frame() {
+    frame(_dt, t) {
       for (const w of sideWalls) w.mesh.visible = camera.position.x * w.s < RX - 0.05;
+      // ---- 跟着一天里的时刻调光 ----
+      const day = SKY.day, sunIn = SKY.sunIn, lampOn = SKY.lamp;
+      const flicker = 1 + Math.sin(t * 7.3) * 0.015 + Math.sin(t * 13.1) * 0.01; // 灯火轻轻跳
+      sun.intensity = SUN_BASE * sunIn; sun.color.copy(sunWhite).lerp(sunWarm, Math.min(1, SKY.gold * 1.4));
+      hemi.intensity = 0.55 * (0.1 + 0.9 * day) + 0.05; hemi.color.copy(hemiNight).lerp(hemiDay, day);
+      fill.intensity = 1.0 * (0.12 + 0.88 * day);
+      bounce.intensity = 0.8 * (0.25 * day + 0.75 * sunIn) + 0.25 * lampOn;
+      lamp.intensity = 7 * lampOn * flicker;
+      paperMat.emissiveIntensity = 1.6 * lampOn * flicker;
+      shellMat.emissive.copy(SHELL_GLOW).multiplyScalar(0.15 + 0.85 * day);
+      glass.opacity = 0.09 * (0.4 + 0.6 * day);
+      // 天光：白天太阳照不进窗以后只剩天光那套，少了阳光在屋里的反弹，又暗又偏绿（屋外菜地反上来的光），
+      // 按截图量过的墙色补回来：正午的白墙要和清晨差不多亮、偏中性
+      const noonish = day * (1 - sunIn);
+      K.sky.value.set(SKY.tint.r * (0.92 + 1.54 * noonish), SKY.tint.g * (0.92 + 1.08 * noonish), SKY.tint.b * (0.92 + 1.44 * noonish));
+      K.sun.value.setScalar(sunIn);
+      K.lamp.value.setScalar(0.42 * lampOn * flicker);
       // 实拍贴图可能比光照贴图晚到：把颜色贴图同步到烘焙材质上
       for (const b of baked) if (b.basic.map !== b.src.map) { b.basic.map = b.src.map; b.basic.color.copy(b.src.color); b.basic.needsUpdate = true; }
     },

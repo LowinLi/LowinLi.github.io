@@ -3,6 +3,7 @@ import { Bin, emit, HIT_LAYER, type SceneObject } from '../types';
 import { L } from '../layout';
 import { Batch, canvasTex, leafGeo, place, rbox, rng, speckle, type V3 } from '../util';
 import { Impostors, outdoorMaterial, photo, worldUV } from '../impostor';
+import { applyDayTint } from '../daytime';
 
 /**
  * 窗外的乡下：窗前是一个农家菜园（白菜、生菜、小葱、辣椒、茄子、番茄、豆角架、南瓜、玉米、向日葵；竹篱笆、柴门、水井、柿子树），
@@ -633,6 +634,8 @@ export const countryside: SceneObject = ({ scene, tier, bus, pick: pickable }) =
 
   // 屋外的东西不参与环境光遮蔽：密密的稻丛和菜叶会被压成一片黑
   group.traverse((o) => { o.userData.noAO = true; });
+  // 一天里的色调：不是 outdoorMaterial 建的几样（地影、稻田底色、雾）也乘上（夜里压暗）
+  group.traverse((o) => { const m = (o as THREE.Mesh).material as THREE.Material | undefined; if (m && !Array.isArray(m) && o.layers.isEnabled(0)) applyDayTint(m); });
   scene.add(group);
   return {
     frame(dt, t) {

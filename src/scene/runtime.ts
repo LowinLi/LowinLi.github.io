@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { setHours, setPreset, toReal } from './daytime';
 import { L } from './layout';
 import { BUDGETS } from './budgets';
 import { emit, HIT_LAYER, on, type MountContext, type Mounted, type PickHandlers, type SceneInput, type SceneObject, type SiteData } from './types';
@@ -117,6 +118,9 @@ export function start(canvas: HTMLCanvasElement, tier: Exclude<Tier, 'low'>, dat
   const offs = [
     on(bus, 'monitor:focus', () => { monitorFocused = true; }),
     on(bus, 'monitor:blur', () => { monitorFocused = false; }),
+    // 拨时间（座钟 / HTML 面板）：daytime.ts 记下和真实时间的差
+    on<{ h?: number; at?: string }>(bus, 'time:set', ({ h, at }) => (at ? setPreset(at) : setHours(h ?? 12))),
+    on(bus, 'time:real', () => toReal()),
     on(bus, 'scene:changed', () => { post?.refresh(); pruneCasters(); collectCasters(); }),
     on(bus, 'book:open', () => { bookOpen = true; }),
     on<{ p: number[] }>(bus, 'cup:focus', ({ p }) => { cupFocused = true; post?.setFocus(new THREE.Vector3().fromArray(p)); }),
@@ -295,6 +299,8 @@ export function start(canvas: HTMLCanvasElement, tier: Exclude<Tier, 'low'>, dat
   for (let i = Math.min(3, Number(q.get('level')) || 0); i > 0; i--) degrade();
   // ?nodegrade：不自动降档。只给截图脚本用——没有显卡的截图环境一秒才一两帧，不锁住的话 high 档截出来全是降过档的样子
   if (q.has('nodegrade')) autoDegrade = false;
+  // 调试：?hour=22 从晚上十点开始（和拨座钟一样，之后照样往前走）
+  if (q.has('hour')) { const hv = q.get('hour')!; if (Number.isFinite(Number(hv))) setHours(Number(hv)); else setPreset(hv); }
 
   return () => {
     renderer.setAnimationLoop(null);

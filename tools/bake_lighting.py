@@ -24,6 +24,11 @@ ap.add_argument('--sky-rot', type=float, default=-2.32)
 # 天光强度：物理上真实的比例下房间会很暗，而运行时桌面物件的环境光是按「明亮的清晨」调的，这里把天光提到和它一致
 ap.add_argument('--sky-strength', type=float, default=5.0)
 ap.add_argument('--inside', action='store_true', help='预览时从屋内朝窗外看')
+# 运行时按一天里的时刻混合三套贴图（见 room.ts）：
+#   all  = 天光 + 太阳（清晨，原来那套，文件名不带后缀）
+#   sky  = 只有天光、没有直射阳光（白天太阳升高以后，地板上不该再有晨光的光斑），输出 *_sky.jpg
+#   lamp = 只有天花板下吊着的那盏宫灯（夜里），天空全黑，输出 *_lamp.jpg
+ap.add_argument('--mode', choices=['all', 'sky', 'lamp'], default='all')
 args = ap.parse_args(sys.argv[1:])
 
 # ---- 和 layout.ts 一致的尺寸（three 的坐标系：y 向上，-z 朝窗外）----
@@ -180,8 +185,20 @@ env = nt.nodes.new('ShaderNodeTexEnvironment'); env.image = bpy.data.images.load
 mp = nt.nodes.new('ShaderNodeMapping'); tc = nt.nodes.new('ShaderNodeTexCoord')
 mp.inputs['Rotation'].default_value = (0, 0, args.sky_rot)
 nt.links.new(tc.outputs['Generated'], mp.inputs['Vector']); nt.links.new(mp.outputs['Vector'], env.inputs['Vector'])
-nt.links.new(env.outputs['Color'], bg.inputs['Color']); bg.inputs['Strength'].default_value = args.sky_strength
-sun = bpy.data.lights.new('sun', 'SUN'); sun.energy = 4.0; sun.color = (1.0, 0.72, 0.46); sun.angle = math.radians(1.5)
+if args.mode == 'sky':
+    # 只要天光：天空图里自带的太阳（几千倍亮的一小块）也会从窗户照出一块光斑，把它压到和周围的天差不多亮
+    clip = nt.nodes.new('ShaderNodeVectorMath'); clip.operation = 'MINIMUM'; clip.inputs[1].default_value = (1.6, 1.6, 1.6)
+    nt.links.new(env.outputs['Color'], clip.inputs[0]); nt.links.new(clip.outputs['Vector'], bg.inputs['Color'])
+else:
+    nt.links.new(env.outputs['Color'], bg.inputs['Color'])
+bg.inputs['Strength'].default_value = args.sky_strength
+if args.mode == 'lamp': bg.inputs['Strength'].default_value = 0.0
+# 宫灯：和 room.ts 的 LANTERN 一致（书桌前沿上方的横梁下）
+LANTERN = (0.0, 2.3, 0.25)  # 现在的 *_lamp.jpg 是按 2.15 烘的，后来把灯挂高了 15 厘米（默认视角上沿露出穗子），差别看不出
+if args.mode == 'lamp':
+    lamp = bpy.data.lights.new('lamp', 'POINT'); lamp.energy = 160.0; lamp.color = (1.0, 0.72, 0.45); lamp.shadow_soft_size = 0.16
+    lo = bpy.data.objects.new('lamp', lamp); lo.location = bl(*LANTERN); scene.collection.objects.link(lo)
+sun = bpy.data.lights.new('sun', 'SUN'); sun.energy = 4.0 if args.mode == 'all' else 0.0; sun.color = (1.0, 0.72, 0.46); sun.angle = math.radians(1.5)
 so = bpy.data.objects.new('sun', sun); scene.collection.objects.link(so)
 so.rotation_euler = bl(*SUN_TRAVEL).to_track_quat('-Z', 'Y').to_euler()
 
@@ -238,5 +255,5 @@ for name, (ob, (w, h)) in targets.items():
                     px[top:, c] = left * (1 - t) + right * t
     # 墙面的光照变化很平缓，平滑得狠一些才能去掉采样噪点；地板要保留光斑和家具脚下阴影的边缘
     out = (np.clip(srgb(np.clip(blur(px, 2.2 if name == 'floor' else 6.0) / RANGE, 0, 1)), 0, 1) * 255 + 0.5).astype(np.uint8)
-    Image.fromarray(out).save(f'{args.out}/{name}.jpg', quality=88, optimize=True)
+    Image.fromarray(out).save(f'{args.out}/{name}{"" if args.mode == "all" else "_" + args.mode}.jpg', quality=88, optimize=True)
 print('done')

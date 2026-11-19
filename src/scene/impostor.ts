@@ -12,6 +12,7 @@
 import * as THREE from 'three';
 import { Bin } from './types';
 import { asset } from './util';
+import { applyDayTint } from './daytime';
 
 export const HAZE = new THREE.Color(0.78, 0.8, 0.8);
 /** 和 countryside.ts 里 hazeAt 一样：30 米以内不泛白，越远越白，最多 75% */
@@ -52,7 +53,7 @@ ${haze ? 'outgoingLight = mix(outgoingLight, uHaze, vHz);' : ''}
 #include <opaque_fragment>`);
   };
   m.customProgramCacheKey = () => `outdoor-${billboard ? 1 : 0}-${haze ? 1 : 0}-${sat}-${atlas ? 1 : 0}-${detail ? 1 : 0}`;
-  return m;
+  return applyDayTint(m); // 一天里的色调：夜里压成月光的暗蓝，傍晚偏暖（daytime.ts）
 }
 
 /** 照片贴图：平铺、sRGB、各向异性 */

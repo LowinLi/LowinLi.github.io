@@ -8,6 +8,9 @@
   Meow                            OpenGameArt「Meow」，ignasd，CC0
   cat_softmew / cat_mewfood       OpenGameArt「Cat Purr & Meow」，kerzoven，CC0
   pleading                        Wikimedia Commons「Meow of a pleading cat.oga」，Heismark，公有领域
+  owl                             Wikimedia Commons「Strix aluco male.oga」（灰林鸮雄鸟），Vianney Bajart，CC BY-SA 4.0
+  rat                             OpenGameArt「Squeaky Rat」，Iwan 'qubodup' Gabovitch，CC0（预览文件 montage-sfx-20130922@153659.ogg，改名 squeaky_rat.ogg）
+  crickets                        OpenGameArt「Crickets Ambient Noise - loopable」，Wolfgang_ / Ted Kerr，CC0（crickets_1.mp3）
 
 用法：python tools/build_animal_sounds.py <原始录音所在目录> public/assets/sounds
 （需要系统 ffmpeg 和 numpy）
@@ -21,6 +24,7 @@ FILES = {
     'rooster_medium': 'Medium_rooster_crowing.ogg', 'rooster_small': 'Small_rooster_crowing.ogg',
     'hen_egg': 'Hen_announcing_shes_lain_an_egg.ogg', 'dog': 'dog_barking_mono.wav',
     'meow': 'Meow.ogg', 'softmew': 'cat_softmew.wav', 'mewfood': 'cat_mewfood.wav', 'pleading': 'Meow_of_a_pleading_cat.oga',
+    'owl': 'Strix_aluco_male.oga', 'rat': 'squeaky_rat.ogg', 'crickets': 'crickets_1.mp3',
 }
 # 种类 → [(文件, 开始秒, 结束秒)]；起止是看频谱图定的
 CLIPS = {
@@ -29,7 +33,13 @@ CLIPS = {
     'bark': [('dog', 0.00, 0.44), ('dog', 0.52, 0.94), ('dog', 1.16, 1.60), ('dog', 1.70, 2.04)],
     'meow': [('meow', 0.03, 0.46), ('softmew', 0.35, 1.25), ('softmew', 1.28, 2.16), ('mewfood', 0.52, 1.10),
              ('pleading', 0.15, 1.75), ('pleading', 3.95, 5.05), ('pleading', 6.95, 8.10)],
+    # 灰林鸮：完整的一句「呼——（停）呼呼呼——」，和单独开头那一声
+    'owl': [('owl', 0.25, 7.20), ('owl', 0.25, 1.25)],
+    'squeak': [('rat', 0.42, 0.78), ('rat', 1.12, 1.62), ('rat', 2.02, 2.32)],
+    # 蛐蛐：一段可以首尾相接循环的底噪（不淡入淡出，循环时才不会一跳一跳）
+    'cricket': [('crickets', 0.0, 11.45)],
 }
+LOOP = {'cricket'}
 GAP = 0.35  # 片段之间留空白：mp3 编码的前后延迟不会让一段的头尾串到隔壁
 
 
@@ -52,7 +62,7 @@ for kind, clips in CLIPS.items():
     for key, a, b in clips:
         x = audio[key][int(a * SR):int(b * SR)].copy()
         f = int(0.015 * SR)                          # 头尾 15 ms 淡入淡出，不出咔哒声
-        x[:f] *= np.linspace(0, 1, f); x[-f:] *= np.linspace(1, 0, f)
+        if kind not in LOOP: x[:f] *= np.linspace(0, 1, f); x[-f:] *= np.linspace(1, 0, f)
         x *= 0.7 / max(1e-6, np.percentile(np.abs(x), 99.9))   # 统一到差不多的响度（按 99.9% 分位，不被单个尖峰带偏）
         x = np.clip(x, -0.98, 0.98)
         parts += [x, np.zeros(int(GAP * SR), np.float32)]
