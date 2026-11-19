@@ -105,7 +105,7 @@ export const room: SceneObject = ({ scene, camera, tier, bus, pick }) => {
   const sx = 1.9, sy = 1.08;
   batch.add(scrollMat, new THREE.PlaneGeometry(0.5, 0.5), [sx, sy, wallZ + 0.012], [0, 0, Math.PI / 4]);
 
-  const built = batch.build(group, bin, { cast: high, receive: high, noCast: [floorMat, scrollMat, trim, blind] });
+  const built = batch.build(group, bin, { cast: high, receive: high, noCast: [floorMat, scrollMat, trim, blind], collapse: true, keep: [floorMat, wall] });
   const meshOf = (m: THREE.Material) => built.find((x) => x.material === m)!;
 
   // ---- 烘焙光照：墙和地板的光影是用 Blender 离线算好的（tools/bake_lighting.py）----
@@ -213,11 +213,12 @@ export const room: SceneObject = ({ scene, camera, tier, bus, pick }) => {
   // 阳光打在桌面上再弹起来的暖光，照亮书脊、屏幕下方这些背光面
   const bounce = new THREE.PointLight(0xffc48c, 0.8, 2.4, 1.4);
   bounce.position.set(0, 0.4, 0.3);
-  // 夜里的宫灯（书桌前沿上方的横梁下吊着，见下文）：一直在场景里，白天亮度为 0——灯的数量变了所有材质都要重新编译
+  // 夜里的宫灯（书桌前沿上方的横梁下吊着，见下文）：不另加一盏灯，天黑时把身后那盏暖色补光挪到灯笼里、调成灯火的颜色和亮度。
+  // 每多一盏点光源，所有受光材质的每个像素都要多算一次（用户要求「优化渲染开销」）；数量变了还要整体重编译着色器
   const LANTERN = new THREE.Vector3(0, 2.3, 0.25); // 和 tools/bake_lighting.py 的 LANTERN 一致（贴图是按 2.15 烘的，差 15 厘米看不出）
-  const lamp = new THREE.PointLight(0xffb470, 0, 9, 1.5);
-  lamp.position.copy(LANTERN).setY(LANTERN.y - 0.05);
-  group.add(sun, sun.target, hemi, fill, bounce, lamp);
+  const FILL_POS = fill.position.clone(), LAMP_POS = LANTERN.clone().setY(LANTERN.y - 0.05);
+  const fillColor = new THREE.Color(0xffe2c4), lampColor = new THREE.Color(0xffb470);
+  group.add(sun, sun.target, hemi, fill, bounce);
   const SUN_BASE = sun.intensity, sunWarm = new THREE.Color(0xffbe82), sunWhite = new THREE.Color(0xfff1dc);
   const hemiDay = new THREE.Color(0xdcdff2), hemiNight = new THREE.Color(0x5a6a9a);
 
@@ -281,9 +282,12 @@ export const room: SceneObject = ({ scene, camera, tier, bus, pick }) => {
       const flicker = 1 + Math.sin(t * 7.3) * 0.015 + Math.sin(t * 13.1) * 0.01; // 灯火轻轻跳
       sun.intensity = SUN_BASE * sunIn; sun.color.copy(sunWhite).lerp(sunWarm, Math.min(1, SKY.gold * 1.4));
       hemi.intensity = 0.55 * (0.1 + 0.9 * day) + 0.05; hemi.color.copy(hemiNight).lerp(hemiDay, day);
-      fill.intensity = 1.0 * (0.12 + 0.88 * day);
+      // 补光 ↔ 宫灯：白天在身后补暖光，天黑挪进灯笼
+      fill.position.lerpVectors(FILL_POS, LAMP_POS, lampOn);
+      fill.color.lerpColors(fillColor, lampColor, lampOn);
+      fill.distance = 8 + lampOn; fill.decay = 1.2 + 0.3 * lampOn;
+      fill.intensity = THREE.MathUtils.lerp(1.0 * (0.12 + 0.88 * day), 7 * flicker, lampOn);
       bounce.intensity = 0.8 * (0.25 * day + 0.75 * sunIn) + 0.25 * lampOn;
-      lamp.intensity = 7 * lampOn * flicker;
       paperMat.emissiveIntensity = 1.6 * lampOn * flicker;
       shellMat.emissive.copy(SHELL_GLOW).multiplyScalar(0.15 + 0.85 * day);
       glass.opacity = 0.09 * (0.4 + 0.6 * day);

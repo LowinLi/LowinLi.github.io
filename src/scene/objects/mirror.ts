@@ -36,7 +36,7 @@ export const mirror: SceneObject = ({ scene, camera, renderer, tier, bus }) => {
   batch.add(wood, rbox(MW + FW * 2 + 0.05, FW, 0.04, 0.008), [0, MH + 0.03 + FW / 2, 0]);
   batch.add(wood, rbox(MW + FW * 2, FW * 1.4, 0.04, 0.008), [0, 0.03 + FW * 0.7 - 0.01, 0]);
   batch.add(wood, new THREE.BoxGeometry(MW + FW * 2, MH + 0.06, 0.01), [0, yc, -0.022]); // 背板
-  batch.build(root, bin, { cast: high, receive: high });
+  batch.build(root, bin, { cast: high, receive: high, collapse: true });
 
   // 镜面
   const scale = high ? 0.5 : 0.35;

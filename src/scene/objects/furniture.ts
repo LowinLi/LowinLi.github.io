@@ -1,9 +1,10 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { Bin, emit, HIT_LAYER, type SceneObject } from '../types';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { Bin, emit, HIT_LAYER, on, type SceneObject } from '../types';
 import { L } from '../layout';
 import { SKY } from '../daytime';
-import { asset, Batch, blob, canvasTex, contactMaterial, speckle, type V3 } from '../util';
+import { asset, Batch, blob, canvasTex, contactMaterial, mergeSameMaterial, speckle, type V3 } from '../util';
 
 const SERIF = '"Kaiti SC","STKaiti","KaiTi","Songti SC","Noto Serif CJK SC","SimSun",serif';
 
@@ -95,7 +96,8 @@ export const furniture: SceneObject = ({ scene, camera, renderer, tier, bus, pic
     new THREE.BoxGeometry(WW + 0.03, 0.015, 0.04).translate(0, WY1, WZ + 0.02), new THREE.BoxGeometry(WW + 0.03, 0.015, 0.04).translate(0, WY0, WZ + 0.02),
     new THREE.BoxGeometry(0.015, WY1 - WY0, 0.04).translate(-WW / 2, (WY0 + WY1) / 2, WZ + 0.02), new THREE.BoxGeometry(0.015, WY1 - WY0, 0.04).translate(WW / 2, (WY0 + WY1) / 2, WZ + 0.02),
   ];
-  for (const g of frameGeo) { const m = new THREE.Mesh(bin.add(g), brass); m.castShadow = high; clockWindow.add(m); }
+  // 四根铜边合成一个网格
+  { const m = new THREE.Mesh(bin.add(mergeGeometries(frameGeo)), brass); frameGeo.forEach((g) => g.dispose()); m.castShadow = high; clockWindow.add(m); }
   const pendulum = new THREE.Group();
   pendulum.position.set(0, WY1 - 0.03, WZ + 0.02);
   pendulum.add(
@@ -112,8 +114,18 @@ export const furniture: SceneObject = ({ scene, camera, renderer, tier, bus, pic
   const clockHit = new THREE.Mesh(bin.add(new THREE.BoxGeometry(0.62, 2.2, 0.46)), bin.add(new THREE.MeshBasicMaterial()));
   clockHit.position.set(clockX, fy + 1.1, clockZ); clockHit.layers.set(HIT_LAYER);
   group.add(clockHit);
-  pick(clockHit, { click: () => emit(bus, 'time:open') });
-  batch.build(group, bin, { receive: high });
+  clockHit.userData.keepsClock = true;
+  pick(clockHit, { click: () => { if (!clockFocused) emit(bus, 'clock:focus'); } });
+  // 站到表盘前以后在表盘上拖指针拨时间：按下时离哪根指针近就拨哪根（分针转一圈是一小时，时针转一圈是十二小时）
+  let clockFocused = false, aspect = 1, grab: 'hour' | 'minute' | null = null, pend = 0, ptrAng = 0, ptrR = 0;
+  // 每次按下都是一次新的拖动（重新挑指针）
+  const onDown = () => { grab = null; };
+  renderer.domElement.addEventListener('pointerdown', onDown);
+  const offClock = [() => renderer.domElement.removeEventListener('pointerdown', onDown),on(bus, 'clock:focus', () => { clockFocused = true; }), on(bus, 'clock:blur', () => { clockFocused = false; grab = null; })];
+  const dialNdc = new THREE.Vector3();
+  const TAU = Math.PI * 2;
+  const angDiff = (a: number, b: number) => { let d = a - b; d -= TAU * Math.round(d / TAU); return d; };
+  batch.build(group, bin, { receive: high, collapse: true });
 
   // ---- 扫描模型 ----
   let stopped = false;
@@ -143,6 +155,10 @@ export const furniture: SceneObject = ({ scene, camera, renderer, tier, bus, pic
         sh.position.set(o.pos[0], fy + 0.017, o.pos[2]); sh.rotation.y = o.rotY ?? 0;
         group.add(sh);
       }
+      // 同一个材质拆成很多块的（茶具十件）合成一个；座钟的指针要单独转，不动
+      mergeSameMaterial(model, bin, (m) => /Hand$/.test(m.name));
+      // 各件家具脚下的接触阴影共用一个材质，也合成一个
+      mergeSameMaterial(group, bin, (m) => m.material !== contact);
       models.push(model);
       o.then?.(model);
       emit(bus, 'scene:changed');
@@ -167,7 +183,8 @@ export const furniture: SceneObject = ({ scene, camera, renderer, tier, bus, pic
   useModel('vintage_grandfather_clock_01', {
     pos: [clockX, fy, clockZ], shadow: [0.36, 0.3],
     then(m) {
-      const reg = (n: string, base: number, turns: (h: number, mm: number) => number) => { const node = m.getObjectByName(n); if (node) hands.push({ node, base, turns }); };
+      // 指针每秒都在走：投影的话阴影贴图就得一直重画（阴影只在投影的东西动了才重画），指针的影子又看不出来
+      const reg = (n: string, base: number, turns: (h: number, mm: number) => number) => { const node = m.getObjectByName(n); if (node) { node.traverse((o) => { o.castShadow = false; }); hands.push({ node, base, turns }); } };
       reg('vintage_grandfather_clock_01_HourHand', -0.862, (h) => h / 12);
       reg('vintage_grandfather_clock_01_MinuteHand', -2.4, (_h, mm) => mm / 60);
       clockWindow.visible = true;
@@ -178,6 +195,26 @@ export const furniture: SceneObject = ({ scene, camera, renderer, tier, bus, pic
 
   scene.add(group);
   return {
+    input(e) {
+      if (e.type === 'resize') aspect = e.width / Math.max(1, e.height);
+      if (!clockFocused) return;
+      if (e.type === 'pointer') {
+        // 指针相对表盘中心的角度：12 点方向为 0，顺时针为正（横向按画面宽高比拉回正圆）
+        dialNdc.set(L.clockDial.x, L.clockDial.y, L.clockDial.z).project(camera);
+        const dx = (e.x - dialNdc.x) * aspect, dy = e.y - dialNdc.y;
+        const a = Math.atan2(dx, dy);
+        pend = angDiff(a, ptrAng); ptrAng = a; ptrR = Math.hypot(dx, dy);
+      }
+      if (e.type === 'drag') {
+        if (!grab) {
+          // 新的一次拖动：挑离按下位置近的那根指针（离中心很近时拨时针）
+          const hA = ((SKY.hours % 12) / 12) * TAU, mA = (((SKY.hours * 60) % 60) / 60) * TAU;
+          grab = Math.abs(angDiff(ptrAng, mA)) <= Math.abs(angDiff(ptrAng, hA)) && ptrR > 0.04 ? 'minute' : 'hour';
+          pend = 0;
+        }
+        if (pend !== 0) { emit(bus, 'time:nudge', { dh: (pend / TAU) * (grab === 'hour' ? 12 : 1) }); pend = 0; }
+      }
+    },
     frame(_dt, t) {
       // 指针走场景里的时刻（拨时间时跟着天色一起快速转过去）
       const h = SKY.hours % 12, mm = (SKY.hours * 60) % 60;
@@ -187,7 +224,7 @@ export const furniture: SceneObject = ({ scene, camera, renderer, tier, bus, pic
       pendulum.rotation.z = Math.sin(t * Math.PI) * 0.085;
     },
     stop() {
-      stopped = true;
+      stopped = true; offClock.forEach((f) => f());
       for (const m of models) m.traverse((o) => {
         const mesh = o as THREE.Mesh;
         if (!mesh.isMesh) return;

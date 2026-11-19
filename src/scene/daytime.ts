@@ -36,6 +36,12 @@ export function setPreset(at: string) {
   setHours(at === 'sunrise' ? rise + 0.25 : at === 'noon' ? NOON : at === 'sunset' ? 2 * NOON - rise - 0.3 : 22);
 }
 export const isReal = () => Math.abs(offset) < 30e3;
+/** 在表盘上拨指针：往前（正）或往后拨 dh 小时，显示的时刻立刻跟上（指针跟手） */
+export function nudge(dh: number) {
+  offset += dh * 3.6e6;
+  offset -= 864e5 * Math.round(offset / 864e5); // 差值保持在 ±12 小时以内：拨过零点还是「今天」
+  if (shown >= 0) shown = wrap(shown + dh);
+}
 
 function declination(d: Date) {
   const start = new Date(d.getFullYear(), 0, 0), n = (d.getTime() - start.getTime()) / 864e5;

@@ -12,7 +12,7 @@ const AZ_MAX = 1.1, EL_MIN = -0.07, EL_MAX = 0.8;
  * monitor：推近到显示器；book：稍微靠向书架；window：走到窗前看菜园。
  */
 export const cameraRig: SceneObject = ({ camera, bus }) => {
-  let mode: 'home' | 'monitor' | 'book' | 'window' | 'fridge' | 'shelf' = 'home';
+  let mode: 'home' | 'monitor' | 'book' | 'window' | 'fridge' | 'shelf' | 'clock' = 'home';
   let px = 0, py = 0, aspect = camera.aspect, first = true;
   let az = 0, el = 0, zoom = 1;
   const pos = new THREE.Vector3(), look = new THREE.Vector3();
@@ -28,6 +28,8 @@ export const cameraRig: SceneObject = ({ camera, bus }) => {
     on(bus, 'fridge:close', () => { if (mode === 'fridge') mode = 'home'; }),
     on(bus, 'shelf:focus', () => { mode = 'shelf'; }),
     on(bus, 'shelf:blur', () => { if (mode === 'shelf') mode = 'home'; }),
+    on(bus, 'clock:focus', () => { mode = 'clock'; }),
+    on(bus, 'clock:blur', () => { if (mode === 'clock') mode = 'home'; }),
     on(bus, 'view:reset', () => { az = 0; el = 0; }),
   ];
   const smooth = THREE.MathUtils.smoothstep, lerp = THREE.MathUtils.lerp;
@@ -55,6 +57,11 @@ export const cameraRig: SceneObject = ({ camera, bus }) => {
         const cy = tall ? 1.58 : 1.4;
         tl.set(S.x, L.floorY + cy + py * 0.05, S.z + px * 0.05);
         tp.set(S.x - S.d / 2 - dist, L.floorY + cy + 0.12 + py * 0.04, S.z + px * 0.08);
+      } else if (mode === 'clock') {
+        // 站到座钟的表盘正前方（拨时间）：表盘上下左右各留出一点，竖屏按宽度算
+        const D = L.clockDial, half = D.r * 1.6, dist = Math.max(half / tan, half / (tan * aspect));
+        tl.set(D.x, D.y, D.z);
+        tp.set(D.x + px * 0.01, D.y + 0.03 + py * 0.01, D.z + dist);
       } else if (mode === 'monitor') {
         const dist = Math.max(m.h / 0.78, m.w / 0.92 / aspect) / 2 / tan;
         tl.set(m.x, m.cy, m.z);

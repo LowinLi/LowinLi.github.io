@@ -172,8 +172,8 @@ export const trophyShelf: SceneObject = ({ scene, tier, pick, bus, data }) => {
   const db = new Batch(['position', 'normal', 'uv', 'color']);
   db.add(deco, tintGeo(lathe([[0, 0], [0.05, 0.004], [0.075, 0.06], [0.07, 0.13], [0.04, 0.165], [0.038, 0.18], [0.045, 0.185], [0, 0.186]]), 0x9cc3ad), [0.22, SHELVES[2] + 0.011, 0]);
   db.add(deco, tintGeo(lathe([[0, 0], [0.045, 0.002], [0.055, 0.035], [0.05, 0.06], [0.056, 0.064], [0, 0.064]]), 0x7a5a2a), [0.3, SHELVES[3] + 0.011, 0.02]);
-  b.build(root, bin, { receive: high });
-  db.build(root, bin, { receive: high });
+  b.build(root, bin, { receive: high, collapse: true });
+  db.build(root, bin, { receive: high, collapse: true });
   // 地上的接触阴影
   const cb = new Batch(); cb.add(contactMaterial(bin, high ? 0.35 : 0.6), blob(W + 0.14, D + 0.16), [0, 0.016, 0]); cb.build(root, bin);
 

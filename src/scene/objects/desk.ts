@@ -143,7 +143,7 @@ export const desk: SceneObject = ({ scene, tier, bus, pick }) => {
   ];
   blobs.forEach(([x, z, a, b], i) => batch.add(contact, blob(a, b), [x, 0.0046 + i * 0.0001, z]));
 
-  batch.build(group, bin, { cast: high, receive: high, noCast: [contact, felt] });
+  batch.build(group, bin, { cast: high, receive: high, noCast: [contact, felt], collapse: true });
 
   scene.add(group);
   return {

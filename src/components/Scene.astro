@@ -50,19 +50,11 @@ const pct = (n: number) => `${(n * 100).toFixed(2)}%`;
       <button type="button" data-seek="1" aria-label="下一个台">▶</button>
       <button type="button" class="radio-off" aria-label="关掉收音机">✕</button>
     </div>
+    <!-- 站到座钟前拨时间时，底部显示现在拨到几点，和「回到现在」 -->
     <div class="timepanel" role="group" aria-label="拨时间" hidden>
-      <div class="tp-row">
-        <p><b class="tp-time">清晨 6:30</b> <span class="tp-real"></span></p>
-        <button type="button" class="tp-close" aria-label="关掉">✕</button>
-      </div>
-      <input type="range" min="0" max="23.75" step="0.25" value="6.5" aria-label="一天里的时刻" />
-      <div class="tp-presets">
-        <button type="button" data-at="sunrise">日出</button>
-        <button type="button" data-at="noon">正午</button>
-        <button type="button" data-at="sunset">黄昏</button>
-        <button type="button" data-at="night">深夜</button>
-        <button type="button" class="tp-now">现在</button>
-      </div>
+      <p><b class="tp-time">清晨 6:30</b> <span class="tp-real"></span></p>
+      <p class="tp-tip">在表盘上拖动指针拨时间：分针转一圈是一小时，拖时针更快</p>
+      <button type="button" class="tp-now">回到现在</button>
     </div>
     <p class="hint"><span class="wide">拖动旋转 · 滚轮缩放 · 点窗外看菜园 · 点书、磁带、咖啡、饭菜、黄历、座钟（拨时间）、冰箱上的火车票、左墙的青海湖、书顶上的掌机、右墙书架、显示器 · 录音机上的「波段」旋钮切收音机</span><span class="narrow">拖动旋转 · 双指缩放 · 点一点桌上的东西</span></p>
   </div>
@@ -220,7 +212,7 @@ const pct = (n: number) => `${(n * 100).toFixed(2)}%`;
     if (!r) return;
     Object.assign(screenUi.style, { left: `${r.x}px`, top: `${r.y}px`, width: `${r.w}px`, height: `${r.h}px`, fontSize: `${r.h * 0.017}px` });
   });
-  back.addEventListener('click', () => { emit('monitor:blur'); emit('window:blur'); emit('cup:blur'); emit('calendar:close'); emit('fridge:close'); emit('shelf:blur'); });
+  back.addEventListener('click', () => { emit('monitor:blur'); emit('window:blur'); emit('cup:blur'); emit('calendar:close'); emit('fridge:close'); emit('shelf:blur'); emit('clock:blur'); });
   // ---- 看右墙边的书架（顶上的奖杯）----
   on('shelf:focus', () => {
     for (const t of ['monitor:blur', 'window:blur', 'cup:blur', 'calendar:close', 'fridge:close']) emit(t);
@@ -442,7 +434,6 @@ const pct = (n: number) => `${(n * 100).toFixed(2)}%`;
 
   // ---- 拨时间（点座钟或「时间」按钮）：3D 层每半秒发一次 time:state 报当前时刻 ----
   const timeUi = $<HTMLDivElement>('.timepanel');
-  const timeSlider = timeUi.querySelector<HTMLInputElement>('input')!;
   const fmtH = (h: number) => {
     const hh = Math.floor(h) % 24, mm = Math.floor((h - Math.floor(h)) * 60);
     const part = hh < 5 ? '凌晨' : hh < 8 ? '清晨' : hh < 11 ? '上午' : hh < 13 ? '中午' : hh < 17 ? '下午' : hh < 19 ? '傍晚' : '晚上';
@@ -452,19 +443,23 @@ const pct = (n: number) => `${(n * 100).toFixed(2)}%`;
     timeUi.querySelector('.tp-time')!.textContent = fmtH(h);
     timeUi.querySelector('.tp-real')!.textContent = real ? '· 现在的时间' : '· 拨过的时间';
     timeUi.querySelector<HTMLButtonElement>('.tp-now')!.disabled = real;
-    if (document.activeElement !== timeSlider) timeSlider.value = String(Math.round(h * 4) / 4);
   });
-  on('time:open', () => { timeUi.hidden = false; });
-  on('time:close', () => { timeUi.hidden = true; });
-  timeSlider.addEventListener('input', () => emit('time:set', { h: Number(timeSlider.value) }));
-  timeUi.querySelectorAll<HTMLButtonElement>('[data-at]').forEach((b) => b.addEventListener('click', () => emit('time:set', { at: b.dataset.at })));
+  // 站到座钟前（clock:focus）：底部显示拨到几点；点别处、ESC、返回离开
+  on('clock:focus', () => {
+    for (const t of ['monitor:blur', 'window:blur', 'cup:blur', 'calendar:close', 'shelf:blur', 'fridge:close']) emit(t);
+    root.dataset.mode = 'clock'; back.hidden = false; timeUi.hidden = false;
+  });
+  for (const t of ['window:focus', 'monitor:focus', 'cup:focus', 'book:open', 'calendar:open', 'handheld:open', 'shelf:focus', 'fridge:open']) on(t, () => emit('clock:blur'));
+  on('clock:blur', () => {
+    timeUi.hidden = true;
+    if (root.dataset.mode !== 'clock') return;
+    root.dataset.mode = ''; back.hidden = true;
+  });
   timeUi.querySelector('.tp-now')!.addEventListener('click', () => emit('time:real'));
-  timeUi.querySelector('.tp-close')!.addEventListener('click', () => emit('time:close'));
 
   addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && !timeUi.hidden) { emit('time:close'); return; }
     if (e.key === 'Escape' && !projUi.hidden) { emit('project:close'); return; }
-    if (e.key === 'Escape') { emit('handheld:close'); emit('calendar:close'); emit('book:close'); emit('monitor:blur'); emit('window:blur'); emit('cup:blur'); emit('fridge:close'); emit('shelf:blur'); }
+    if (e.key === 'Escape') { emit('handheld:close'); emit('calendar:close'); emit('book:close'); emit('monitor:blur'); emit('window:blur'); emit('cup:blur'); emit('fridge:close'); emit('shelf:blur'); emit('clock:blur'); }
     if (open && e.key === 'ArrowRight') turn(open.classList.contains('classic') ? -1 : 1);
     if (open && e.key === 'ArrowLeft') turn(open.classList.contains('classic') ? 1 : -1);
   });
@@ -485,7 +480,7 @@ const pct = (n: number) => `${(n * 100).toFixed(2)}%`;
         if (dir) emit('view:zoom', { dir }); else emit('view:reset');
       }));
       $('[data-action="fridge"]').addEventListener('click', (e) => { e.preventDefault(); emit('fridge:open'); });
-      $('[data-action="time"]').addEventListener('click', (e) => { e.preventDefault(); emit($('.timepanel').hidden ? 'time:open' : 'time:close'); });
+      $('[data-action="time"]').addEventListener('click', (e) => { e.preventDefault(); emit('clock:focus'); });
       $('[data-action="radio"]').addEventListener('click', (e) => { e.preventDefault(); emit(radioOn ? 'radio:off' : 'radio:on'); });
       $('[data-action="music"]').addEventListener('click', (e) => {
         e.preventDefault();
@@ -611,22 +606,21 @@ const pct = (n: number) => `${(n * 100).toFixed(2)}%`;
   .almanac-text dt { color: #ffd27a; white-space: nowrap; }
   .almanac-text dd { margin: 0; }
   .timepanel {
-    position: absolute; right: 16px; top: 64px; width: min(320px, calc(100% - 32px)); box-sizing: border-box;
-    padding: 10px 12px 12px; color: #fff; background: #10203acc; border: 1px solid #ffffff40; border-radius: 14px; backdrop-filter: blur(6px);
+    position: absolute; left: 50%; bottom: 20px; transform: translateX(-50%); width: max-content; max-width: calc(100% - 32px); box-sizing: border-box;
+    display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 2px 14px;
+    padding: 10px 14px; color: #fff; background: #10203acc; border: 1px solid #ffffff40; border-radius: 14px; backdrop-filter: blur(6px);
   }
-  .timepanel[hidden], .scene:is([data-mode='monitor'], [data-mode='cup']) .timepanel { display: none; }
-  .tp-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-  .tp-row p { margin: 0; font-size: 13px; white-space: nowrap; }
-  .tp-time { font: 600 16px ui-monospace, monospace; color: #ffd27a; margin-right: 4px; }
+  .timepanel[hidden] { display: none; }
+  .timepanel p { margin: 0; font-size: 13px; }
+  .tp-time { font: 600 17px ui-monospace, monospace; color: #ffd27a; margin-right: 4px; }
   .tp-real { color: #ffffffb0; }
-  .timepanel input { width: 100%; margin: 10px 0 8px; accent-color: #ffb24a; }
-  .tp-presets { display: flex; gap: 6px; }
-  .tp-presets button { flex: 1; padding: 6px 0; border: 1px solid #ffffff40; border-radius: 999px; color: #fff; background: #ffffff14; font: inherit; font-size: 13px; cursor: pointer; }
-  .tp-presets button:hover:not(:disabled) { background: #1b3560; }
-  .tp-presets button:disabled { opacity: .45; cursor: default; }
-  .tp-close { flex: none; width: 28px; height: 28px; border: 0; border-radius: 50%; color: #fff; background: #ffffff1a; cursor: pointer; }
-  .timepanel :is(button, input):focus-visible { outline: 2px solid #ffd27a; outline-offset: 2px; }
-  @media (max-width: 700px) { .timepanel { top: 124px; right: 16px; } }
+  .tp-tip { grid-column: 1; color: #ffffffc0; }
+  .tp-now { grid-column: 2; grid-row: 1 / 3; padding: 8px 14px; border: 1px solid #ffffff40; border-radius: 999px; color: #fff; background: #ffffff14; font: inherit; font-size: 13px; cursor: pointer; }
+  .tp-now:hover:not(:disabled) { background: #1b3560; }
+  .tp-now:disabled { opacity: .45; cursor: default; }
+  .tp-now:focus-visible { outline: 2px solid #ffd27a; outline-offset: 2px; }
+  /* 拨时间时底部那行按钮和提示让开 */
+  .scene[data-mode='clock'] :is(.chips, .hint, .zoom) { display: none; }
   .radio {
     position: absolute; left: 50%; top: 20px; transform: translateX(-50%); width: min(460px, calc(100% - 32px)); box-sizing: border-box;
     display: flex; align-items: center; gap: 8px; padding: 8px 10px; color: #fff;

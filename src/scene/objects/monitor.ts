@@ -31,7 +31,7 @@ export const monitor: SceneObject = ({ scene, camera, renderer, tier, bus, pick 
   batch.add(bin.add(new THREE.MeshBasicMaterial({ color: 0x2a2f3a })), new THREE.CircleGeometry(0.0016, 12), [m.x, m.cy + m.h / 2 + 0.003, m.z + 0.0002]);
   batch.add(bin.add(new THREE.MeshBasicMaterial({ color: 0x9fe6a8 })), new THREE.CircleGeometry(0.0012, 10), [m.x + m.w / 2 - 0.012, m.cy - m.h / 2 - 0.003, m.z + 0.0002]);
   batch.add(contactMaterial(bin, high ? 0.3 : 0.5), blob(0.16, 0.12), [m.x, 0.0006, m.z - 0.04]);
-  batch.build(group, bin, { cast: high, receive: high });
+  batch.build(group, bin, { cast: high, receive: high, collapse: true });
 
   const canvas = document.createElement('canvas'); canvas.width = W; canvas.height = H;
   const ctx = canvas.getContext('2d')!;

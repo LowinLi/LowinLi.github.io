@@ -83,7 +83,7 @@ export const calendar: SceneObject = ({ scene, camera, renderer, tier, bus, pick
   // 背板上的贴面、布脊、纸茬贴在背板/本子上，投影看不出来：只让木头部分投影
   for (const m of tb.build(tilt, bin, { receive: high })) m.castShadow = high && m.material === lacquer;
   batch.add(contactMaterial(bin, high ? 0.32 : 0.55), blob(0.2, 0.13), [0, 0.0007, -0.01]);
-  batch.build(group, bin, { cast: high, receive: high });
+  batch.build(group, bin, { cast: high, receive: high, collapse: true });
 
   // 最上面一页：上沿往外翘一点
   const pageGeo = bin.add(new THREE.PlaneGeometry(PW, PH, 1, 16));

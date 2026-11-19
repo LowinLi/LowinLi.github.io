@@ -15,7 +15,9 @@ import { Batch, blob, canvasTex, contactMaterial, rng } from '../util';
  */
 type Kind = 'cabbage' | 'scallion' | 'lettuce';
 const NAME: Record<Kind, string> = { cabbage: '白菜', scallion: '葱', lettuce: '生菜' };
-const GARDEN = new THREE.Vector3(1.5, L.groundY, -6.2);
+// 菜园中间那条踏脚石小路的右边、右侧菜畦的左边（踏脚石到 x≈0.85，菜畦从 x≈1.57 起，筐连绳耳半径 0.245）：
+// 原来在 (1.5, -6.2)，压在菜畦上，土垄从筐里穿出来（用户指出过「院子里装蔬菜的筐穿模」），还被窗前镜头的下沿切掉一半
+const GARDEN = new THREE.Vector3(L.gardenBasket.x, L.groundY, L.gardenBasket.z);
 // 冰箱左前方的地上：站在冰箱跟前（fridge:open 的镜头）时在画面下沿看得到；默认视角被书桌挡着
 const ROOM = new THREE.Vector3(1.4, L.floorY, -0.3);
 // 越过窗台的路线（窗洞 x ±1.3、y 0.14–1.85，墙在 z = -1.15）

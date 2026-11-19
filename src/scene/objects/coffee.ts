@@ -87,7 +87,14 @@ export const coffee: SceneObject = ({ scene, tier }) => {
   const bag = new THREE.BoxGeometry(BW, BH, BD, 1, 4, 1), bp = bag.attributes.position;
   for (let i = 0; i < bp.count; i++) { const t = (bp.getY(i) + BH / 2) / BH, k = 1 - Math.pow(t, 3) * 0.85; bp.setZ(i, bp.getZ(i) * k); bp.setX(i, bp.getX(i) * (1 - Math.pow(t, 3) * 0.06)); }
   bag.computeVertexNormals();
-  const bagMesh = new THREE.Mesh(bin.add(bag), [bagSide, bagSide, bagSide, bagSide, bagFront, bagSide]);
+  // 盒子的六个面是六组：把正面（第 5 组）挪到最后，其余五面连成一组——两次 draw call，原来是六次
+  {
+    const idx = bag.index!, gs = bag.groups, order = [0, 1, 2, 3, 5, 4], arr: number[] = [];
+    for (const k of order) for (let i = gs[k].start; i < gs[k].start + gs[k].count; i++) arr.push(idx.getX(i));
+    const side = gs.filter((_, k) => k !== 4).reduce((n, g) => n + g.count, 0);
+    bag.setIndex(arr); bag.clearGroups(); bag.addGroup(0, side, 0); bag.addGroup(side, gs.length ? arr.length - side : 0, 1);
+  }
+  const bagMesh = new THREE.Mesh(bin.add(bag), [bagSide, bagFront]);
   bagMesh.position.set(bx, BH / 2, bz); bagMesh.rotation.y = -0.35; bagMesh.castShadow = bagMesh.receiveShadow = high;
   group.add(bagMesh);
   const clip = new THREE.Mesh(bin.add(new THREE.BoxGeometry(BW * 0.96, 0.016, 0.014)), std({ color: 0xc9a15a, roughness: 0.4, metalness: 0.6 }));
@@ -98,7 +105,7 @@ export const coffee: SceneObject = ({ scene, tier }) => {
   const r = rng(31);
   for (let i = 0; i < 9; i++) batch.add(bean, new THREE.SphereGeometry(0.0045, 7, 5), [bx - 0.1 + r() * 0.08, 0.003, bz + 0.02 + r() * 0.07], [0, r() * 3, 0], [1, 0.6, 1.5]);
 
-  batch.build(group, bin, { cast: high, receive: high, noCast: [contact] });
+  batch.build(group, bin, { cast: high, receive: high, noCast: [contact], collapse: true });
 
   scene.add(group);
   return {

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { setHours, setPreset, toReal } from './daytime';
+import { nudge, setHours, setPreset, toReal } from './daytime';
 import { L } from './layout';
 import { BUDGETS } from './budgets';
 import { emit, HIT_LAYER, on, type MountContext, type Mounted, type PickHandlers, type SceneInput, type SceneObject, type SiteData } from './types';
@@ -103,12 +103,13 @@ export function start(canvas: HTMLCanvasElement, tier: Exclude<Tier, 'low'>, dat
   send({ type: 'resize', width, height });
 
   const fridgeFocus = new THREE.Vector3(L.fridge.x, L.floorY + 0.7, L.fridge.z + L.fridge.d / 2);
-  let monitorFocused = false, windowFocused = false, bookOpen = false, cupFocused = false, fridgeOpen = false, shelfFocused = false;
+  let monitorFocused = false, windowFocused = false, bookOpen = false, cupFocused = false, fridgeOpen = false, shelfFocused = false, clockFocused = false;
+  const clockFocus = new THREE.Vector3(L.clockDial.x, L.clockDial.y, L.clockDial.z);
   const shelfFocus = new THREE.Vector3(L.trophyShelf.x, L.floorY + L.trophyShelf.h + 0.15, L.trophyShelf.z);
   // 缩放：1 是默认距离。只在自由视角下生效（没在看显示器 / 窗外 / 书）
   const ZOOM_MIN = 0.45, ZOOM_MAX = 2.4; // 镜头位置夹在屋里（cameraRig），拉远到后面主要靠视角变广
   let zoomK = 1;
-  const free = () => !monitorFocused && !windowFocused && !bookOpen && !cupFocused && !fridgeOpen && !shelfFocused;
+  const free = () => !monitorFocused && !windowFocused && !bookOpen && !cupFocused && !fridgeOpen && !shelfFocused && !clockFocused;
   const setZoom = (k: number) => {
     const next = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, k));
     if (next === zoomK) return false;
@@ -121,6 +122,10 @@ export function start(canvas: HTMLCanvasElement, tier: Exclude<Tier, 'low'>, dat
     // 拨时间（座钟 / HTML 面板）：daytime.ts 记下和真实时间的差
     on<{ h?: number; at?: string }>(bus, 'time:set', ({ h, at }) => (at ? setPreset(at) : setHours(h ?? 12))),
     on(bus, 'time:real', () => toReal()),
+    on<{ dh: number }>(bus, 'time:nudge', ({ dh }) => nudge(dh)),
+    // 拨座钟：镜头站到表盘前，景深对焦表盘
+    on(bus, 'clock:focus', () => { clockFocused = true; post?.setFocus(clockFocus); }),
+    on(bus, 'clock:blur', () => { clockFocused = false; post?.setFocus(null); }),
     on(bus, 'scene:changed', () => { post?.refresh(); pruneCasters(); collectCasters(); }),
     on(bus, 'book:open', () => { bookOpen = true; }),
     on<{ p: number[] }>(bus, 'cup:focus', ({ p }) => { cupFocused = true; post?.setFocus(new THREE.Vector3().fromArray(p)); }),
@@ -184,6 +189,7 @@ export function start(canvas: HTMLCanvasElement, tier: Exclude<Tier, 'low'>, dat
     if (monitorFocused && !res?.owner.userData.keepsMonitor) { emit(bus, 'monitor:blur'); return; }
     if (fridgeOpen && !res?.owner.userData.keepsFridge) { emit(bus, 'fridge:close'); return; }
     if (shelfFocused && !res?.owner.userData.keepsShelf) { emit(bus, 'shelf:blur'); return; }
+    if (clockFocused && !res?.owner.userData.keepsClock) { emit(bus, 'clock:blur'); return; }
     if (cupFocused && !res?.owner.userData.keepsCup && !res?.owner.userData.keepsMachine) { emit(bus, 'cup:blur'); return; }
     if (res) pickables.get(res.owner)?.click?.(res.hit);
   };

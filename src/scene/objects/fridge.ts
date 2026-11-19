@@ -172,7 +172,7 @@ export const fridge: SceneObject = ({ scene, camera, tier, bus, pick, audio }) =
   S(blob(T.r * 1.3, T.r * 1.3), contactMaterial(bin, high ? 0.35 : 0.6), 0, 0.012, 0, can);
   can.userData.keepsFridge = true;
   // 只让大块的外壳、门板和垃圾桶投影；把手、磁贴、鸡蛋这些小东西投影看不出来，在阴影通道里却各占一次 draw call
-  for (const [parent, b] of statics) for (const m of b.build(parent, bin, { receive: high })) m.castShadow = high && (m.material === cream || m.material === steel);
+  for (const [parent, b] of statics) for (const m of b.build(parent, bin, { receive: high, collapse: true, keep: [cream, steel] })) m.castShadow = high && (m.material === cream || m.material === steel);
   let lidOpen = 0, lidHold = 0;
   pick(can, { click() { lidHold = 1.2; sfx('clank'); } });
 

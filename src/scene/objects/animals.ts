@@ -294,18 +294,35 @@ export const animals: SceneObject = ({ scene, tier, camera, bus, audio }) => {
 
   const EDGE = 9.6;
 
-  // ---- 叫声：只在窗前时排。AudioContext 要在用户点击里拿（window:focus 是点击触发的，同步派发）----
+  // ---- 叫声：在窗前是原音量，在屋里也听得到、只有两成（用户要的「在屋里也能听到室外的声音，不过比较小，大约 20%」）----
+  // AudioContext 要在用户手势里拿：第一次在页面上按下鼠标 / 手指 / 按键时拿（window:focus 本身也是点击触发的）
   let actx: AudioContext | null = null, out: GainNode | null = null, atWindow = false;
+  const OUT_GAIN = 0.55, INDOOR = 0.2;
+  const ensureAudio = () => {
+    if (actx?.state === 'running') return;
+    try { actx = audio(); } catch { actx = null; }
+    if (actx && !out) {
+      out = actx.createGain(); out.gain.value = OUT_GAIN * (atWindow ? 1 : INDOOR); out.connect(actx.destination);
+      resetTimers(); // 第一次拿到声音时错开各种叫声，别一起响
+    }
+    if (actx) loadSprite(actx);
+  };
+  const gestures = ['pointerdown', 'keydown'] as const;
+  gestures.forEach((g) => addEventListener(g, ensureAudio, { passive: true }));
+  // 标签页藏起来时场景不再逐帧更新，循环的蛐蛐声也要停
+  const onHide = () => { if (out && actx) out.gain.setTargetAtTime(document.hidden ? 0 : OUT_GAIN * (atWindow ? 1 : INDOOR), actx.currentTime, 0.1); };
+  document.addEventListener('visibilitychange', onHide);
   const timers = { hen: 0, rooster: 0, dog: 0, cat: 0, owl: 0, squeak: 0 };
   let crickets: { src: AudioBufferSourceNode; gain: GainNode } | null = null;
+  function resetTimers() {
+    timers.hen = 1 + Math.random() * 2; timers.rooster = 3 + Math.random() * 4; timers.dog = 1.5 + Math.random() * 3; timers.cat = 2 + Math.random() * 4;
+    timers.owl = 2 + Math.random() * 4; timers.squeak = 1;
+  }
   const offs = [
     on(bus, 'window:focus', () => {
-      try { actx = audio(); } catch { actx = null; }
-      if (actx && !out) { out = actx.createGain(); out.gain.value = 0.55; out.connect(actx.destination); }
-      if (actx) loadSprite(actx);
       atWindow = true;
-      timers.hen = 1 + Math.random() * 2; timers.rooster = 3 + Math.random() * 4; timers.dog = 1.5 + Math.random() * 3; timers.cat = 2 + Math.random() * 4;
-      timers.owl = 2 + Math.random() * 4; timers.squeak = 1;
+      ensureAudio();
+      resetTimers();
     }),
     on(bus, 'window:blur', () => { atWindow = false; }),
   ];
@@ -350,7 +367,7 @@ export const animals: SceneObject = ({ scene, tier, camera, bus, audio }) => {
   const tmp = new THREE.Vector3();
   /** 蛐蛐：白天在窗前时一层循环的底噪，跟着天色淡入淡出（夜里只有猫头鹰和老鼠） */
   const cricketBed = (dt: number) => {
-    const want = atWindow && actx && sprite?.clips.cricket ? 0.13 * SKY.day : 0;
+    const want = actx && sprite?.clips.cricket && !document.hidden ? 0.13 * SKY.day : 0;
     if (!crickets && want > 0.005 && actx && out && sprite) {
       const [off, dur] = sprite.clips.cricket[0];
       const src = actx.createBufferSource(); src.buffer = sprite.buf; src.loop = true; src.loopStart = off + 0.05; src.loopEnd = off + dur - 0.05;
@@ -365,7 +382,9 @@ export const animals: SceneObject = ({ scene, tier, camera, bus, audio }) => {
   };
   const sounds = (dt: number) => {
     cricketBed(dt);
-    if (!atWindow || !actx) return;
+    if (!actx || document.hidden) return;
+    // 总音量：窗前 1，屋里两成，平滑过渡
+    if (out) { const g = OUT_GAIN * (atWindow ? 1 : INDOOR); out.gain.value += (g - out.gain.value) * Math.min(1, dt * 3); }
     const dayOut = SKY.day > 0.45;
     timers.owl -= dt; timers.squeak -= dt;
     if (!dayOut) {
@@ -407,7 +426,7 @@ export const animals: SceneObject = ({ scene, tier, camera, bus, audio }) => {
       owlL.rotation.z = flap; owlR.rotation.z = -flap;
       owl.position.set(owlFly.x, owlFly.y + Math.sin(t * 1.3) * 0.5 - (flapping ? 0 : (cyc - 0.55) * 0.6), owlFly.z);
       owl.scale.setScalar(3); // 远处看着太小，放大一点
-      if (!owlFly.hooted && Math.abs(owlFly.x) < 6 && atWindow) { owlFly.hooted = true; emitAt(owl.position, voice('owl'), 1.2); }
+      if (!owlFly.hooted && Math.abs(owlFly.x) < 6 ) { owlFly.hooted = true; emitAt(owl.position, voice('owl'), 1.2); }
       if (Math.abs(owlFly.x) > 34) { owlFly.active = false; owl.visible = false; owlFly.wait = 22 + Math.random() * 25; }
     }
     // 老鼠：沿窗根从一头窜到另一头，跑一段停一下、左右张望
@@ -532,6 +551,7 @@ export const animals: SceneObject = ({ scene, tier, camera, bus, audio }) => {
     },
     stop() {
       stopped = true; offs.forEach((f) => f()); out?.disconnect();
+      gestures.forEach((g) => removeEventListener(g, ensureAudio)); document.removeEventListener('visibilitychange', onHide);
       if (crickets) { crickets.src.stop(); crickets.src.disconnect(); crickets.gain.disconnect(); }
       mixers.forEach((m) => m.stopAllAction());
       for (const m of loaded) m.traverse((o) => { const x = o as THREE.Mesh; if (x.isMesh) { x.geometry.dispose(); const mm = x.material as THREE.MeshLambertMaterial; mm.map?.dispose?.(); } });

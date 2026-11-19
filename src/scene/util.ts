@@ -47,8 +47,48 @@ export class Batch {
     this.map.set(mat, list);
     return this;
   }
-  build(parent: THREE.Object3D, bin: Bin, o: { cast?: boolean; receive?: boolean; noCast?: THREE.Material[] } = {}) {
+  /**
+   * collapse：没有贴图、不透明、不发光的 MeshStandardMaterial，按「粗糙度（取到 0.1）× 金属度（取到 0.25）× 正反面 × 投不投影」
+   * 归成一组，颜色写进顶点色，整组一个材质、一次 draw call（用户要求「优化渲染开销」：书桌上二十几种纯色材质原来各占一次）。
+   * keep 里的材质不归并（后面还要按材质找网格、或者运行时会改它的颜色）。运行时要改颜色、亮度的材质不能进 collapse 的 Batch。
+   */
+  build(parent: THREE.Object3D, bin: Bin, o: { cast?: boolean; receive?: boolean; noCast?: THREE.Material[]; collapse?: boolean; keep?: THREE.Material[] } = {}) {
     const out: THREE.Mesh[] = [];
+    if (o.collapse) {
+      const groups = new Map<string, { mat: THREE.MeshStandardMaterial; list: THREE.BufferGeometry[]; cast: boolean }>();
+      for (const [mat, list] of [...this.map]) {
+        const m = mat as THREE.MeshStandardMaterial;
+        if (m.type !== 'MeshStandardMaterial' || o.keep?.includes(mat) || m.map || m.normalMap || m.bumpMap || m.roughnessMap || m.metalnessMap || m.alphaMap || m.emissiveMap
+          || m.transparent || m.opacity < 1 || m.emissive.getHex() !== 0 || m.onBeforeCompile !== THREE.Material.prototype.onBeforeCompile) continue;
+        const cast = !!o.cast && !o.noCast?.includes(mat);
+        const r = Math.round(m.roughness * 10) / 10, mt = Math.round(m.metalness * 4) / 4;
+        const key = `${r}|${mt}|${m.side}|${cast}|${m.flatShading}`;
+        let g = groups.get(key);
+        if (!g) {
+          g = { mat: bin.add(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: r, metalness: mt, side: m.side, flatShading: m.flatShading, envMapIntensity: m.envMapIntensity })), list: [], cast };
+          groups.set(key, g);
+        }
+        for (const geo of list) {
+          const n = geo.getAttribute('position').count, c = geo.getAttribute('color') as THREE.BufferAttribute | undefined;
+          const a = new Float32Array(n * 3);
+          for (let i = 0; i < n; i++) {
+            const k = c && m.vertexColors ? [c.getX(i), c.getY(i), c.getZ(i)] : [1, 1, 1];
+            a[i * 3] = m.color.r * k[0]; a[i * 3 + 1] = m.color.g * k[1]; a[i * 3 + 2] = m.color.b * k[2];
+          }
+          geo.setAttribute('color', new THREE.Float32BufferAttribute(a, 3));
+          g.list.push(geo);
+        }
+        this.map.delete(mat);
+      }
+      for (const g of groups.values()) {
+        const mesh = new THREE.Mesh(bin.add(mergeGeometries(g.list)), g.mat);
+        g.list.forEach((x) => x.dispose());
+        mesh.castShadow = g.cast; mesh.receiveShadow = !!o.receive;
+        parent.add(mesh); out.push(mesh);
+      }
+      // 剩下没归并的几何体如果有的有颜色属性、有的没有，mergeGeometries 会失败：统一去掉（原来的材质不用顶点色）
+      for (const [mat, list] of this.map) if (!(mat as THREE.MeshStandardMaterial).vertexColors && !this.attrs.includes('color')) list.forEach((x) => { x.deleteAttribute('color'); });
+    }
     for (const [mat, list] of this.map) {
       const mesh = new THREE.Mesh(bin.add(mergeGeometries(list)), mat);
       list.forEach((g) => g.dispose());
@@ -59,6 +99,35 @@ export class Batch {
     }
     this.map.clear();
     return out;
+  }
+}
+
+/**
+ * 把 root 下面用同一个材质、互不单独动的网格合成一个（在 root 的局部坐标里）。扫描模型里一个材质拆成很多块的（茶具十件），
+ * 和一堆共用材质的接触阴影都能这样省 draw call。skip 返回 true 的网格不动（会单独动的、要按名字找的）。
+ */
+export function mergeSameMaterial(root: THREE.Object3D, bin: Bin, skip: (m: THREE.Mesh) => boolean = () => false) {
+  root.updateMatrixWorld(true);
+  const inv = new THREE.Matrix4().copy(root.matrixWorld).invert();
+  const groups = new Map<THREE.Material, THREE.Mesh[]>();
+  root.traverse((o) => {
+    const m = o as THREE.Mesh;
+    if (!m.isMesh || (m as THREE.SkinnedMesh).isSkinnedMesh || (m as THREE.InstancedMesh).isInstancedMesh || Array.isArray(m.material) || !m.visible || skip(m)) return;
+    const list = groups.get(m.material) ?? []; list.push(m); groups.set(m.material, list);
+  });
+  for (const [mat, list] of groups) {
+    if (list.length < 2) continue;
+    const names = Object.keys(list[0].geometry.attributes).sort().join();
+    const same = list.filter((m) => Object.keys(m.geometry.attributes).sort().join() === names);
+    if (same.length < 2) continue;
+    const geos = same.map((m) => { const g = (m.geometry.index ? m.geometry.toNonIndexed() : m.geometry.clone()); g.applyMatrix4(new THREE.Matrix4().multiplyMatrices(inv, m.matrixWorld)); g.morphAttributes = {}; return g; });
+    const merged = mergeGeometries(geos); geos.forEach((g) => g.dispose());
+    if (!merged) continue;
+    const mesh = new THREE.Mesh(bin.add(merged), mat);
+    mesh.castShadow = same.some((m) => m.castShadow); mesh.receiveShadow = same.some((m) => m.receiveShadow);
+    mesh.userData = { ...same[0].userData };
+    for (const m of same) { m.removeFromParent(); m.geometry.dispose(); }
+    root.add(mesh);
   }
 }
 

@@ -117,7 +117,7 @@ export const bookshelf: SceneObject = ({ scene, tier, data, bus, pick }) => {
     batch.add(steel, rbox(0.09, 0.003, 0.11, 0.001), [bx - dir * 0.043, 0.0015, 0]);
   }
   batch.add(contactMaterial(bin, high ? 0.32 : 0.55), blob(x / 2 + 0.05, 0.13), [x / 2, 0.0008, 0]);
-  batch.build(group, bin, { cast: high, receive: high });
+  batch.build(group, bin, { cast: high, receive: high, collapse: true });
   scene.add(group);
 
   const off = [

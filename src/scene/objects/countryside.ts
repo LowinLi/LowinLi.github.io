@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { Bin, emit, HIT_LAYER, type SceneObject } from '../types';
 import { L } from '../layout';
 import { Batch, canvasTex, leafGeo, place, rbox, rng, speckle, type V3 } from '../util';
@@ -286,7 +287,7 @@ export const countryside: SceneObject = ({ scene, tier, bus, pick: pickable }) =
   put(new THREE.CylinderGeometry(0.004, 0.004, 0.7, 4), 0xcbb98a, [wx, gy + 0.9, wz]);
   put(new THREE.CylinderGeometry(0.13, 0.1, 0.24, 12, 1, true), 0x8a6a44, [wx + 0.85, gy + 0.12, wz + 0.3]);
   shade(wx, wz, 0.7, 1.1);
-  // 箩筐挪到了 objects/basket.ts（摘菜时菜飞进去，回屋时能带进屋里），位置还是 (1.5, -6.2)
+  // 箩筐挪到了 objects/basket.ts（摘菜时菜飞进去，回屋时能带进屋里），现在在 (1.21, -6.9)：踏脚石小路和右边菜畦之间
   put(new THREE.CylinderGeometry(0.015, 0.015, 1.5, 5), 0x8a6a44, [8.45, gy + 0.72, -5.2], [0, 0, 0.18]);
   put(new THREE.BoxGeometry(0.16, 0.02, 0.1), 0x4a4c50, [8.34, gy + 0.03, -5.2], [0, 0, 0.5]);
 
@@ -440,7 +441,9 @@ export const countryside: SceneObject = ({ scene, tier, bus, pick: pickable }) =
   const GRASS = ['grass_medium_01_0', 'grass_medium_01_1', 'grass_medium_01_2', 'grass_medium_01_3', 'grass_medium_01_4', 'grass_medium_01_5'];
   // weed_plant_02 的照片是宽扁的一片阔叶，近处放大后发蓝、发怪，杂草也用草丛照片，只是更矮
   const WEEDS = ['grass_medium_01_0', 'grass_medium_01_2', 'grass_medium_01_3'];
-  const tuft = (x: number, z: number, h: number, list = GRASS) => { if (!skip()) imp.add(pick(list), x, gy, z, h, { flip: r() < 0.5, tint: 1.55 + r() * 0.35 }); }; // 草是逆光渲的，偏暗，提亮一点
+  // 菜篮那一圈不种草（草会从筐里穿出来）
+  const nearBasket = (x: number, z: number) => Math.hypot(x - L.gardenBasket.x, z - L.gardenBasket.z) < L.gardenBasket.clear;
+  const tuft = (x: number, z: number, h: number, list = GRASS) => { if (!skip() && !nearBasket(x, z)) imp.add(pick(list), x, gy, z, h, { flip: r() < 0.5, tint: 1.55 + r() * 0.35 }); }; // 草是逆光渲的，偏暗，提亮一点
   for (let x = -8.5; x < 8.6; x += 0.3) if (x < -0.3 || x > 1.3) tuft(x + (r() - 0.5) * 0.2, -13.72 + (r() - 0.5) * 0.25, 0.35 + r() * 0.35);
   for (const fx of [-8.6, 8.6]) for (let z = -13.8; z < -2; z += 0.32) tuft(fx - Math.sign(fx) * 0.14 + (r() - 0.5) * 0.2, z, 0.3 + r() * 0.35);
   for (const px of [-0.08, 1.08]) for (let z = -14; z < -1.4; z += 0.38) tuft(px + (r() - 0.5) * 0.12, z + (r() - 0.5) * 0.2, 0.16 + r() * 0.22, r() < 0.35 ? WEEDS : GRASS);
@@ -590,6 +593,7 @@ export const countryside: SceneObject = ({ scene, tier, bus, pick: pickable }) =
   along(-8.6, -13.9, 8.6, -13.9, 260 * wn, 0.5); along(-8.6, -13.9, -8.6, -2, 180 * wn, 0.5); along(8.6, -13.9, 8.6, -2, 180 * wn, 0.5);
   along(-9, -14.8, 9, -14.8, 200 * wn, 1.0); along(-0.1, -13.5, -0.1, -3.2, 40 * wn, 0.12); along(1.1, -13.5, 1.1, -3.2, 40 * wn, 0.12);
   along(-9, -8.6, 9, -8.6, 40 * wn, 0.1); along(-9, -7.8, 9, -7.8, 40 * wn, 0.1); along(-60, -15.2, 60, -15.2, 400 * wn, 0.5); along(-8, -2.0, 8, -2.0, 120 * wn, 0.5);
+  for (let i = weedSpots.length - 1; i >= 0; i--) if (nearBasket(weedSpots[i][0], weedSpots[i][2])) weedSpots.splice(i, 1); // 菜篮那一圈不长草
   const weeds = new THREE.InstancedMesh(weedGeo, mat, weedSpots.length);
   weedSpots.forEach((p, i) => {
     e.set(0, r() * 6.28, 0); q.setFromEuler(e);
@@ -605,9 +609,16 @@ export const countryside: SceneObject = ({ scene, tier, bus, pick: pickable }) =
     grad.addColorStop(0, 'rgba(255,255,255,0)'); grad.addColorStop(0.55, 'rgba(255,255,255,.9)'); grad.addColorStop(1, 'rgba(255,255,255,0.35)');
     g.fillStyle = grad; g.fillRect(0, 0, w, h);
   }));
-  for (const [z, hh, op] of [[-300, 20, 0.5], [-215, 14, 0.32], [-140, 9, 0.2]] as const) {
-    const m = new THREE.Mesh(bin.add(new THREE.PlaneGeometry(1500, hh)), bin.add(new THREE.MeshBasicMaterial({ map: mistTex, color: 0xe6e8e4, transparent: true, opacity: op, depthWrite: false })));
-    m.position.set(0, gy + hh / 2 - 1, z); m.renderOrder = 2; m.frustumCulled = false;
+  // 三道雾合成一个网格（各自的浓淡写在顶点色的 alpha 里），从远到近排，透明叠加的先后不乱
+  {
+    const parts = ([[-300, 20, 0.5], [-215, 14, 0.32], [-140, 9, 0.2]] as const).map(([z, hh, op]) => {
+      const g = new THREE.PlaneGeometry(1500, hh).translate(0, gy + hh / 2 - 1, z);
+      g.setAttribute('color', new THREE.Float32BufferAttribute(Array.from({ length: g.attributes.position.count }, () => [1, 1, 1, op]).flat(), 4));
+      return g;
+    });
+    const m = new THREE.Mesh(bin.add(mergeGeometries(parts)), bin.add(new THREE.MeshBasicMaterial({ map: mistTex, color: 0xe6e8e4, vertexColors: true, transparent: true, depthWrite: false })));
+    parts.forEach((g) => g.dispose());
+    m.renderOrder = 2; m.frustumCulled = false;
     group.add(m);
   }
 

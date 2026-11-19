@@ -126,17 +126,21 @@ export const recorder: SceneObject = ({ scene, tier, data, bus, pick, audio }) =
   batch.add(chrome, new THREE.CylinderGeometry(0.0025, 0.004, 0.34, 6), [-W / 2 + 0.06 + 0.1, y0 + H + 0.13, -D / 2 + 0.012], [0, 0, -0.62]);
   batch.add(chrome, new THREE.SphereGeometry(0.005, 8, 6), [-W / 2 + 0.06 + 0.2, y0 + H + 0.268, -D / 2 + 0.012]);
   batch.add(contactMaterial(bin, high ? 0.32 : 0.55), blob(0.26, 0.11), [0, 0.0007, 0.01]);
-  batch.build(body, bin, { cast: high, receive: high });
+  batch.build(body, bin, { cast: high, receive: high, collapse: true });
 
   // 顶上一排琴键式的按键：录音（红）、放音、快退、快进、停止、暂停。放音键在播放时按下去
   const keyGeo = bin.add(rbox(0.03, 0.012, 0.03, 0.003, 1));
-  const keys = [0xb3261e, 0xd8dadd, 0xd8dadd, 0xd8dadd, 0xd8dadd, 0x2a2b2e].map((c, i) => {
-    const m = new THREE.Mesh(keyGeo, std({ color: c, roughness: 0.4, metalness: c === 0xd8dadd ? 0.6 : 0 }));
-    m.position.set(doorX - 0.085 + i * 0.034, y0 + H + 0.004, D / 2 - 0.022); m.castShadow = high;
-    body.add(m);
-    return m;
+  // 只有放音键会按下去：它单独一个网格，其余五个合并（按材质归并成两组）
+  const keyBatch = new Batch();
+  let playKey!: THREE.Mesh;
+  [0xb3261e, 0xd8dadd, 0xd8dadd, 0xd8dadd, 0xd8dadd, 0x2a2b2e].forEach((c, i) => {
+    const mat = std({ color: c, roughness: 0.4, metalness: c === 0xd8dadd ? 0.6 : 0 });
+    const p: [number, number, number] = [doorX - 0.085 + i * 0.034, y0 + H + 0.004, D / 2 - 0.022];
+    if (i === 1) { playKey = new THREE.Mesh(keyGeo, mat); playKey.position.set(...p); playKey.castShadow = high; body.add(playKey); }
+    else keyBatch.add(mat, keyGeo.clone(), p);
   });
-  const playKey = keys[1], keyY = playKey.position.y;
+  keyBatch.build(body, bin, { cast: high, receive: high, collapse: true });
+  const keyY = playKey.position.y;
   // 卡带仓前面的一层玻璃
   const glass = new THREE.Mesh(bin.add(new THREE.PlaneGeometry(TW + 0.014, TH + 0.014)), bin.add(new THREE.MeshBasicMaterial({ color: 0xcfe0ff, transparent: true, opacity: 0.1, depthWrite: false })));
   glass.position.set(doorX, doorY, D / 2 + 0.0125);

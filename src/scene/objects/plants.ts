@@ -41,7 +41,7 @@ export const plants: SceneObject = ({ scene, tier, pick, bus }) => {
     pick(root, { click() { kick(6); }, hover(on) { if (on) kick(1.4); } });
     list.push(plant);
     const finish = () => {
-      statics.build(root, bin, { cast: high, receive: high, noCast: [contact] });
+      statics.build(root, bin, { cast: high, receive: high, noCast: [contact], collapse: true });
       leaves.forEach((b, i) => b.build(plant.parts[i].obj, bin, { cast: high, receive: high }));
     };
     return { statics, leaves, finish, root, plant };
