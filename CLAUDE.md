@@ -14,7 +14,7 @@
 
 ## 架构
 - **站内链接一律用 `url('/path')`（`src/lib/url.ts`），不要直接写 `/path`。** 项目仓库的 Pages 地址在 `/<repo>/` 子路径下，直接写死的根路径会 404。可以用 `BASE=/test/ npm run build` 检查。
-- **加载中**（用户要的「页面没有加载好的时候显示加载中，不要展示加载一半的状态」）：`Scene.astro` 的 `.loading` 一层盖住画布和所有按钮（暗底、一盏发光的小灯笼、「书房收拾中…」、进度条）。`runtime.ts` 数 three 默认 `LoadingManager` 的进度发 `load:progress {p}`（只增不减、到齐前最多 95%）；没有在下的东西、0.7 秒内没有新下载也没有 `scene:changed`、并且画过十几帧以后，先在加载层底下「预热」一帧——把所有藏着的东西显示出来、关掉视锥剔除整个场景画一遍（着色器全编译、贴图和几何体全传上显卡），再画两帧才发 `load:done`。用户说过「画面转到灶台的画面有点卡」：量过第一次转过去要新编 12 个着色器、传 20 张贴图和 49 个几何体，都挤在转身的那几帧里，这时才设 `data-ready="true"` 揭开。最多等 25 秒。low 档不显示这一层。**新加的素材要用 three 的加载器（或者加载完发 `scene:changed`），不然不会被等**；`fetch` 不经过 LoadingManager。截图脚本等的 `data-ready` 现在表示「到齐了」，截图环境里 mid 约 23 秒、high 约 30 秒。
+- **加载中**（用户要的「页面没有加载好的时候显示加载中，不要展示加载一半的状态」）：`Scene.astro` 的 `.loading` 一层盖住画布和所有按钮（暗底、一盏发光的小灯笼、「我的小屋收拾中…」、进度条）。`runtime.ts` 数 three 默认 `LoadingManager` 的进度发 `load:progress {p}`（只增不减、到齐前最多 95%）；没有在下的东西、0.7 秒内没有新下载也没有 `scene:changed`、并且画过十几帧以后，先在加载层底下「预热」一帧——把所有藏着的东西显示出来、关掉视锥剔除整个场景画一遍（着色器全编译、贴图和几何体全传上显卡），再画两帧才发 `load:done`。用户说过「画面转到灶台的画面有点卡」：量过第一次转过去要新编 12 个着色器、传 20 张贴图和 49 个几何体，都挤在转身的那几帧里，这时才设 `data-ready="true"` 揭开。最多等 25 秒。low 档不显示这一层。**新加的素材要用 three 的加载器（或者加载完发 `scene:changed`），不然不会被等**；`fetch` 不经过 LoadingManager。截图脚本等的 `data-ready` 现在表示「到齐了」，截图环境里 mid 约 23 秒、high 约 30 秒。
 - 一个站，路由分治：`/` 是主页，**整页只有房间**（一屏，不滚动，没有页脚；用户明确要求去掉房间以外的内容），带唯一一个 3D island（`src/components/Scene.astro`）；`/posts/**` 是零 JS 的静态页。**文章页不允许出现 `<script>`。**
 - 文章在 `src/content/posts/`，schema 在 `src/content.config.ts`。
 - 3D 代码全在 `src/scene/`。three.js 只能通过 `runtime.ts` 动态 import 进来，不能被首页的首屏 bundle 静态引用。

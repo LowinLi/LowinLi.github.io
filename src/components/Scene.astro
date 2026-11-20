@@ -6,7 +6,7 @@ interface Props { data: SiteData }
 const { data } = Astro.props;
 const pct = (n: number) => `${(n * 100).toFixed(2)}%`;
 ---
-<section class="scene" data-tier="pending" data-mode="" aria-label="乡间的书房">
+<section class="scene" data-tier="pending" data-mode="" aria-label="我的小屋">
   <div class="fallback" aria-hidden="true">
     <div class="sun"></div>
     <div class="sea"></div>
@@ -18,7 +18,7 @@ const pct = (n: number) => `${(n * 100).toFixed(2)}%`;
   <div class="loading" role="status" aria-live="polite">
     <div class="ld-box">
       <div class="ld-lamp" aria-hidden="true"></div>
-      <p class="ld-title">书房收拾中…</p>
+      <p class="ld-title">我的小屋收拾中…</p>
       <div class="ld-bar"><i></i></div>
       <p class="ld-pct">0%</p>
     </div>
