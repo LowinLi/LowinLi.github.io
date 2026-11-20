@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { Bin, emit, on, type SceneObject } from '../types';
 import { L } from '../layout';
-import { asset, Batch, blob, canvasTex, contactMaterial, rbox, rng, speckle, usePhotoTexture } from '../util';
+import { drawAward, drawXiaozan } from '../medals';
+import { Batch, blob, canvasTex, contactMaterial, rbox, rng, speckle, usePhotoTexture } from '../util';
 
 /**
  * 右墙边的书架（用户要的：「在房间右侧加一个书架，书架顶上放着附件这两张照片的荣誉」）。
@@ -325,8 +326,9 @@ export const trophyShelf: SceneObject = ({ scene, tier, pick, bus, data }) => {
   ];
   // ---------------- 荣誉勋章：两座奖杯中间一排三枚，立在小支架上 ----------------
   {
-    const loader = new THREE.TextureLoader(), texCache = new Map<string, THREE.Texture>();
-    const tex = (name: string) => { let t = texCache.get(name); if (!t) { t = bin.add(loader.load(asset(`trophies/${name}.png`))); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; texCache.set(name, t); } return t; };
+    // 图案是照着用户截图用 canvas 重画的矢量图（src/scene/medals.ts，1024 见方）：截图抠出来只有一百多像素，用户说「看不清楚」
+    const texCache = new Map<string, THREE.Texture>();
+    const tex = (name: string) => { let t = texCache.get(name); if (!t) { t = bin.add(canvasTex(1024, 1024, (c) => (name === 'xiaozan' ? drawXiaozan : drawAward)(c))); t.anisotropy = 16; texCache.set(name, t); } return t; };
     const acrylic = bin.add(new THREE.MeshStandardMaterial({ color: 0x111114, roughness: 0.15, metalness: 0.2 }));
     const MS = 0.08; // 勋章直径 8 厘米
     MEDALS.forEach((m, i) => {
@@ -348,6 +350,12 @@ export const trophyShelf: SceneObject = ({ scene, tier, pick, bus, data }) => {
         c.fillStyle = '#e8c878'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.font = `600 22px ${SANS}`; c.fillText(m.l1, w / 2, 22); c.font = `500 16px ${SANS}`; c.fillText(m.l2, w / 2, 46);
       })) })));
       plate.position.set(0, 0.0052, 0.0227); plate.rotation.x = -Math.PI / 2 + 0.5; plate.position.y = 0.009; g.add(plate);
+      // 点勋章：镜头凑到它跟前看（勋章只有 8 厘米，站在书架前也只有拇指大）
+      g.userData.keepsShelf = true; g.userData.keepsInspect = true;
+      pick(g, { click: () => {
+        const n = new THREE.Vector3(0, 0, 1).applyQuaternion(face.getWorldQuaternion(new THREE.Quaternion()));
+        emit(bus, 'shelf:blur'); emit(bus, 'inspect:focus', { p: face.getWorldPosition(new THREE.Vector3()).toArray(), n: n.toArray(), dist: 0.17 });
+      } });
     });
   }
 
