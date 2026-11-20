@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { asset } from '../util';
+import { asset, canvasTex } from '../util';
 import { addFace, addFur } from '../animalDetail';
 import { Bin, emit, HIT_LAYER, on, type SceneObject } from '../types';
 import { bark, cluck, crow, meow } from '../animalSounds';
@@ -106,6 +106,8 @@ export const animals: SceneObject = ({ scene, tier, camera, bus, audio, pick }) 
   cat.timer = 3; dog.timer = 14;
   // 调试：?pets=1 把猫狗放到书桌上、面朝镜头一直站着，方便近距离看五官和毛色
   const debugPets = new URLSearchParams(location.search).has('pets');
+  // 调试：?owl=1 让猫头鹰一直在窗外近处扇着翅膀（不管白天黑夜），方便看细节
+  const debugOwl = new URLSearchParams(location.search).has('owl');
   const baseY = debugPets ? 0 : gy;
   if (debugPets) {
     for (const [a, x] of [[cat, -0.3], [dog, 0.32]] as const) {
@@ -260,27 +262,104 @@ export const animals: SceneObject = ({ scene, tier, camera, bus, audio, pick }) 
   const flight = { active: false, wait: 8, x: 0, dir: 1, y: 14, z: -70 };
 
   // ---------- 夜里：猫头鹰 ----------
-  // 代码拼的：圆滚滚的身子、大圆脸（浅色面盘 + 两只亮黄的眼睛）、两撮耳羽、两片能扇的宽翅膀。
-  // 不乘夜色（夜里一切都压得很暗，它要在月光天空前看得出剪影和眼睛），颜色本身就按月光下调暗
-  const owlMat = bin.add(new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide }));
+  // 用户嫌过原来那只「有点简陋」（几个球和锥 + 两片三角翅膀）。现在照着灰林鸮做：
+  // - 一张 512 的羽毛图集（canvas 现画）：背上的斑驳褐色羽毛和胸前的纵纹、面盘（放射状细纹 + 深色外圈 + 浅色眉）、
+  //   翅膀（上半截覆羽的浅斑、下半截飞羽的横斑、后缘一排扇贝形羽尖）、一根根带横斑的初级飞羽、尾羽。镂空的羽尖用 alphaTest。
+  // - 翅膀分两节：内翼（臂）在肩上转、外翼（手）在腕上转，手尖再张开五根「手指」似的初级飞羽；扇的时候外翼比内翼慢半拍，
+  //   下扇时飞羽张开、上扇时收拢；滑翔时两翼微微上翘。尾巴是五根扇开的尾羽，脚爪收在尾下。
+  // - 头单独一个 group，飞过的时候扭过来看着屋里（猫头鹰的头能转很大角度）；眼睛是亮黄的虹膜 + 黑瞳孔 + 一点高光。
+  // 不乘夜色（夜里一切都压得很暗，它要在月光天空前看得出来），亮度在 frame 里按天色自己调；顶点色是「上亮下暗」的月光明暗。
+  const OWL_TEX = bin.add(canvasTex(512, 512, (g) => {
+    const rnd = (() => { let s2 = 7; return () => { s2 = (s2 * 16807) % 2147483647; return s2 / 2147483647; }; })();
+    // A 身体羽毛 (0,0)-(256,256)：上半截深褐斑驳，下半截（胸腹）浅黄褐带深色纵纹
+    const bg = g.createLinearGradient(0, 0, 0, 256); bg.addColorStop(0, '#5a4330'); bg.addColorStop(0.55, '#7a5c40'); bg.addColorStop(1, '#bfa27a');
+    g.fillStyle = bg; g.fillRect(0, 0, 256, 256);
+    // 一片片小羽毛：上半截按行错开排的小鳞片（深色羽芯 + 浅色羽缘），再撒细斑
+    for (let y = 4; y < 150; y += 7) for (let x = (y % 14 ? 0 : 4); x < 256; x += 8) {
+      g.fillStyle = `rgba(${rnd() < 0.5 ? '52,36,24' : '72,52,34'},.85)`; g.beginPath(); g.ellipse(x, y, 4.2, 3.4, 0, 0, Math.PI); g.fill();
+      if (rnd() < 0.35) { g.fillStyle = 'rgba(214,188,150,.75)'; g.beginPath(); g.arc(x + 1, y + 1.5, 1.2, 0, 7); g.fill(); }
+    }
+    for (let i = 0; i < 140; i++) { const x = rnd() * 256, y = 130 + rnd() * 120; g.strokeStyle = 'rgba(70,46,28,.55)'; g.lineWidth = 1 + rnd(); g.beginPath(); g.moveTo(x, y); g.lineTo(x + (rnd() - 0.5) * 2, y + 6 + rnd() * 7); g.stroke(); }
+    // B 面盘 (256,0)-(512,256)：一个圆，外面透明
+    const cx = 384, cy = 128;
+    const fd = g.createRadialGradient(cx, cy, 8, cx, cy, 124); fd.addColorStop(0, '#d9c29c'); fd.addColorStop(0.75, '#b89a72'); fd.addColorStop(0.9, '#5a4028'); fd.addColorStop(1, '#3a2818');
+    g.fillStyle = fd; g.beginPath(); g.arc(cx, cy, 124, 0, 7); g.fill();
+    g.strokeStyle = 'rgba(90,64,40,.35)'; g.lineWidth = 1.2; for (let i = 0; i < 90; i++) { const an = (i / 90) * Math.PI * 2; g.beginPath(); g.moveTo(cx + Math.cos(an) * 30, cy + Math.sin(an) * 30); g.lineTo(cx + Math.cos(an) * 112, cy + Math.sin(an) * 112); g.stroke(); }
+    g.strokeStyle = '#efe4cf'; g.lineWidth = 9; g.lineCap = 'round'; g.beginPath(); g.moveTo(cx - 70, cy - 52); g.quadraticCurveTo(cx - 20, cy - 70, cx, cy - 20); g.quadraticCurveTo(cx + 20, cy - 70, cx + 70, cy - 52); g.stroke(); // 浅色「眉」
+    g.fillStyle = 'rgba(60,40,25,.55)'; for (const k of [-1, 1]) { g.beginPath(); g.arc(cx + k * 48, cy - 6, 34, 0, 7); g.fill(); } // 眼周一圈深色
+    // C 翅膀 (0,256)-(256,384)：上半截覆羽（浅斑），下半截飞羽（横斑），后缘扇贝形羽尖（镂空）
+    g.fillStyle = '#5e4632'; g.fillRect(0, 256, 256, 100);
+    for (let i = 0; i < 120; i++) { g.fillStyle = `rgba(215,190,150,${0.35 + rnd() * 0.3})`; g.beginPath(); g.arc(rnd() * 256, 258 + rnd() * 45, 1.5 + rnd() * 2.5, 0, 7); g.fill(); }
+    for (let x = 0; x < 256; x += 21) { g.strokeStyle = 'rgba(30,20,12,.45)'; g.lineWidth = 1.2; g.beginPath(); g.moveTo(x, 300); g.lineTo(x + 4, 356); g.stroke(); }
+    for (let y = 308; y < 356; y += 11) { g.fillStyle = 'rgba(190,160,120,.55)'; g.fillRect(0, y, 256, 4); }
+    g.globalCompositeOperation = 'destination-out'; g.fillStyle = '#000'; g.fillRect(0, 356, 256, 28);
+    g.globalCompositeOperation = 'source-over'; g.fillStyle = '#5e4632'; for (let x = 0; x < 256; x += 21) { g.beginPath(); g.ellipse(x + 10.5, 356, 10, 14, 0, 0, Math.PI); g.fill(); g.fillStyle = 'rgba(190,160,120,.5)'; g.fillRect(x + 2, 360, 17, 3); g.fillStyle = '#5e4632'; }
+    // D 一根初级飞羽 (256,256)-(384,384)：竖着画，尖朝上，横斑，外面透明
+    const feather = (x0: number, w: number, base: string, bar: string) => {
+      g.save(); g.beginPath(); g.moveTo(x0 + 64, 262); g.quadraticCurveTo(x0 + 64 + w, 300, x0 + 64 + w * 0.8, 382); g.lineTo(x0 + 64 - w * 0.8, 382); g.quadraticCurveTo(x0 + 64 - w, 300, x0 + 64, 262); g.closePath(); g.clip();
+      g.fillStyle = base; g.fillRect(x0, 256, 128, 128);
+      for (let y = 270; y < 384; y += 13) { g.fillStyle = bar; g.fillRect(x0, y, 128, 5); }
+      g.strokeStyle = 'rgba(240,225,200,.7)'; g.lineWidth = 2; g.beginPath(); g.moveTo(x0 + 64, 264); g.lineTo(x0 + 64, 384); g.stroke(); // 羽轴
+      g.restore();
+    };
+    feather(256, 30, '#5a4230', 'rgba(200,170,130,.55)');
+    feather(384, 44, '#6a4e36', 'rgba(205,178,140,.5)'); // E 尾羽 (384,256)-(512,384)
+  }));
+  OWL_TEX.colorSpace = THREE.SRGBColorSpace;
+  /** 把几何体原来 0–1 的 uv 挪到图集里的一块（canvas 像素坐标，y 向下） */
+  const atlas = (geo: THREE.BufferGeometry, x: number, y: number, w: number, h: number, flipV = false) => {
+    const uv = geo.attributes.uv; for (let i = 0; i < uv.count; i++) { const vv = flipV ? 1 - uv.getY(i) : uv.getY(i); uv.setXY(i, (x + uv.getX(i) * w) / 512, 1 - (y + h - vv * h) / 512); } return geo;
+  };
+  /** 月光的明暗写进顶点色：朝上的面亮、朝下的暗（保留 uv） */
+  const moonShade = (geo: THREE.BufferGeometry, k = 1) => {
+    const n = geo.attributes.normal, a = new Float32Array(n.count * 3);
+    for (let i = 0; i < n.count; i++) { const s2 = (0.62 + 0.38 * (n.getY(i) * 0.5 + 0.5)) * k; a.set([s2, s2, s2], i * 3); }
+    geo.setAttribute('color', new THREE.Float32BufferAttribute(a, 3)); return geo;
+  };
+  /** 一根羽毛：从原点往 +x 伸出去的长条（宽 w、长 len），uv 指向图集里的那根羽毛（竖着画的，尖朝上 → 这里尖朝 +x） */
+  const featherGeo = (len: number, w: number, ax: number) => atlas(new THREE.PlaneGeometry(w, len).rotateZ(-Math.PI / 2).translate(len / 2, 0, 0).rotateX(-Math.PI / 2), ax, 256, 128, 128);
+  const owlMat = bin.add(new THREE.MeshBasicMaterial({ map: OWL_TEX, vertexColors: true, side: THREE.DoubleSide, alphaTest: 0.5 }));
+  const eyeMat = bin.add(new THREE.MeshBasicMaterial({ vertexColors: true }));
   const owl = new THREE.Group();
-  owl.add(new THREE.Mesh(bin.add(merge([
-    paint(new THREE.SphereGeometry(1, 12, 9).scale(0.16, 0.2, 0.15), 0x3b3128),
-    paint(new THREE.SphereGeometry(0.13, 10, 8).translate(0, 0.2, 0.03), 0x463a2e),
-    paint(new THREE.CircleGeometry(0.1, 14).translate(0, 0.2, 0.15), 0x8a7a64),                         // 面盘
-    ...[-1, 1].map((k) => paint(new THREE.CircleGeometry(0.03, 10).translate(k * 0.045, 0.215, 0.152), 0xe8b830)), // 眼睛
-    ...[-1, 1].map((k) => paint(new THREE.ConeGeometry(0.03, 0.09, 4).rotateZ(-k * 0.35).translate(k * 0.08, 0.33, 0.02), 0x2e2620)), // 耳羽
-    paint(new THREE.ConeGeometry(0.06, 0.14, 5).rotateX(-Math.PI / 2 - 0.4).translate(0, -0.08, -0.17), 0x2e2620), // 尾
-  ])), owlMat));
+  // 身子：前粗后细的蛋形（往 +z 飞），背上深、胸腹浅（uv 的 v 方向就是从背到腹）
+  const bodyGeo = new THREE.SphereGeometry(1, 18, 14); { const P = bodyGeo.attributes.position; for (let i = 0; i < P.count; i++) { const z = P.getZ(i); P.setXYZ(i, P.getX(i) * 0.115 * (1 - 0.18 * Math.max(0, -z)), P.getY(i) * 0.1, z * 0.19); } bodyGeo.computeVertexNormals(); }
+  owl.add(new THREE.Mesh(bin.add(moonShade(atlas(bodyGeo, 0, 0, 256, 256))), owlMat));
+  // 头：一个 group，脖子处转；圆脑袋 + 微凹的面盘 + 眼睛 + 弯钩小嘴 + 两撮耳羽
+  const owlHead = new THREE.Group(); owlHead.position.set(0, 0.05, 0.14); owl.add(owlHead);
+  owlHead.add(new THREE.Mesh(bin.add(moonShade(atlas(new THREE.SphereGeometry(0.1, 16, 12).scale(1, 0.95, 0.9), 0, 0, 256, 140))), owlMat));
+  const disc = new THREE.CircleGeometry(0.088, 24); { const P = disc.attributes.position; for (let i = 0; i < P.count; i++) { const r2 = P.getX(i) ** 2 + P.getY(i) ** 2; P.setZ(i, -r2 * 3.2); } disc.computeVertexNormals(); }
+  const discM = new THREE.Mesh(bin.add(moonShade(atlas(disc, 256, 0, 256, 256), 1.15)), owlMat); discM.position.set(0, 0.0, 0.1); owlHead.add(discM); // 面盘在脑袋前面（脑袋前沿在 0.09）
+  const eye = (k: number) => [
+    paint(new THREE.SphereGeometry(0.02, 12, 10).scale(1, 1, 0.45).translate(k * 0.036, 0.008, 0.099), 0xf0b420),
+    paint(new THREE.CircleGeometry(0.011, 12).translate(k * 0.036, 0.008, 0.1083), 0x0a0806),
+    paint(new THREE.CircleGeometry(0.0038, 8).translate(k * 0.036 + 0.005, 0.014, 0.1088), 0xffffff),
+  ];
+  owlHead.add(new THREE.Mesh(bin.add(merge([...eye(-1), ...eye(1), paint(new THREE.ConeGeometry(0.009, 0.028, 6).rotateX(Math.PI * 0.62).translate(0, -0.016, 0.106), 0x6b6058)])), eyeMat));
+  for (const k of [-1, 1]) { const tuft = new THREE.Mesh(bin.add(moonShade(featherGeo(0.06, 0.03, 256).rotateZ(Math.PI / 2).rotateY(Math.PI / 2))), owlMat); tuft.position.set(k * 0.055, 0.075, 0.02); tuft.rotation.set(-0.3, 0, -k * 0.35); owlHead.add(tuft); }
+  // 尾：五根扇开的尾羽；脚爪收在尾下
+  const tail = new THREE.Group(); tail.position.set(0, -0.01, -0.17); owl.add(tail);
+  for (let i = 0; i < 5; i++) { const f = new THREE.Mesh(bin.add(moonShade(featherGeo(0.13, 0.045, 384))), owlMat); f.rotation.set(0, Math.PI / 2 + (i - 2) * 0.17, 0); f.position.y = -Math.abs(i - 2) * 0.003; tail.add(f); }
+  owl.add(new THREE.Mesh(bin.add(merge([-1, 1].map((k) => paint(new THREE.ConeGeometry(0.014, 0.05, 6).rotateX(-Math.PI / 2 - 0.3).translate(k * 0.03, -0.075, -0.06), 0xb8a070)))), eyeMat));
+  // 翅膀：肩 → 内翼（臂，宽、带覆羽）→ 腕 → 外翼（手）→ 五根张开的初级飞羽
   const owlWing = (side: number) => {
-    const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.Float32BufferAttribute([0, 0, 0.1, side * 0.62, 0.02, 0.02, side * 0.5, 0, -0.14, 0, 0, 0.1, side * 0.5, 0, -0.14, 0, 0, -0.1], 3));
-    g.computeVertexNormals();
-    const m = new THREE.Mesh(bin.add(paint(g, 0x352b23)), owlMat); m.position.set(side * 0.1, 0.05, 0); owl.add(m); return m;
+    const shoulder = new THREE.Group(); shoulder.position.set(side * 0.08, 0.035, 0.03); owl.add(shoulder);
+    // 内翼：x 方向伸 0.25，前缘直、后缘往后拖（弦长 0.24 → 0.2）
+    const inner = new THREE.PlaneGeometry(0.25, 0.22, 4, 2).rotateX(-Math.PI / 2).translate(0.125, 0, -0.05);
+    { const P = inner.attributes.position; for (let i = 0; i < P.count; i++) { const x = P.getX(i), z = P.getZ(i); P.setXYZ(i, side * x, 0.012 * (1 - Math.abs(z + 0.05) / 0.11), z + (z < -0.05 ? -0.02 * (x / 0.25) : 0)); } inner.computeVertexNormals(); } // 前缘略鼓（翼型）
+    shoulder.add(new THREE.Mesh(bin.add(moonShade(atlas(inner, 0, 256, 140, 128, true))), owlMat));
+    const wrist = new THREE.Group(); wrist.position.set(side * 0.25, 0, 0.0); shoulder.add(wrist);
+    const outer = new THREE.PlaneGeometry(0.16, 0.18, 3, 2).rotateX(-Math.PI / 2).translate(0.08, 0, -0.05);
+    { const P = outer.attributes.position; for (let i = 0; i < P.count; i++) { const x = P.getX(i), z = P.getZ(i); P.setXYZ(i, side * x, 0, z * (1 - 0.35 * x / 0.16) + 0.01 * x / 0.16); } outer.computeVertexNormals(); }
+    wrist.add(new THREE.Mesh(bin.add(moonShade(atlas(outer, 120, 256, 136, 128, true))), owlMat));
+    const prim = new THREE.Group(); prim.position.set(side * 0.15, 0, -0.03); wrist.add(prim);
+    const fingers: THREE.Mesh[] = [];
+    for (let i = 0; i < 5; i++) { const f = new THREE.Mesh(bin.add(moonShade(featherGeo(0.15 - i * 0.012, 0.042, 256))), owlMat); f.scale.x = side; prim.add(f); fingers.push(f); }
+    return { shoulder, wrist, fingers, side };
   };
   const owlL = owlWing(-1), owlR = owlWing(1);
   owl.visible = false; group.add(owl);
-  const owlFly = { active: false, wait: 6, x: 0, dir: 1, y: 7, z: -30, hooted: false };
+  owl.traverse((o) => { o.userData.noAO = true; });
+  const owlFly = { active: false, wait: new URLSearchParams(location.search).has('owl') ? 0 : 6, x: 0, dir: 1, y: 7, z: -30, hooted: false };
 
   // ---------- 夜里：菜园横路上的老鼠 ----------
   // 窗根底下那块地从屋里看不到（窗台挡着，坐在桌前往外看，最近也只看到五六米开外），所以老鼠在白天猫狗走的那条横路上跑
@@ -303,7 +382,7 @@ export const animals: SceneObject = ({ scene, tier, camera, bus, audio, pick }) 
   group.traverse((o) => { o.userData.noAO = true; });
   // 一天里的色调（夜里压暗）：猫头鹰、老鼠自己管颜色，不乘
   const tintTree = (root: THREE.Object3D) => root.traverse((o) => { const m = (o as THREE.Mesh).material as THREE.Material | undefined;
-    if (m && !Array.isArray(m) && m !== owlMat && m !== mouseMat) applyDayTint(m); });
+    if (m && !Array.isArray(m) && m !== owlMat && m !== eyeMat && m !== mouseMat) applyDayTint(m); });
   tintTree(group);
   let tintedModels = 0;
   scene.add(group);
@@ -429,19 +508,28 @@ export const animals: SceneObject = ({ scene, tier, camera, bus, audio, pick }) 
     // 猫头鹰：从月亮那边的天上横着飞过，扇几下、滑一段
     if (!owlFly.active) {
       owlFly.wait -= dt;
-      if (owlFly.wait <= 0 && night) {
+      if (owlFly.wait <= 0 && (night || debugOwl)) {
         owlFly.active = true; owlFly.dir = Math.random() < 0.5 ? 1 : -1; owlFly.x = -owlFly.dir * 32; owlFly.hooted = false;
         owlFly.y = 5 + Math.random() * 3; owlFly.z = -22 - Math.random() * 8; owl.visible = true;
         // 斜着朝屋子这边飞、身子往下压一点：从窗里看得到张开的翅膀和圆脸，正侧面飞只看得到一条
-        owl.rotation.set(0.35, owlFly.dir * (Math.PI / 2 - 0.75), 0, 'YXZ');
+        owl.rotation.set(0.12, owlFly.dir * (Math.PI / 2 - 0.55), 0, 'YXZ');
       } else if (owlFly.wait <= 0) owlFly.wait = 4;
     } else {
       owlFly.x += owlFly.dir * 5.5 * dt;
       const cyc = (t * 0.55) % 1, flapping = cyc < 0.55;   // 扇一阵、滑一阵
-      const flap = flapping ? Math.sin(t * 9) * 0.75 + 0.1 : 0.1;
-      owlL.rotation.z = flap; owlR.rotation.z = -flap;
-      owl.position.set(owlFly.x, owlFly.y + Math.sin(t * 1.3) * 0.5 - (flapping ? 0 : (cyc - 0.55) * 0.6), owlFly.z);
-      owl.scale.setScalar(3); // 远处看着太小，放大一点
+      // 扇翅：内翼在肩上上下摆，外翼比内翼慢半拍、上扇时往里收一点；下扇时手尖的飞羽张开、上扇时收拢；滑翔时两翼平伸微翘
+      const ph = t * 8.5, amp = flapping ? 1 : 0;
+      const a1 = 0.1 + amp * 0.62 * Math.sin(ph), a2 = 0.06 + amp * (0.45 * Math.sin(ph - 0.7) - 0.12), spread = 0.16 + amp * 0.1 * (1 - Math.sin(ph)) * 0.5;
+      for (const w of [owlL, owlR]) {
+        w.shoulder.rotation.z = w.side * a1; w.wrist.rotation.z = w.side * a2; w.wrist.rotation.y = -w.side * amp * 0.12 * Math.max(0, Math.cos(ph));
+        w.fingers.forEach((f, i) => { f.rotation.y = -w.side * (i - 1.5) * spread; f.rotation.z = w.side * i * 0.03; });
+      }
+      owl.position.set(owlFly.x, owlFly.y + Math.sin(t * 1.3) * 0.5 - (flapping ? 0.05 * Math.sin(ph) : (cyc - 0.55) * 0.6), owlFly.z);
+      owl.scale.setScalar(2.6); // 远处看着太小，放大一点（实际翼展一米出头）
+      if (debugOwl) { owlFly.x = 0; owl.position.set(Math.sin(t * 0.4) * 0.5, 1.35, -5.2); owl.scale.setScalar(1.8); }
+      // 头扭过来看着屋里：镜头方向换到身子的坐标里，取左右、上下的角度（转头最多 100°）
+      owl.updateMatrixWorld(); tmp.copy(camera.position); owl.worldToLocal(tmp); tmp.sub(owlHead.position);
+      owlHead.rotation.set(THREE.MathUtils.clamp(-Math.atan2(tmp.y, Math.hypot(tmp.x, tmp.z)), -0.6, 0.6) * 0.8, THREE.MathUtils.clamp(Math.atan2(tmp.x, tmp.z), -1.75, 1.75), 0, 'YXZ');
       if (!owlFly.hooted && Math.abs(owlFly.x) < 6 ) { owlFly.hooted = true; emitAt(owl.position, voice('owl'), 1.2); }
       if (Math.abs(owlFly.x) > 34) { owlFly.active = false; owl.visible = false; owlFly.wait = 22 + Math.random() * 25; }
     }
@@ -470,7 +558,7 @@ export const animals: SceneObject = ({ scene, tier, camera, bus, audio, pick }) 
       if (Math.abs(mouseRun.x) > 3.3) { mouseRun.active = false; mouse.visible = false; mouseRun.wait = 14 + Math.random() * 18; }
     }
     // 猫头鹰在月光下是剪影：颜色按天色压，但不像其他东西压得那么狠，眼睛还看得出
-    owlMat.color.setScalar(0.35 + 0.65 * SKY.day);
+    owlMat.color.setScalar(0.45 + 0.55 * SKY.day); eyeMat.color.setScalar(0.85 + 0.15 * SKY.day); // 眼睛在月光下也亮（眼底反光）
   };
 
   return {
