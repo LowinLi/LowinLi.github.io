@@ -80,10 +80,10 @@ export const cameraRig: SceneObject = ({ camera, bus }) => {
         tp.copy(c).addScaledVector(away, dist).setY(L.floorY + T.top + 0.62 + py * 0.03);
       } else if (mode === 'stove') {
         // 站到左墙前面的灶台跟前（背对着屋子中间往左墙看），往下看台面：锅、菜筐、盘子都在画面里；竖屏退远一点
-        const Kc = L.kitchen, c = new THREE.Vector3(Kc.x, L.floorY + Kc.h + 0.05, Kc.z);
+        const Kc = L.kitchen, c = new THREE.Vector3(Kc.x, L.floorY + Kc.h + 0.12, Kc.z);
         const dist = Math.max(0.95, 0.62 / (tan * aspect));
         tl.set(c.x + py * 0.02, c.y + py * 0.03, c.z - px * 0.04);
-        tp.set(c.x + dist, L.floorY + Kc.h + 0.58 + py * 0.03, c.z - px * 0.06);
+        tp.set(c.x + dist, L.floorY + Kc.h + 0.64 + py * 0.03, c.z - px * 0.06);
       } else if (mode === 'clock') {
         // 站到座钟的表盘正前方（拨时间）：表盘上下左右各留出一点，竖屏按宽度算
         const D = L.clockDial, half = D.r * 1.6, dist = Math.max(half / tan, half / (tan * aspect));

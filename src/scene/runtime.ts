@@ -272,7 +272,24 @@ export function start(canvas: HTMLCanvasElement, tier: Exclude<Tier, 'low'>, dat
     const pct = Math.max(ldShown, Math.min(95, Math.floor(p * 95)));
     if (pct !== ldShown) { ldShown = pct; emit(bus, 'load:progress', { p: pct / 100 }); }
     const idle = ldDone >= ldTotal && now - ldChange > 700;
-    if ((idle && ldFrames > 12) || now - t0Load > 25000) { ldFinished = true; emit(bus, 'load:done'); }
+    if (ldWarm === 0 && ((idle && ldFrames > 12) || now - t0Load > 25000)) { ldWarm = 1; return; }
+    if (ldWarm === 2 && ++ldWarmed > 2) { ldFinished = true; emit(bus, 'load:done'); }
+  };
+  // 揭开之前「预热」一帧：把藏着的东西（火苗、油、烟、冰箱里的吃的……）全显示出来、关掉视锥剔除，在加载层底下整个场景画一遍，
+  // 让所有着色器编译完、贴图和几何体都传上显卡。不然第一次转到灶台、打开冰箱时，几十个着色器和贴图挤在同一帧里，画面会卡一下
+  // （用户说过「画面转到灶台的画面有点卡」：量过第一次转过去新编了 12 个着色器、传了 20 张贴图、49 个几何体）。
+  let ldWarm = 0, ldWarmed = 0;
+  const warmScene = (render: () => void) => {
+    const hidden: THREE.Object3D[] = [], culled: THREE.Object3D[] = [];
+    scene.traverse((o) => {
+      if (!o.visible) { hidden.push(o); o.visible = true; }
+      if (o.frustumCulled) { culled.push(o); o.frustumCulled = false; }
+    });
+    const sh = renderer.shadowMap.needsUpdate; renderer.shadowMap.needsUpdate = renderer.shadowMap.enabled;
+    try { render(); } finally {
+      hidden.forEach((o) => { o.visible = false; }); culled.forEach((o) => { o.frustumCulled = true; });
+      renderer.shadowMap.needsUpdate = sh || renderer.shadowMap.enabled;
+    }
   };
   const sameMat = (a: Float32Array, b: THREE.Matrix4) => { const e = b.elements; for (let i = 0; i < 16; i++) if (Math.abs(a[i] - e[i]) > 1e-5) return false; return true; };
   const camPrev = new Float32Array(16), projPrev = new Float32Array(16);
@@ -298,6 +315,8 @@ export function start(canvas: HTMLCanvasElement, tier: Exclude<Tier, 'low'>, dat
   const pokeEvents = ['pointerdown', 'pointermove', 'wheel', 'keydown'] as const;
   pokeEvents.forEach((e) => addEventListener(e, poke, { passive: true }));
   const clock = new THREE.Clock();
+  // 调试：?slowmo=8（或运行中改 __scene.dbg.slowmo）让场景里的动画慢 8 倍，截翻炒这类一秒不到的动作
+  const dbg = { slowmo: Math.max(1, Number(new URLSearchParams(location.search).get('slowmo')) || 1) };
   // 量帧率：按时间窗（每 1.5 秒看一次平均帧率），不按帧数——很卡的时候一帧要零点几秒，按 90 帧算要等好几分钟。
   // 连着 3 帧都超过 0.25 秒就立刻降一档。以前「超过 0.5 秒的帧不算」，结果显卡越顶不住越不降档，一直顶满。
   // 只有刚从别的标签页切回来的那几帧不算（那几帧的间隔是标签页藏起来的时间）。
@@ -309,7 +328,7 @@ export function start(canvas: HTMLCanvasElement, tier: Exclude<Tier, 'low'>, dat
     const gap = Math.max(minGap, idle ? 25 : 10); // 60 Hz 屏：每帧都画 / 闲置隔一帧；120 Hz 屏：隔一帧 / 隔两帧（留余量，免得帧间隔抖一下就多跳一帧）
     if (now - last < gap) return;
     last = now;
-    const raw = clock.getDelta(), dt = Math.min(raw, 0.1);
+    const raw = clock.getDelta(), dt = Math.min(raw, 0.1) / dbg.slowmo;
     if (!visible || document.hidden) { frames = 0; acc = 0; slow = 0; skip = 5; return; }
     const t = clock.elapsedTime;
     const t0 = performance.now();
@@ -323,6 +342,8 @@ export function start(canvas: HTMLCanvasElement, tier: Exclude<Tier, 'low'>, dat
     // 阴影贴图只在投影的东西动过（或显隐变过）时才重画：开头 120 帧连续画（等模型加载），之后每帧比对一遍投影网格的世界矩阵
     if (tier === 'high') renderer.shadowMap.needsUpdate = tick < 120 || (shadowEvery > 0 && tick % shadowEvery === 0 && (castersMoved() || tick % 120 === 0));
     tick++;
+    const draw = () => { if (post && usePost) post.render(dt, false); else renderer.render(scene, camera); };
+    if (ldWarm === 1) { ldWarm = 2; warmScene(draw); }
     if (post && usePost) post.render(dt, still); else renderer.render(scene, camera);
     checkLoaded(performance.now());
     if (prof) { prof.n++; prof.js += t1 - t0; prof.render += performance.now() - t1; prof.calls += renderer.info.render.calls; }
@@ -340,7 +361,7 @@ export function start(canvas: HTMLCanvasElement, tier: Exclude<Tier, 'low'>, dat
   });
 
   // 暴露给 QA / 截图脚本读取的诊断信息
-  (window as any).__scene = { tier, level: 0, prof, info: renderer.info, scene, camera, bus, emit: (type: string, d?: unknown) => emit(bus, type, d),
+  (window as any).__scene = { tier, level: 0, prof, dbg, info: renderer.info, scene, camera, bus, emit: (type: string, d?: unknown) => emit(bus, type, d),
     // 调试：屏幕上某一点点下去会命中谁（命中的网格和它的点击归属）
     pickAt: (x: number, y: number) => { const r = cast({ clientX: x, clientY: y } as PointerEvent); return r && { hit: r.hit.object.type + ':' + (r.hit.object as THREE.Mesh).geometry?.type, owner: r.owner.type + ':' + r.owner.name, uuid: r.owner.uuid }; } };
   // 调试：?level=1|2 直接从某一档开始（比如想看降档后的画面）
