@@ -20,7 +20,7 @@
 - 3D 代码全在 `src/scene/`。three.js 只能通过 `runtime.ts` 动态 import 进来，不能被首页的首屏 bundle 静态引用。
 
 ## 内容（用户要的：「读一下我的主页 lowin.li，设计里面的内容，合并到小屋里」）
-- 主人是 **Lowin Li（李龙威）**，NLP / 大模型工程。首页文案和「关于我」在 `src/site.ts`：按旧博客的签名（「大浪淘沙，风起帆扬」「Never really desperate, only the lost of the soul.」）、文章和奖杯写的**初稿**，用户还没改过。链接：GitHub、知乎、GitBook 笔记。
+- 主人是 **Lowin Li（李龙威）**，NLP / 大模型工程。首页文案和「关于我」在 `src/site.ts`：标题下那句是陶渊明的「结庐在人境，而无车马喧。」（用户说原来的「大浪淘沙，风起帆扬」不适合这个小屋）；「关于我」按旧博客的签名（「Never really desperate, only the lost of the soul.」）、文章和奖杯写的**初稿**，用户还没改过。链接：GitHub、知乎、GitBook 笔记。
 - **30 篇文章**从 lowin.li（Hexo + Matery）搬过来：`scripts/migrate-site.mjs` 抓网页 → 取 `#articleContent` → turndown 转 Markdown。公式（旧站是浏览器里的 MathJax，正文里是原样的 `$…$`）转换前换成占位符；代码块取 Prism 高亮前的纯文本 + 语言；lowin.li 上的图片下载到 `public/posts-media/<slug>/`，大图转 webp（74 MB → 16 MB）。文件在 `src/content/posts/<年>/<月>/<日>/<slug>.md`，站内地址 `/posts/<年>/<月>/<日>/<slug>/`。
   - 旧地址 `/<年>/<月>/<日>/<slug>/` 由 `astro.config.mjs` 按每篇的 `oldUrl` 生成跳转页（以后把 lowin.li 指过来，外面的旧链接不断）。域名还没切，用户没决定。
   - 公式在构建时用 KaTeX 渲染（`remark-math` + `rehype-katex`，要装 `@astrojs/markdown-remark`，新版 Astro 默认不带）；文章页引 `katex.min.css`，没有脚本。

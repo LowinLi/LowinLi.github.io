@@ -1,7 +1,7 @@
 // 首页文案（从旧博客 lowin.li 的签名、文章和奖杯整理的初稿，用户可以再改）
 export const SITE = {
   name: 'Lowin Li',
-  tagline: '大浪淘沙，风起帆扬。',
+  tagline: '结庐在人境，而无车马喧。',
   bio: [
     'Never really desperate, only the lost of the soul.',
     '做自然语言处理的工程师。这些年一直在折腾 Transformers、文本生成、模型量化和推理加速——把论文里的模型搬进能跑的服务里。',
