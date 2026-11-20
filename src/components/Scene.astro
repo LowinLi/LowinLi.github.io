@@ -31,17 +31,21 @@ const { data } = Astro.props;
       <button class="playing" type="button" hidden>♪ <span></span> · 停止</button>
       <button class="back" type="button" hidden>← 返回 <kbd>ESC</kbd></button>
     </div>
+    <!-- 底部一排入口：暖色毛玻璃的「坞」，线条图标 + 字，按读 / 屋里 / 吃 / 玩分成四组（用户嫌过原来那排胶囊按钮不够高级） -->
     <nav class="chips" aria-label="快捷入口">
-      <a href="#" data-book="about">关于我</a>
-      <a href={data.postsIndex} data-book="posts">文章</a>
-      <a href="#" data-action="window" data-webgl-only>看窗外</a>
-      <a href="#" data-action="search" data-webgl-only>电脑</a>
-      <a href="#" data-action="music" data-webgl-only>音乐</a>
-      <a href="#" data-action="radio" data-webgl-only>收音机</a>
-      <a href="#" data-action="fridge" data-webgl-only>冰箱</a>
-      <a href="#" data-action="games">游戏</a>
-      <a href="#" data-action="time" data-webgl-only>时间</a>
-      <a href="#" data-action="cook" data-webgl-only>做饭</a>
+      <a href="#" data-book="about"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.6"/><path d="M4.5 20c.8-3.8 3.9-6 7.5-6s6.7 2.2 7.5 6"/></svg><span>关于我</span></a>
+      <a href={data.postsIndex} data-book="posts"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3.5h8.5L19 8v12.5H6z"/><path d="M14 3.5V8h5"/><path d="M9 12h7M9 15.5h7M9 19h4"/></svg><span>文章</span></a>
+      <a href="#" data-action="search" data-webgl-only><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M9 20h6M12 16v4"/></svg><span>电脑</span></a>
+      <i class="sep" aria-hidden="true" data-webgl-only></i>
+      <a href="#" data-action="window" data-webgl-only><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="3.5" width="16" height="17" rx="1"/><path d="M12 3.5v17M4 12h16M7.5 7.5h1.5M15 15h1.5"/></svg><span>看窗外</span></a>
+      <a href="#" data-action="time" data-webgl-only><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg><span>时间</span></a>
+      <i class="sep" aria-hidden="true" data-webgl-only></i>
+      <a href="#" data-action="fridge" data-webgl-only><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="2.5" width="12" height="19" rx="2"/><path d="M6 10h12M9 6v2M9 13v3"/></svg><span>冰箱</span></a>
+      <a href="#" data-action="cook" data-webgl-only><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12.5h14a0 0 0 0 1 0 0 7 7 0 0 1-14 0z"/><path d="M17 13.5l4-1.5"/><path d="M8 9c0-1.5 1.5-1.5 1.5-3M12 9c0-1.5 1.5-1.5 1.5-3"/></svg><span>做饭</span></a>
+      <i class="sep" aria-hidden="true" data-webgl-only></i>
+      <a href="#" data-action="music" data-webgl-only><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2.5" y="5.5" width="19" height="13" rx="2"/><circle cx="8" cy="11" r="2"/><circle cx="16" cy="11" r="2"/><path d="M10 11h4M6.5 18.5l1.5-3h8l1.5 3"/></svg><span>音乐</span></a>
+      <a href="#" data-action="radio" data-webgl-only><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="9" width="18" height="11.5" rx="2"/><path d="M7 9l10-5.5"/><circle cx="8.5" cy="14.75" r="2.6"/><path d="M14 13h4M14 16.5h4"/></svg><span>收音机</span></a>
+      <a href="#" data-action="games"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7.5h10a4.5 4.5 0 0 1 4.3 5.8l-1.2 4a2.4 2.4 0 0 1-4.2.8L14.3 16H9.7l-1.6 2.1a2.4 2.4 0 0 1-4.2-.8l-1.2-4A4.5 4.5 0 0 1 7 7.5z"/><path d="M7.5 10.5v3M6 12h3"/><circle cx="15.5" cy="11" r=".9"/><circle cx="17.5" cy="13" r=".9"/></svg><span>游戏</span></a>
     </nav>
     <div class="zoom" data-webgl-only role="group" aria-label="视角">
       <button type="button" data-zoom="1" aria-label="拉近">＋</button>
@@ -614,25 +618,53 @@ const { data } = Astro.props;
   .scene:not([data-mode='']) .overlay { background: none; }
   .scene:is([data-mode='monitor'], [data-mode='window'], [data-mode='cup'], [data-mode='fridge']) .chips { display: none; }
   .top-right { position: absolute; top: 16px; right: 16px; display: flex; gap: 8px; }
-  .top-right button, .chips a {
-    font: inherit; font-size: 14px; color: #fff; text-decoration: none; cursor: pointer;
-    background: #10203acc; border: 1px solid #ffffff40; border-radius: 999px; padding: 6px 14px;
-    backdrop-filter: blur(6px);
+  /* 右上角的「返回」等：和底部的坞同一套暖色毛玻璃 */
+  .top-right button {
+    font: inherit; font-size: 14px; color: #f6ead6; cursor: pointer; letter-spacing: .04em;
+    background: linear-gradient(180deg, #2a1f17cc, #17110ccc); border: 1px solid #e8c88c47; border-radius: 999px; padding: 7px 16px;
+    box-shadow: 0 6px 18px #0006, inset 0 1px 0 #ffecc81f; backdrop-filter: blur(12px) saturate(1.3); transition: border-color .2s, color .2s;
   }
   .top-right button[hidden] { display: none; }
-  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: auto; }
-  .chips a:hover, .top-right button:hover { background: #1b3560; }
+  .top-right button:hover { border-color: #e8c88c99; color: #ffe2ad; }
+  /* 底部的坞：居中的一条暖色毛玻璃（深木色 + 金色细边），每个入口是线条图标 + 字，四组之间一道渐隐的竖线 */
+  .chips {
+    margin-top: auto; align-self: center; display: flex; align-items: stretch; gap: 2px; padding: 6px 8px; max-width: 100%;
+    background: linear-gradient(180deg, #2a1f17b8, #120d09c7); border: 1px solid #e8c88c47; border-radius: 20px;
+    box-shadow: 0 14px 34px #00000059, inset 0 1px 0 #ffecc824; backdrop-filter: blur(14px) saturate(1.3);
+  }
+  .chips a {
+    position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; min-width: 60px; padding: 8px 8px 7px;
+    border-radius: 14px; color: #f3e6cf; text-decoration: none; font-size: 12px; letter-spacing: .1em; cursor: pointer;
+    transition: background .25s, color .25s, transform .25s cubic-bezier(.2,.8,.2,1);
+  }
+  .chips a svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; opacity: .9; transition: transform .25s cubic-bezier(.2,.8,.2,1), filter .25s; }
+  .chips a span { white-space: nowrap; opacity: .86; }
+  .chips a:hover { background: radial-gradient(120% 90% at 50% 100%, #ffc87a33, #ffd69614 60%, transparent); color: #ffe2ad; transform: translateY(-3px); }
+  .chips a:hover svg { transform: scale(1.12); filter: drop-shadow(0 0 6px #ffc87a99); }
+  .chips a:hover span { opacity: 1; }
+  .chips a::after { content: ''; position: absolute; left: 50%; bottom: 2px; width: 0; height: 2px; border-radius: 2px; background: #ffcf8a; transform: translateX(-50%); transition: width .25s; }
+  .chips a:hover::after { width: 16px; }
+  .chips a:active { transform: translateY(-1px) scale(.97); }
+  .chips .sep { width: 1px; margin: 10px 5px; background: linear-gradient(transparent, #e8c88c66, transparent); flex: none; }
+  @media (prefers-reduced-motion: reduce) { .chips a, .chips a svg { transition: none; } .chips a:hover { transform: none; } }
   :is(.chips a, .top-right button, .reader button):focus-visible { outline: 2px solid #ffd27a; outline-offset: 2px; }
+  @media (max-width: 700px) {
+    .chips { flex-wrap: wrap; justify-content: center; padding: 6px; border-radius: 18px; }
+    .chips .sep { display: none; }
+    .chips a { min-width: 0; width: calc(20% - 2px); padding: 7px 2px 6px; font-size: 11px; letter-spacing: .04em; }
+    .chips a svg { width: 20px; height: 20px; }
+  }
   .zoom { position: absolute; right: 16px; bottom: 16px; display: flex; flex-direction: column; gap: 6px; }
   .zoom button {
-    width: 38px; height: 38px; font: inherit; font-size: 18px; line-height: 1; color: #fff; cursor: pointer;
-    background: #10203acc; border: 1px solid #ffffff40; border-radius: 50%; backdrop-filter: blur(6px);
+    width: 38px; height: 38px; font: inherit; font-size: 18px; line-height: 1; color: #f6ead6; cursor: pointer;
+    background: linear-gradient(180deg, #2a1f17cc, #17110ccc); border: 1px solid #e8c88c47; border-radius: 50%;
+    box-shadow: 0 6px 16px #0006, inset 0 1px 0 #ffecc81f; backdrop-filter: blur(12px);
   }
-  .zoom button:hover { background: #1b3560; }
+  .zoom button:hover { border-color: #e8c88c99; color: #ffe2ad; }
   .zoom button:focus-visible { outline: 2px solid #ffd27a; outline-offset: 2px; }
   .scene:not([data-mode='']) .zoom { display: none; }
   /* 窄屏上底部那行按钮会排满整行：缩放按钮挪到它们上方，免得互相压住 */
-  @media (max-width: 700px) { .zoom { bottom: 170px; } }
+  @media (max-width: 700px) { .zoom { bottom: 186px; } }
   .cup-hint {
     position: absolute; left: 50%; bottom: 28px; transform: translateX(-50%); margin: 0; padding: 8px 16px; white-space: pre; text-align: center; max-width: calc(100vw - 32px); box-sizing: border-box; overflow: hidden; text-overflow: ellipsis;
     font-size: 15px; color: #fff; background: #10203acc; border: 1px solid #ffffff40; border-radius: 22px; backdrop-filter: blur(6px);
@@ -732,7 +764,7 @@ const { data } = Astro.props;
   .radio .freq { font: 600 15px ui-monospace, monospace; color: #ffd27a; margin-right: 4px; }
   .radio input { width: 100%; margin: 0; accent-color: #ffb24a; }
   @media (max-width: 700px) { .radio { top: 124px; } }
-  .hint { margin: 10px 0 0; font-size: 13px; opacity: .85; text-shadow: 0 1px 6px #000a; transition: opacity .4s; }
+  .hint { margin: 10px 0 0; align-self: center; text-align: center; max-width: 920px; font-size: 12px; letter-spacing: .03em; opacity: .75; text-shadow: 0 1px 6px #000a; transition: opacity .4s; }
   .hint .narrow { display: none; }
   @media (max-aspect-ratio: 11/10) { .hint .wide { display: none; } .hint .narrow { display: inline; } }
   kbd { font: 12px ui-monospace, monospace; opacity: .7; }

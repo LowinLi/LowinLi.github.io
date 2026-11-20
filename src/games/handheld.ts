@@ -10,7 +10,7 @@
  *
  * 画布的逻辑尺寸是 640×360（16:9），按设备像素比放大绘制。
  */
-import { W, H, store, ctxA, beep, boom, rr, text, panel, type Game, type Key } from './kit';
+import { W, H, store, ctxA, beep, boom, rr, text, panel, music, sfx, type Game, type Key } from './kit';
 import { MINI, drawMiniIcon } from './minigames';
 export type { Key } from './kit';
 
@@ -49,6 +49,7 @@ function snake(): Game {
   };
   reset();
   return {
+    state: () => state,
     update(dt) {
       flash = Math.max(0, flash - dt * 2);
       if (state !== 'play') return;
@@ -130,6 +131,7 @@ function plane(): Game {
   };
   reset();
   return {
+    state: () => state,
     update(dt) {
       dt = Math.min(dt, 1 / 30);
       overT += dt; shake = Math.max(0, shake - dt * 2.5);
@@ -236,6 +238,8 @@ const GAMES: { id: string; name: string; sub: string; color: readonly string[]; 
   { id: 'plane', name: '小飞机', sub: '点一下飞一下，看能飞多远', color: ['#46a6f0', '#1c5fa8'], make: plane },
   ...MINI,
 ];
+/** 每个游戏放哪首背景音乐（反应力、节奏黑块不放：一个要安静，一个自己就是曲子） */
+const BGM: Record<string, string | null> = { snake: 'bright', plane: 'chill', mole: 'bright', catch: 'bright', bricks: 'drive', runner: 'drive', reaction: null, memory: 'think', merge: 'think', stack: 'chill', pong: 'drive', tiles: null };
 const COLS = 4, CW = 138, CH = 74, GX = 12, GY = 10, GX0 = (W - (COLS * CW + (COLS - 1) * GX)) / 2, GY0 = 52;
 const cardAt = (i: number) => ({ x: GX0 + (i % COLS) * (CW + GX), y: GY0 + Math.floor(i / COLS) * (CH + GY) });
 
@@ -261,8 +265,9 @@ function drawIcon(g: CanvasRenderingContext2D, id: string, cx: number, cy: numbe
 
 /** 掌机的主页画面（3D 模型的屏幕贴图也用它画一帧） */
 export function drawHome(g: CanvasRenderingContext2D, sel: number, t: number) {
-  const bg = g.createLinearGradient(0, 0, 0, H); bg.addColorStop(0, '#f4f5f7'); bg.addColorStop(1, '#e3e6eb');
+  const bg = g.createLinearGradient(0, 0, 0, H); bg.addColorStop(0, '#f6f7fa'); bg.addColorStop(1, '#dfe3ea');
   g.fillStyle = bg; g.fillRect(0, 0, W, H);
+  g.fillStyle = 'rgba(120,140,180,.07)'; for (let i = 0; i < 9; i++) { g.beginPath(); g.arc((i * 173 + t * 6) % (W + 80) - 40, 60 + ((i * 97) % 240), 30 + (i % 3) * 18, 0, 7); g.fill(); }
   // 顶栏：头像、时间、电量
   g.fillStyle = '#ff8a3d'; g.beginPath(); g.arc(30, 28, 13, 0, 7); g.fill();
   text(g, '🙂', 30, 29, 14);
@@ -299,9 +304,10 @@ export function createHandheld(canvas: HTMLCanvasElement) {
     const dt = Math.min(0.05, (now - last) / 1000 || 0); last = now; t += dt;
     fit();
     if (game) { game.update(dt); game.draw(g, t); } else drawHome(g, sel, t);
+    music.play(game && game.state?.() === 'play' ? BGM[GAMES[sel].id] ?? null : null); // 只在玩的时候放背景音乐
     raf = requestAnimationFrame(loop);
   };
-  const startGame = (i: number) => { sel = i; ctxA(); beep(520, 1040, 0.1, 'triangle', 0.05); game = GAMES[i].make(); };
+  const startGame = (i: number) => { sel = i; ctxA(); sfx.start(); game = GAMES[i].make(); };
   const toLocal = (e: { clientX: number; clientY: number }) => { const b = canvas.getBoundingClientRect(); return { x: (e.clientX - b.left) / b.width * W, y: (e.clientY - b.top) / b.height * H }; };
   let down: { x: number; y: number; id: number } | null = null, swiped = false;
   const onDown = (e: PointerEvent) => {
@@ -329,19 +335,19 @@ export function createHandheld(canvas: HTMLCanvasElement) {
   return {
     start() { if (!raf) { last = performance.now(); raf = requestAnimationFrame(loop); } },
     /** 暂停（掌机放下时）：停掉绘制循环，游戏状态留着 */
-    stop() { cancelAnimationFrame(raf); raf = 0; },
+    stop() { cancelAnimationFrame(raf); raf = 0; music.stop(); },
     key(k: Key) {
       ctxA();
-      if (k === 'home') { if (game) { game = null; beep(500, 300, 0.08, 'triangle', 0.04); } return; }
+      if (k === 'home') { if (game) { game = null; music.stop(); beep(500, 300, 0.08, 'triangle', 0.04); } return; }
       if (!game) {
         const n = GAMES.length, prev = sel;
         if (k === 'left') sel = (sel + n - 1) % n; else if (k === 'right') sel = (sel + 1) % n;
         else if (k === 'up' && sel >= COLS) sel -= COLS; else if (k === 'down' && sel + COLS < n) sel += COLS;
-        if (sel !== prev) beep(700, 700, 0.04, 'square', 0.03);
+        if (sel !== prev) sfx.tick();
         else if (k === 'a') startGame(sel);
         return;
       }
-      if (k === 'b' && game) { game = null; return; }
+      if (k === 'b' && game) { game = null; music.stop(); return; }
       game.key(k);
     },
     destroy() { this.stop(); canvas.removeEventListener('pointerdown', onDown); canvas.removeEventListener('pointermove', onMove); canvas.removeEventListener('pointerup', onUp); canvas.removeEventListener('pointercancel', onUp); },
