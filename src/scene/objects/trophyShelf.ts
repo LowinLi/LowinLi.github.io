@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { Bin, emit, on, type SceneObject } from '../types';
 import { L } from '../layout';
-import { Batch, blob, canvasTex, contactMaterial, rbox, rng, speckle, usePhotoTexture } from '../util';
+import { asset, Batch, blob, canvasTex, contactMaterial, rbox, rng, speckle, usePhotoTexture } from '../util';
 
 /**
  * 右墙边的书架（用户要的：「在房间右侧加一个书架，书架顶上放着附件这两张照片的荣誉」）。
@@ -11,11 +11,20 @@ import { Batch, blob, canvasTex, contactMaterial, rbox, rng, speckle, usePhotoTe
  *   竹间 6 周年「最具潜力奖」（2021.08.25，深蓝星空 + 星座连线）。黑色梯形底座正面烫金字；
  *   上面是一片印刷的水晶（顶边是 V 形，金字竖排、名字、EMOTIBOT），后面两片交叉的水晶（一片透明往左高、一片带色往右高）。
  *   金字用 metalnessMap 做成半金属，再加一点只在金字上的自发光（全金属时只映出灰墙，金字发暗）。
+ * - 两座奖杯中间立着三枚荣誉勋章（用户后来要的，给的是截图）：2025 Q2、2025 Q4 两枚「百度小赞」、一枚「2023 季度 Award」。
+ *   勋章图案直接从用户的截图里抠出来（public/assets/trophies/，背景色按距离渐隐成透明），贴在一片薄薄的勋章上，
+ *   立在黑色亚克力小支架上，脚下一块印着名字的小铭牌。
  * 默认视角看不到这里（转到右边才看得到），不投实时阴影——书架的影子烘在光照贴图里（tools/bake_lighting.py）。
  */
 const SANS = '"PingFang SC","Noto Sans CJK SC","Microsoft YaHei",system-ui,sans-serif';
 const S = L.trophyShelf;
 
+/** 三枚勋章：图案文件、铭牌上的两行字 */
+const MEDALS = [
+  { img: 'xiaozan', l1: '百度小赞', l2: '2025 Q2' },
+  { img: 'xiaozan', l1: '百度小赞', l2: '2025 Q4' },
+  { img: 'award-2023', l1: '季度 Award', l2: '2023' },
+];
 type Award = { title: string; name: string; base: string; date: string; theme: 'planets' | 'stars'; tint: number; logo2: boolean };
 const AWARDS: Award[] = [
   { title: '匠心独运奖', name: '李龙威', base: '竹间7周年', date: '2022.08.25', theme: 'planets', tint: 0x6f86e8, logo2: false },
@@ -311,9 +320,37 @@ export const trophyShelf: SceneObject = ({ scene, tier, pick, bus, data }) => {
   } });
   let focused = false;
   const offs = [
-    on(bus, 'shelf:focus', () => { focused = true; emit(bus, 'cup:state', { msg: [...AWARDS.map((a) => `${a.title} · ${a.base.replace(/(\d)/, ' $1 ')} · ${a.date}`), '顶格左边那排是我的开源项目，点书脊看看'].join('\n') }); }), // 分行：竖屏一行放不下
+    on(bus, 'shelf:focus', () => { focused = true; emit(bus, 'cup:state', { msg: [...AWARDS.map((a) => `${a.title} · ${a.base.replace(/(\d)/, ' $1 ')} · ${a.date}`), '百度小赞 · 2025 Q2、Q4 · 季度 Award · 2023', '顶格左边那排是我的开源项目，点书脊看看'].join('\n') }); }), // 分行：竖屏一行放不下
     on(bus, 'shelf:blur', () => { if (focused) { focused = false; emit(bus, 'cup:state', null); } }),
   ];
+  // ---------------- 荣誉勋章：两座奖杯中间一排三枚，立在小支架上 ----------------
+  {
+    const loader = new THREE.TextureLoader(), texCache = new Map<string, THREE.Texture>();
+    const tex = (name: string) => { let t = texCache.get(name); if (!t) { t = bin.add(loader.load(asset(`trophies/${name}.png`))); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; texCache.set(name, t); } return t; };
+    const acrylic = bin.add(new THREE.MeshStandardMaterial({ color: 0x111114, roughness: 0.15, metalness: 0.2 }));
+    const MS = 0.08; // 勋章直径 8 厘米
+    MEDALS.forEach((m, i) => {
+      const g = new THREE.Group(); g.position.set((i - 1) * 0.088, H, 0.088); g.rotation.y = (1 - i) * 0.12 - 0.04; root.add(g);
+      // 支架：一块底板 + 一片往后斜靠的背板
+      const sb = new Batch();
+      sb.add(acrylic, rbox(0.07, 0.005, 0.045, 0.002), [0, 0.0025, 0]);
+      sb.add(acrylic, rbox(0.03, 0.06, 0.003, 0.001), [0, 0.036, -0.016], [-0.28, 0, 0]);
+      sb.build(g, bin, { receive: tier === 'high' });
+      // 勋章：正面是抠出来的图案（略带金属光泽、一点自发光，书架那个角落偏暗）；背后一片稍大的深金色剪影当厚度和边
+      const t = tex(m.img);
+      const face = new THREE.Mesh(bin.add(new THREE.PlaneGeometry(MS, MS)), bin.add(new THREE.MeshStandardMaterial({ map: t, alphaTest: 0.5, metalness: 0.35, roughness: 0.32, emissive: 0xffffff, emissiveMap: t, emissiveIntensity: 0.18, side: THREE.FrontSide })));
+      const backM = new THREE.Mesh(bin.add(new THREE.PlaneGeometry(MS * 1.03, MS * 1.03)), bin.add(new THREE.MeshStandardMaterial({ color: 0x6b4a1e, alphaMap: t, alphaTest: 0.5, metalness: 0.7, roughness: 0.35, side: THREE.DoubleSide })));
+      const holder = new THREE.Group(); holder.position.set(0, 0.006 + MS / 2, -0.004); holder.rotation.x = -0.2; g.add(holder);
+      backM.position.z = -0.0025; holder.add(backM, face);
+      // 铭牌：底板前沿一块小牌子，两行字
+      const plate = new THREE.Mesh(bin.add(new THREE.PlaneGeometry(0.06, 0.016)), bin.add(new THREE.MeshStandardMaterial({ roughness: 0.4, metalness: 0.3, map: bin.add(canvasTex(240, 64, (c, w, h) => {
+        c.fillStyle = '#1a1a1e'; c.fillRect(0, 0, w, h); c.strokeStyle = '#c9a24e'; c.lineWidth = 2; c.strokeRect(3, 3, w - 6, h - 6);
+        c.fillStyle = '#e8c878'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.font = `600 22px ${SANS}`; c.fillText(m.l1, w / 2, 22); c.font = `500 16px ${SANS}`; c.fillText(m.l2, w / 2, 46);
+      })) })));
+      plate.position.set(0, 0.0052, 0.0227); plate.rotation.x = -Math.PI / 2 + 0.5; plate.position.y = 0.009; g.add(plate);
+    });
+  }
+
   return {
     frame() {},
     stop() { offs.forEach((f) => f()); scene.remove(root); bin.dispose(); },

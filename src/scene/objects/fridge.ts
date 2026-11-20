@@ -135,7 +135,8 @@ export const fridge: SceneObject = ({ scene, camera, tier, bus, pick, audio }) =
     return { pivot, inner, open: 0, lag };
   };
   const doors = [makeDoor(0.085, DIV_Y + 0.02, 0, true, false), makeDoor(DIV_Y + 0.03, H - 0.005, 0.12, false, true)];
-  // 冷藏室门上用磁铁吸着一张粉红色的老式火车票：2014 年正月十七，坐绿皮车离开黑土地（旧博客《月下绿皮》）。点它翻开书桌上的《行路》
+  // 冷藏室门上用磁铁吸着一张粉红色的老式火车票：2014 年正月十七，坐绿皮车离开黑土地（旧博客《月下绿皮》）。
+  // 关着门时点它：和便利贴一样，镜头凑到跟前看清票面（以前点它是翻开《行路》那本书，用户说「点了后会打开一本书，这不太对」）
   const ticketTex = bin.add(canvasTex(480, 240, (g, w, h) => {
     g.fillStyle = '#f3c9c4'; g.fillRect(0, 0, w, h);
     g.strokeStyle = 'rgba(200,90,90,.18)'; g.lineWidth = 1;
@@ -153,10 +154,13 @@ export const fridge: SceneObject = ({ scene, camera, tier, bus, pick, audio }) =
   }));
   const ticket = new THREE.Mesh(bin.add(new THREE.PlaneGeometry(0.12, 0.06)), std({ map: ticketTex, roughness: 0.85 }));
   ticket.position.set(-W / 2 - 0.02, DIV_Y - 0.17, 0.0514); ticket.rotation.z = -0.07;
-  ticket.userData.keepsFridge = true;
+  ticket.userData.keepsFridge = true; ticket.userData.keepsInspect = true;
   doors[0].pivot.add(ticket);
-  S(new THREE.CylinderGeometry(0.011, 0.011, 0.006, 16).rotateX(Math.PI / 2), magnetM, -W / 2 - 0.02 - 0.045, DIV_Y - 0.17 + 0.022, 0.055, doors[0].pivot);
-  pick(ticket, { click: () => emit(bus, 'book:open', { id: 'vol-road' }) });
+  S(new THREE.CylinderGeometry(0.009, 0.009, 0.006, 16).rotateX(Math.PI / 2), magnetM, -W / 2 - 0.02 - 0.002, DIV_Y - 0.17 + 0.024, 0.055, doors[0].pivot); // 磁铁吸在票面上沿正中的空白处，不挡字
+  pick(ticket, { click: () => {
+    if (isOpen) { emit(bus, 'fridge:close'); return; }
+    emit(bus, 'inspect:focus', { p: ticket.getWorldPosition(new THREE.Vector3()).toArray(), n: [0, 0, 1], dist: 0.2 });
+  } });
   // 便利贴：关着门时点它，镜头凑到跟前看清上面的字（开着门时它跟着门转到侧面去了，点门照常关门）
   if (noteMesh) {
     const nm = noteMesh as THREE.Mesh;
