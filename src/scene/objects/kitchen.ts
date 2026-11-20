@@ -350,9 +350,19 @@ export const kitchen: SceneObject = ({ scene, camera, tier, bus, pick, audio }) 
   }
   wok.userData.keepsStove = true;
   // 锅里的油：一张金黄的半透明圆片；热了会冒烟
-  const oilM = bin.add(new THREE.MeshStandardMaterial({ color: 0xd9a52a, roughness: 0.05, metalness: 0.1, transparent: true, opacity: 0.7, depthWrite: false }));
-  const oilDisc = new THREE.Mesh(bin.add(new THREE.CircleGeometry(0.1, 28).rotateX(-Math.PI / 2)), oilM);
-  oilDisc.position.y = 0.0035; oilDisc.visible = false; wok.add(oilDisc);
+  // 用户指出过「菜像是悬空的」：原来的油是一张平的圆片，锅是弧的——圆片边从锅底外面穿出来一圈，锅坡上的菜底下也没有油。
+  // 现在油是一层贴着锅面的薄膜（按 wokY 抬高），往外渐隐；菜底下再垫一层同样贴锅面的软阴影（锅里菜越多越深）
+  const radialAlpha = (inner: number, k = 1) => bin.add(canvasTex(128, 128, (c, w) => { const gr = c.createRadialGradient(w / 2, w / 2, 0, w / 2, w / 2, w / 2); gr.addColorStop(0, `rgba(255,255,255,${k})`); gr.addColorStop(inner, `rgba(255,255,255,${k * 0.85})`); gr.addColorStop(1, 'rgba(255,255,255,0)'); c.fillStyle = gr; c.fillRect(0, 0, w, w); }));
+  const wokFilm = (R: number, lift: number) => {
+    const g = new THREE.RingGeometry(0.0001, R, 48, 10).rotateX(-Math.PI / 2), P = g.attributes.position;
+    for (let i = 0; i < P.count; i++) P.setY(i, wokY(Math.hypot(P.getX(i), P.getZ(i))) + lift);
+    g.computeVertexNormals(); return bin.add(g);
+  };
+  const oilM = bin.add(new THREE.MeshStandardMaterial({ color: 0xd9a52a, roughness: 0.05, metalness: 0.1, transparent: true, opacity: 0.7, depthWrite: false, alphaMap: radialAlpha(0.55), polygonOffset: true, polygonOffsetFactor: -1 }));
+  const oilDisc = new THREE.Mesh(wokFilm(0.12, 0.0012), oilM);
+  oilDisc.visible = false; wok.add(oilDisc);
+  const foodShadowM = bin.add(new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0, depthWrite: false, alphaMap: radialAlpha(0.35), polygonOffset: true, polygonOffsetFactor: -2 }));
+  const foodShadow = new THREE.Mesh(wokFilm(0.15, 0.002), foodShadowM); foodShadow.visible = false; wok.add(foodShadow);
 
   // ---------------- 锅铲：微微上翘的不锈钢铲面、焊在铲面后沿的弯颈、细长柄、木把（尾端挂孔）----------------
   // 锅铲自己的坐标：原点在铲面中心的底面，铲尖朝 -z，柄往 +z、往上翘。平时挂在墙上的挂杆上，下菜开炒以后搁在锅里（柄靠在锅沿上）
@@ -580,6 +590,10 @@ export const kitchen: SceneObject = ({ scene, camera, tier, bus, pick, audio }) 
   plate.userData.keepsStove = true;
   const sauce = new THREE.Mesh(bin.add(new THREE.CircleGeometry(0.075, 24).rotateX(-Math.PI / 2)), std({ color: 0xc0391e, roughness: 0.1, transparent: true, opacity: 0.85, depthWrite: false }));
   sauce.position.y = 0.0095; sauce.visible = false; plate.add(sauce);
+  // 盘里菜底下的软阴影
+  const plateShadowM = bin.add(new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.45, depthWrite: false, alphaMap: radialAlpha(0.3) }));
+  const plateShadowMesh = new THREE.Mesh(bin.add(new THREE.CircleGeometry(0.09, 32).rotateX(-Math.PI / 2)), plateShadowM);
+  plateShadowMesh.position.y = 0.0089; plateShadowMesh.visible = false; plate.add(plateShadowMesh);
 
   // ---------------- 菜块：锅里、盘里各一组实例化网格（每样菜一个，几何各不相同；顶点色是生的样子，实例颜色乘上去管熟没熟、糊没糊）----------------
   const MAX = 64;
@@ -612,7 +626,7 @@ export const kitchen: SceneObject = ({ scene, camera, tier, bus, pick, audio }) 
   for (const k of VEGS) { const P = FOOD_GEO[k].getAttribute('position'), step = Math.max(1, Math.floor(P.count / 90)), arr: THREE.Vector3[] = []; for (let i = 0; i < P.count; i += step) arr.push(new THREE.Vector3().fromBufferAttribute(P, i)); SAMPLES[k] = arr; }
   const qL = new THREE.Quaternion(), vL = new THREE.Vector3();
   const lowOf = (c: Chunk) => { qL.setFromEuler(c.rot); let lo = 0; for (const p of SAMPLES[c.veg]) { const y = vL.copy(p).multiply(c.s).applyQuaternion(qL).y; if (y < lo) lo = y; } return c.low = -lo; };
-  const newChunk = (veg: Veg): Chunk => { const v2 = 0.82 + rnd() * 0.4, [sz, hh] = SIZE[veg]; const c: Chunk = { veg, r: Math.sqrt(rnd()) * 0.95, a: rnd() * Math.PI * 2, s: new THREE.Vector3(sz, sz, sz).multiplyScalar(v2), hh: hh * v2, low: 0, rot: randRot(veg), seed: rnd() * 10 }; lowOf(c); return c; };
+  const newChunk = (veg: Veg): Chunk => { const v2 = 0.82 + rnd() * 0.4, [sz, hh] = SIZE[veg]; const c: Chunk = { veg, r: Math.pow(rnd(), 0.8) * 0.82, a: rnd() * Math.PI * 2, s: new THREE.Vector3(sz, sz, sz).multiplyScalar(v2), hh: hh * v2, low: 0, rot: randRot(veg), seed: rnd() * 10 }; lowOf(c); return c; };
   /** 熟了以后的色调（乘在生的顶点色上）：番茄变深变软、蛋金黄、菜叶蔫绿、鸡肉从粉炒到金黄 */
   const COOKED: Record<Veg, RGB> = { tomato: [0.88, 0.8, 0.78], egg: [1, 0.9, 0.74], cabbage: [0.88, 0.94, 0.72], lettuce: [0.72, 0.84, 0.56], scallion: [0.82, 0.9, 0.7], chicken: [1.02, 0.86, 0.6] };
   const BURNT = new THREE.Color(0.11, 0.08, 0.065);
@@ -650,7 +664,7 @@ export const kitchen: SceneObject = ({ scene, camera, tier, bus, pick, audio }) 
       const sl2 = (surf(rr + 0.003) - surf(Math.max(0, rr - 0.003))) / 0.006;
       if (rr > 1e-4) { nS.set(-x / rr * sl2, 1, -z / rr * sl2).normalize(); q.premultiply(qS.setFromUnitVectors(UP, nS)); }
       const stack = (i % 4 === 0 ? 1 : 0) * 0.6 * c.hh * Math.max(0, 1 - rr / (rMax * 0.7));
-      let h = surf(rr) + c.low * 0.92 + stack + Math.max(0, Math.sin(t * 9 + c.seed * 7)) * jump * (0.5 + (c.seed % 0.5)) + lift;
+      let h = surf(rr) + c.low * 0.85 + stack + Math.max(0, Math.sin(t * 9 + c.seed * 7)) * jump * (0.5 + (c.seed % 0.5)) + lift;
       const sc = s3.copy(c.s);
       if (c.eat !== undefined) { // 被筷子夹起来：从盘里飞到嘴边、越飞越小
         const k = Math.min(1, c.eat), ke = k * k * (3 - 2 * k);
@@ -679,7 +693,7 @@ export const kitchen: SceneObject = ({ scene, camera, tier, bus, pick, audio }) 
         c.t1 = Math.min(0.97, Math.max(c.t0 + 0.25, 0.68 + rnd() * 0.24));
         c.hop = 0.025 + rnd() * 0.04;
       }
-      c.r = Math.sqrt(rnd()) * 0.95; c.a = rnd() * Math.PI * 2;
+      c.r = Math.pow(rnd(), 0.8) * 0.82; c.a = rnd() * Math.PI * 2; // 菜大多落回锅底，少数挂在锅坡上
       const sp = flip ? 1.7 : 1;
       c.spin = new THREE.Euler((rnd() - 0.5) * 7 * sp, (rnd() - 0.5) * 4 * sp, (rnd() - 0.5) * 7 * sp);
       if (FLAT(c.veg)) c.spin.x = Math.round(c.spin.x / Math.PI) * Math.PI; // 叶子翻个面还是平躺着落下
@@ -962,7 +976,7 @@ export const kitchen: SceneObject = ({ scene, camera, tier, bus, pick, audio }) 
         const target = WOK.clone().add(new THREE.Vector3(0.12, 0.2, -0.02));
         oilBottle.position.lerpVectors(OIL_HOME, target, go);
         oilBottle.rotation.set(0, 0, 2.0 * tilt);
-        if (pourT > 0.42 && pourT < 0.7) { oilDisc.visible = true; oilDisc.scale.setScalar(Math.min(1, (pourT - 0.42) / 0.25)); if (pourT - dt / 2.2 <= 0.42) noise(0.8, 500, 1.2, 0.2); }
+        if (pourT > 0.42 && pourT < 0.7) { oilDisc.visible = true; oilM.opacity = 0.7 * Math.min(1, (pourT - 0.42) / 0.25); if (pourT - dt / 2.2 <= 0.42) noise(0.8, 500, 1.2, 0.2); } // 油铺开：薄膜贴着锅面，不能缩放（缩了就离开锅面），改成慢慢显出来
         if (pourT >= 1) { pourT = -1; oil = 1; oilBottle.position.copy(OIL_HOME); oilBottle.rotation.set(0, 0, 0); refresh(); }
       }
       // 油温：有火有油慢慢热，4 秒冒烟
@@ -1049,6 +1063,8 @@ export const kitchen: SceneObject = ({ scene, camera, tier, bus, pick, audio }) 
       }
       // 锅里的菜
       soyTint = soy;
+      foodShadow.visible = pot.length > 0; foodShadowM.opacity = Math.min(1, pot.length / 24) * 0.6;
+      foodShadow.position.set(sl.x * 0.5, 0, sl.y * 0.5); // 跟着整锅菜晃
       if (pot.length) layout(wokChunks, pot, (r) => wokY(r) + 0.0045, 0.12, jump, t, stirs, burnt, u, sl.x, sl.y);
       else clearChunks(wokChunks);
       // 吃：筷子从嘴边伸下来夹住 → 带着这一筷子菜送到嘴边（菜飞向镜头、变小）→ 嚼、出声 → 筷子收走
@@ -1076,6 +1092,8 @@ export const kitchen: SceneObject = ({ scene, camera, tier, bus, pick, audio }) 
         }
       }
       // 盘里的菜：堆在中间、外圈低；糊了冒黑烟
+      plateShadowMesh.visible = !!plated && plated.list.length > 0;
+      if (plated) plateShadowM.opacity = Math.min(1, plated.list.length / 20) * 0.45;
       if (plated) {
         soyTint = plated.soy;
         layout(plateChunks, plated.list, (r) => 0.0085 + Math.max(0, 0.012 - r * 0.12), 0.085, 0, t, plated.done, plated.burnt);
