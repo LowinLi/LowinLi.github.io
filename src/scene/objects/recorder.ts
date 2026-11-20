@@ -154,24 +154,35 @@ export const recorder: SceneObject = ({ scene, tier, data, bus, pick, audio }) =
   const hubMat = std({ color: 0xf2f2f0, roughness: 0.5 });
   const slot = new THREE.Vector3(g.x + doorX, doorY, g.z + D / 2 + 0.0085);
   const upright = new THREE.Quaternion();
-  type Tape = { id: string; title: string; root: THREE.Group; hubs: THREE.Mesh[]; home: THREE.Vector3; homeQ: THREE.Quaternion; hover: boolean };
+  type Tape = { id: string; title: string; root: THREE.Group; spin: number; home: THREE.Vector3; homeQ: THREE.Quaternion; hover: boolean };
   let current: Tape | null = null;
+  // 省 draw call：几盘磁带的壳子合成一个实例化网格、转轴（每盘两个）合成另一个，每帧按磁带的位置写实例矩阵；
+  // 磁带自己的组里只剩各自贴图的标签和一块看不见的点击盒
+  const n = data.tracks.length;
+  const boxes = new THREE.InstancedMesh(tapeBox, shellMat, n); boxes.castShadow = high; boxes.frustumCulled = false;
+  const hubIm = new THREE.InstancedMesh(hub, hubMat, n * 2); hubIm.frustumCulled = false;
+  group.add(boxes, hubIm);
+  const tm = new THREE.Matrix4(), hm = new THREE.Matrix4();
+  const syncTapes = () => tapes.forEach((d, i) => {
+    d.root.updateMatrix(); boxes.setMatrixAt(i, d.root.matrix);
+    [-1, 1].forEach((s, j) => { hm.makeRotationZ(d.spin).setPosition(s * 0.0132, 0.0003, 0.0052); hubIm.setMatrixAt(i * 2 + j, tm.multiplyMatrices(d.root.matrix, hm)); });
+  });
   const tapes: Tape[] = data.tracks.map((t, i) => {
     const root = new THREE.Group();
-    const box = new THREE.Mesh(tapeBox, shellMat); box.castShadow = high;
     const label = new THREE.Mesh(face, std({ map: bin.add(tapeTexture(t.title, t.note, t.color)), roughness: 0.6, bumpScale: 0 }));
     label.position.z = 0.0047;
-    const hubs = [-1, 1].map((s) => { const m = new THREE.Mesh(hub, hubMat); m.position.set(s * 0.0132, 0.0003, 0.0052); return m; });
-    root.add(box, label, ...hubs);
+    const hit = new THREE.Mesh(tapeBox, hitMat); hit.layers.set(HIT_LAYER);
+    root.add(label, hit);
     // 平放在桌上，正面朝上，各自歪一点
     const home = new THREE.Vector3(L.tapes.x + i * 0.125, 0.0052 + (i === 1 ? 0.0002 : 0), L.tapes.z + (i % 2) * 0.045);
     const homeQ = new THREE.Quaternion().setFromEuler(new THREE.Euler(-Math.PI / 2, [0.25, -0.35, 0.5][i % 3], 0, 'YXZ'));
     root.position.copy(home); root.quaternion.copy(homeQ);
     group.add(root);
-    const tape: Tape = { id: t.id, title: t.title, root, hubs, home, homeQ, hover: false };
+    const tape: Tape = { id: t.id, title: t.title, root, spin: 0, home, homeQ, hover: false };
     pick(root, { hover(v) { tape.hover = v; }, click() { emit(bus, current === tape ? 'disc:stop' : 'disc:play', { id: t.id }); } });
     return tape;
   });
+  syncTapes();
   const props = new Batch();
   props.add(contactMaterial(bin, high ? 0.3 : 0.5), blob(0.24, 0.1), [L.tapes.x + 0.125, 0.0006, L.tapes.z + 0.02]);
   props.build(group, bin, {});
@@ -248,8 +259,9 @@ export const recorder: SceneObject = ({ scene, tier, data, bus, pick, audio }) =
           stopMusic = playTrack(audio(), d.id);
           emit(bus, 'music:state', { id: d.id, title: d.title });
         }
-        if (playing && spinning) for (const hb of d.hubs) hb.rotation.z -= dt * 2.4;
+        if (playing && spinning) d.spin -= dt * 2.4;
       }
+      syncTapes(); boxes.instanceMatrix.needsUpdate = true; hubIm.instanceMatrix.needsUpdate = true;
       // 搜台：指针以每秒 8 MHz 扫向目标，到了存一下
       if (radio && Math.abs(goal - mhz) > 0.001) {
         const step = Math.sign(goal - mhz) * Math.min(Math.abs(goal - mhz), dt * 8);

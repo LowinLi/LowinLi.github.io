@@ -90,10 +90,10 @@ export const mirror: SceneObject = ({ scene, camera, renderer, tier, bus }) => {
       frustum.setFromProjectionMatrix(pv.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
       glass.updateMatrixWorld();
       if (!frustum.intersectsObject(glass)) return;
-      // 镜头停着时倒影里只有钟摆、浮尘这类小动静：降到每 3 次才画一次
+      // 镜头停着时倒影里只有钟摆、浮尘这类小动静：降到每 10 次才画一次（mid 档约 2 次/秒）
       const e = camera.matrixWorld.elements; let same = true;
       for (let i = 0; i < 16; i++) if (Math.abs(e[i] - lastCam[i]) > 1e-5) { same = false; lastCam[i] = e[i]; }
-      if (same && ++stillSkips < 3) return;
+      if (same && ++stillSkips < 10) return;
       stillSkips = 0;
       renderReflection(renderer, scene, camera, glass.geometry, glass.material as THREE.Material, null as never);
     },

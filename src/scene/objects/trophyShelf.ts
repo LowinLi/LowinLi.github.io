@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { Bin, emit, on, type SceneObject } from '../types';
+import { Bin, emit, HIT_LAYER, on, type SceneObject } from '../types';
 import { L } from '../layout';
 import { drawAward, drawXiaozan } from '../medals';
 import { Batch, blob, canvasTex, contactMaterial, rbox, rng, speckle, usePhotoTexture } from '../util';
@@ -326,37 +326,53 @@ export const trophyShelf: SceneObject = ({ scene, tier, pick, bus, data }) => {
   ];
   // ---------------- 荣誉勋章：两座奖杯中间一排三枚，立在小支架上 ----------------
   {
-    // 图案是照着用户截图用 canvas 重画的矢量图（src/scene/medals.ts，1024 见方）：截图抠出来只有一百多像素，用户说「看不清楚」
-    const texCache = new Map<string, THREE.Texture>();
-    const tex = (name: string) => { let t = texCache.get(name); if (!t) { t = bin.add(canvasTex(1024, 1024, (c) => (name === 'xiaozan' ? drawXiaozan : drawAward)(c))); t.anisotropy = 16; texCache.set(name, t); } return t; };
+    // 图案是照着用户截图用 canvas 重画的矢量图（src/scene/medals.ts）：截图抠出来只有一百多像素，用户说「看不清楚」。
+    // 省 draw call（用户要求「优化资源消耗」）：两种图案拼进一张 2048×1024 图集，三枚的正面、背面剪影、支架、铭牌各合成一个网格，
+    // 一共 4 次 draw call（原来 12 次）；每枚勋章只留一块看不见的点击面（HIT_LAYER，相机不画）。
+    const atlas = bin.add(canvasTex(2048, 1024, (c) => { drawXiaozan(c); c.save(); c.translate(1024, 0); drawAward(c); c.restore(); }));
+    atlas.anisotropy = 16;
+    const plates = bin.add(canvasTex(256, 192, (c, w) => MEDALS.forEach((m, i) => {
+      const y = i * 64; c.fillStyle = '#1a1a1e'; c.fillRect(0, y, w, 64); c.strokeStyle = '#c9a24e'; c.lineWidth = 2; c.strokeRect(3, y + 3, w - 6, 58);
+      c.fillStyle = '#e8c878'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.font = `600 22px ${SANS}`; c.fillText(m.l1, w / 2, y + 22); c.font = `500 16px ${SANS}`; c.fillText(m.l2, w / 2, y + 46);
+    })));
     const acrylic = bin.add(new THREE.MeshStandardMaterial({ color: 0x111114, roughness: 0.15, metalness: 0.2 }));
+    const hitMat = bin.add(new THREE.MeshBasicMaterial());
     const MS = 0.08; // 勋章直径 8 厘米
+    const faces: THREE.BufferGeometry[] = [], backs: THREE.BufferGeometry[] = [], tags: THREE.BufferGeometry[] = [];
+    const sb = new Batch();
+    const uvMap = (geo: THREE.BufferGeometry, f: (u: number, v: number) => [number, number]) => {
+      const uv = geo.getAttribute('uv') as THREE.BufferAttribute;
+      for (let k = 0; k < uv.count; k++) { const [u, v] = f(uv.getX(k), uv.getY(k)); uv.setXY(k, u, v); }
+      return geo;
+    };
     MEDALS.forEach((m, i) => {
       const g = new THREE.Group(); g.position.set((i - 1) * 0.088, H, 0.088); g.rotation.y = (1 - i) * 0.12 - 0.04; root.add(g);
-      // 支架：一块底板 + 一片往后斜靠的背板
-      const sb = new Batch();
-      sb.add(acrylic, rbox(0.07, 0.005, 0.045, 0.002), [0, 0.0025, 0]);
-      sb.add(acrylic, rbox(0.03, 0.06, 0.003, 0.001), [0, 0.036, -0.016], [-0.28, 0, 0]);
-      sb.build(g, bin, { receive: tier === 'high' });
-      // 勋章：正面是抠出来的图案（略带金属光泽、一点自发光，书架那个角落偏暗）；背后一片稍大的深金色剪影当厚度和边
-      const t = tex(m.img);
-      const face = new THREE.Mesh(bin.add(new THREE.PlaneGeometry(MS, MS)), bin.add(new THREE.MeshStandardMaterial({ map: t, alphaTest: 0.5, metalness: 0.35, roughness: 0.32, emissive: 0xffffff, emissiveMap: t, emissiveIntensity: 0.18, side: THREE.FrontSide })));
-      const backM = new THREE.Mesh(bin.add(new THREE.PlaneGeometry(MS * 1.03, MS * 1.03)), bin.add(new THREE.MeshStandardMaterial({ color: 0x6b4a1e, alphaMap: t, alphaTest: 0.5, metalness: 0.7, roughness: 0.35, side: THREE.DoubleSide })));
       const holder = new THREE.Group(); holder.position.set(0, 0.006 + MS / 2, -0.004); holder.rotation.x = -0.2; g.add(holder);
-      backM.position.z = -0.0025; holder.add(backM, face);
-      // 铭牌：底板前沿一块小牌子，两行字
-      const plate = new THREE.Mesh(bin.add(new THREE.PlaneGeometry(0.06, 0.016)), bin.add(new THREE.MeshStandardMaterial({ roughness: 0.4, metalness: 0.3, map: bin.add(canvasTex(240, 64, (c, w, h) => {
-        c.fillStyle = '#1a1a1e'; c.fillRect(0, 0, w, h); c.strokeStyle = '#c9a24e'; c.lineWidth = 2; c.strokeRect(3, 3, w - 6, h - 6);
-        c.fillStyle = '#e8c878'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.font = `600 22px ${SANS}`; c.fillText(m.l1, w / 2, 22); c.font = `500 16px ${SANS}`; c.fillText(m.l2, w / 2, 46);
-      })) })));
-      plate.position.set(0, 0.0052, 0.0227); plate.rotation.x = -Math.PI / 2 + 0.5; plate.position.y = 0.009; g.add(plate);
+      g.updateMatrix(); holder.updateMatrix();
+      const hm = g.matrix.clone().multiply(holder.matrix);
+      // 支架：一块底板 + 一片往后斜靠的背板
+      sb.add(acrylic, rbox(0.07, 0.005, 0.045, 0.002).translate(0, 0.0025, 0).applyMatrix4(g.matrix));
+      sb.add(acrylic, rbox(0.03, 0.06, 0.003, 0.001).rotateX(-0.28).translate(0, 0.036, -0.016).applyMatrix4(g.matrix));
+      // 勋章正面（图集左半/右半）；背后一片稍大的深金色剪影当厚度和边
+      const off = m.img === 'xiaozan' ? 0 : 0.5;
+      faces.push(uvMap(new THREE.PlaneGeometry(MS, MS), (u, v) => [u * 0.5 + off, v]).applyMatrix4(hm));
+      backs.push(uvMap(new THREE.PlaneGeometry(MS * 1.03, MS * 1.03), (u, v) => [u * 0.5 + off, v]).translate(0, 0, -0.0025).applyMatrix4(hm));
+      // 铭牌：底板前沿一块小牌子，两行字（图集第 i 行）
+      tags.push(uvMap(new THREE.PlaneGeometry(0.06, 0.016), (u, v) => [u, 1 - (i + 1) / 3 + v / 3]).rotateX(-Math.PI / 2 + 0.5).translate(0, 0.009, 0.0227).applyMatrix4(g.matrix));
       // 点勋章：镜头凑到它跟前看（勋章只有 8 厘米，站在书架前也只有拇指大）
+      const hit = new THREE.Mesh(bin.add(new THREE.PlaneGeometry(MS, MS * 1.2)), hitMat); hit.layers.set(HIT_LAYER); holder.add(hit);
       g.userData.keepsShelf = true; g.userData.keepsInspect = true;
       pick(g, { click: () => {
-        const n = new THREE.Vector3(0, 0, 1).applyQuaternion(face.getWorldQuaternion(new THREE.Quaternion()));
-        emit(bus, 'shelf:blur'); emit(bus, 'inspect:focus', { p: face.getWorldPosition(new THREE.Vector3()).toArray(), n: n.toArray(), dist: 0.17 });
+        const n = new THREE.Vector3(0, 0, 1).applyQuaternion(hit.getWorldQuaternion(new THREE.Quaternion()));
+        emit(bus, 'shelf:blur'); emit(bus, 'inspect:focus', { p: hit.getWorldPosition(new THREE.Vector3()).toArray(), n: n.toArray(), dist: 0.17 });
       } });
     });
+    sb.build(root, bin, { receive: tier === 'high' });
+    const merged = (list: THREE.BufferGeometry[], mat: THREE.Material) => root.add(new THREE.Mesh(bin.add(mergeGeometries(list)), bin.add(mat)));
+    merged(backs, new THREE.MeshStandardMaterial({ color: 0x6b4a1e, alphaMap: atlas, alphaTest: 0.5, metalness: 0.7, roughness: 0.35, side: THREE.DoubleSide }));
+    merged(faces, new THREE.MeshStandardMaterial({ map: atlas, alphaTest: 0.5, metalness: 0.35, roughness: 0.32, emissive: 0xffffff, emissiveMap: atlas, emissiveIntensity: 0.18 }));
+    merged(tags, new THREE.MeshStandardMaterial({ roughness: 0.4, metalness: 0.3, map: plates }));
+    [...faces, ...backs, ...tags].forEach((x) => x.dispose());
   }
 
   return {

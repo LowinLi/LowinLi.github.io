@@ -15,6 +15,7 @@
  */
 import { W, H, store, ctxA, beep, boom, rr, text, panel, music, sfx, audioPrefs, type Game, type Key } from './kit';
 import { MINI, drawMiniIcon } from './minigames';
+import { fishGame, drawFishIcon } from './fish';
 export type { Key } from './kit';
 
 // ---------------- 贪吃蛇 ----------------
@@ -237,12 +238,13 @@ function plane(): Game {
 
 // ---------------- 主页 ----------------
 const GAMES: { id: string; name: string; sub: string; color: readonly string[]; make: () => Game }[] = [
+  { id: 'fish', name: '鱼吃鱼', sub: '吃小鱼长大，躲开大鱼和鲨鱼', color: ['#29b6f6', '#01579b'], make: fishGame },
   { id: 'snake', name: '贪吃蛇', sub: '吃苹果，越长越快', color: ['#4caf50', '#1b6b3a'], make: snake },
   { id: 'plane', name: '小飞机', sub: '点一下飞一下，看能飞多远', color: ['#46a6f0', '#1c5fa8'], make: plane },
   ...MINI,
 ];
 /** 每个游戏放哪首背景音乐（反应力、节奏黑块不放：一个要安静，一个自己就是曲子） */
-const BGM: Record<string, string | null> = { snake: 'bright', plane: 'chill', mole: 'bright', catch: 'bright', bricks: 'drive', runner: 'drive', reaction: null, memory: 'think', merge: 'think', stack: 'chill', pong: 'drive', tiles: null };
+const BGM: Record<string, string | null> = { fish: 'chill', snake: 'bright', plane: 'chill', mole: 'bright', catch: 'bright', bricks: 'drive', runner: 'drive', reaction: null, memory: 'think', merge: 'think', stack: 'chill', pong: 'drive', tiles: null };
 // 主页版式（640×360，真机 1280×720 的一半）：图块 128 见方、间隔 7，第一块离左边 46；圆按钮直径 40、间隔 58
 const TS = 128, TG = 7, TX0 = 46, TY = 92, BY = 272, BR = 20, BGAP = 58;
 const BTNS = [
@@ -256,11 +258,12 @@ const HS = { row: 0 as 0 | 1, btn: 0, scroll: 0, page: null as null | 'records' 
 const tileX = (i: number) => TX0 + i * (TS + TG) - HS.scroll;
 const btnX = (i: number) => W / 2 + (i - (BTNS.length - 1) / 2) * BGAP;
 const BEST_FMT: Record<string, (v: number) => string> = {
-  snake: (v) => `${v} 个苹果`, plane: (v) => `${v} 米`, mole: (v) => `${v} 分`, catch: (v) => `${v} 分`, bricks: (v) => `${v} 分`, runner: (v) => `${v} 米`,
+  fish: (v) => `${v} 分`, snake: (v) => `${v} 个苹果`, plane: (v) => `${v} 米`, mole: (v) => `${v} 分`, catch: (v) => `${v} 分`, bricks: (v) => `${v} 分`, runner: (v) => `${v} 米`,
   reaction: (v) => (v ? `${v} 毫秒` : '—'), memory: (v) => (v ? `${v} 次` : '—'), merge: (v) => `${v} 分`, stack: (v) => `${v} 层`, pong: (v) => `赢 ${v} 局`, tiles: (v) => `${v} 块`,
 };
 
 function drawIcon(g: CanvasRenderingContext2D, id: string, cx: number, cy: number, t: number) {
+  if (id === 'fish') { drawFishIcon(g, cx, cy, t); return; }
   if (id !== 'snake' && id !== 'plane') { drawMiniIcon(g, id, cx, cy, t); return; }
   if (id === 'snake') {
     g.lineCap = 'round'; g.lineJoin = 'round'; g.strokeStyle = '#d8f5b0'; g.lineWidth = 16;

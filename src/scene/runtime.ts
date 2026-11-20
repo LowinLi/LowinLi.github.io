@@ -31,6 +31,8 @@ import { cameraRig } from './objects/cameraRig';
 
 /** 场景里挂载的物件清单。新物件：在 objects/ 下建文件，然后加到这里。cameraRig 放最后。 */
 const OBJECTS: SceneObject[] = [sky, countryside, animals, room, furniture, mirror, desk, monitor, bookshelf, recorder, coffee, cups, meal, calendar, fridge, handheld, trophyShelf, basket, plants, dust, tea, kitchen, cameraRig];
+/** 调试用的名字（打包后函数名会被压缩，所以手写一份）：?prof 时按它记每个物件的耗时 */
+const OBJ_NAMES = ['sky', 'countryside', 'animals', 'room', 'furniture', 'mirror', 'desk', 'monitor', 'bookshelf', 'recorder', 'coffee', 'cups', 'meal', 'calendar', 'fridge', 'handheld', 'trophyShelf', 'basket', 'plants', 'dust', 'tea', 'kitchen', 'cameraRig'];
 
 export function start(canvas: HTMLCanvasElement, tier: Exclude<Tier, 'low'>, data: SiteData, bus: EventTarget) {
   // high 档的抗锯齿在后期处理的离屏缓冲里做（多重采样），画布本身再开一份全屏多重采样缓冲是白占显存
@@ -251,7 +253,7 @@ export function start(canvas: HTMLCanvasElement, tier: Exclude<Tier, 'low'>, dat
   };
 
   // 调试：?prof 统计每帧物件逻辑（js）和渲染提交（render）的耗时、draw call（含阴影、遮蔽、镜子的重画）
-  const prof = new URLSearchParams(location.search).has('prof') ? { n: 0, js: 0, render: 0, calls: 0 } : null;
+  const prof = new URLSearchParams(location.search).has('prof') ? { n: 0, js: 0, render: 0, calls: 0, per: {} as Record<string, number> } : null; // per：每个物件 frame() 累计耗时（毫秒）
   // ---- 加载进度（用户要的「页面没加载好的时候显示加载中，不要展示加载一半的状态」）----
   // 所有贴图、模型都走 three 的默认 LoadingManager：数它的进度，发 load:progress；
   // 「好了」= 没有在下的东西、并且 0.7 秒内没有新的下载开始、也没有新模型放进场景（scene:changed），再多画几帧（着色器编译完）。
@@ -325,7 +327,9 @@ export function start(canvas: HTMLCanvasElement, tier: Exclude<Tier, 'low'>, dat
   document.addEventListener('visibilitychange', onVis);
   renderer.setAnimationLoop((now) => {
     const idle = stillFor > 1 && now - lastInput > 6000;
-    const gap = Math.max(minGap, idle ? 25 : 10); // 60 Hz 屏：每帧都画 / 闲置隔一帧；120 Hz 屏：隔一帧 / 隔两帧（留余量，免得帧间隔抖一下就多跳一帧）
+    const away = now - lastInput;
+    // 越久没人动越省：6 秒后约 30 帧，半分钟后约 20 帧，两分钟后约 10 帧（只剩钟摆、浮尘这类慢动静，看不出来；一碰就恢复）
+    const gap = Math.max(minGap, !idle ? 10 : away > 120000 ? 95 : away > 30000 ? 45 : 25);
     if (now - last < gap) return;
     last = now;
     const raw = clock.getDelta(), dt = Math.min(raw, 0.1) / dbg.slowmo;
@@ -333,7 +337,8 @@ export function start(canvas: HTMLCanvasElement, tier: Exclude<Tier, 'low'>, dat
     const t = clock.elapsedTime;
     const t0 = performance.now();
     renderer.info.reset();
-    for (const m of mounted) m.frame(dt, t);
+    if (prof) { mounted.forEach((m, i) => { const a = performance.now(); m.frame(dt, t); const k = OBJ_NAMES[i]; prof.per[k] = (prof.per[k] ?? 0) + performance.now() - a; }); }
+    else for (const m of mounted) m.frame(dt, t);
     const t1 = performance.now();
     camera.updateMatrixWorld();
     const still = sameMat(camPrev, camera.matrixWorld) && sameMat(projPrev, camera.projectionMatrix);
@@ -361,7 +366,7 @@ export function start(canvas: HTMLCanvasElement, tier: Exclude<Tier, 'low'>, dat
   });
 
   // 暴露给 QA / 截图脚本读取的诊断信息
-  (window as any).__scene = { tier, level: 0, prof, dbg, info: renderer.info, scene, camera, bus, emit: (type: string, d?: unknown) => emit(bus, type, d),
+  (window as any).__scene = { tier, level: 0, prof, dbg, renderer, info: renderer.info, scene, camera, bus, emit: (type: string, d?: unknown) => emit(bus, type, d),
     // 调试：屏幕上某一点点下去会命中谁（命中的网格和它的点击归属）
     pickAt: (x: number, y: number) => { const r = cast({ clientX: x, clientY: y } as PointerEvent); return r && { hit: r.hit.object.type + ':' + (r.hit.object as THREE.Mesh).geometry?.type, owner: r.owner.type + ':' + r.owner.name, uuid: r.owner.uuid }; } };
   // 调试：?level=1|2 直接从某一档开始（比如想看降档后的画面）

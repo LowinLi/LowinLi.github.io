@@ -27,7 +27,8 @@ type Veg = 'tomato' | 'egg' | 'cabbage' | 'scallion' | 'lettuce' | 'chicken';
 type BasketVeg = Exclude<Veg, 'chicken'>;
 const VEG_NAME: Record<Veg, string> = { tomato: '番茄', egg: '鸡蛋', cabbage: '白菜', scallion: '葱', lettuce: '生菜', chicken: '鸡肉' };
 const VEG_COLOR: Record<Veg, number> = { tomato: 0xd8321e, egg: 0xf2c94c, cabbage: 0xd3e2a8, scallion: 0x4f9a3a, lettuce: 0x7cc24a, chicken: 0xeeb4a4 };
-const VEG_PORTION: Record<Veg, number> = { tomato: 8, egg: 9, cabbage: 15, scallion: 14, lettuce: 14, chicken: 10 };
+// 一份的块数：用户说「菜放到锅里多一点」，从 8~15 块提到 13~24 块
+const VEG_PORTION: Record<Veg, number> = { tomato: 13, egg: 14, cabbage: 24, scallion: 22, lettuce: 22, chicken: 16 };
 /** 菜谱：放进去的菜（排好序用 + 连起来）→ 菜名、基础喜欢程度（1–5）、一句评价 */
 const RECIPES: Record<string, [string, number, string]> = {
   'egg+tomato': ['西红柿炒鸡蛋', 5, '酸甜下饭，家常第一名'],
@@ -596,7 +597,7 @@ export const kitchen: SceneObject = ({ scene, camera, tier, bus, pick, audio }) 
   plateShadowMesh.position.y = 0.0089; plateShadowMesh.visible = false; plate.add(plateShadowMesh);
 
   // ---------------- 菜块：锅里、盘里各一组实例化网格（每样菜一个，几何各不相同；顶点色是生的样子，实例颜色乘上去管熟没熟、糊没糊）----------------
-  const MAX = 64;
+  const MAX = 128; // 每样菜的实例上限，也是锅里总块数上限
   const VEGS: Veg[] = ['tomato', 'egg', 'cabbage', 'lettuce', 'scallion', 'chicken'];
   const chunkMat = std({ vertexColors: true, roughness: 0.32, metalness: 0.02, side: THREE.DoubleSide });
   type ChunkSet = Record<Veg, THREE.InstancedMesh>;
@@ -1063,7 +1064,7 @@ export const kitchen: SceneObject = ({ scene, camera, tier, bus, pick, audio }) 
       }
       // 锅里的菜
       soyTint = soy;
-      foodShadow.visible = pot.length > 0; foodShadowM.opacity = Math.min(1, pot.length / 24) * 0.6;
+      foodShadow.visible = pot.length > 0; foodShadowM.opacity = Math.min(1, pot.length / 36) * 0.6;
       foodShadow.position.set(sl.x * 0.5, 0, sl.y * 0.5); // 跟着整锅菜晃
       if (pot.length) layout(wokChunks, pot, (r) => wokY(r) + 0.0045, 0.12, jump, t, stirs, burnt, u, sl.x, sl.y);
       else clearChunks(wokChunks);
