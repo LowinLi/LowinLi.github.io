@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { Bin, emit, on, type SceneObject } from '../types';
+import { mergeGeometries, mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { Bin, emit, HIT_LAYER, on, type SceneObject } from '../types';
 import { L } from '../layout';
 import { Batch, blob, canvasTex, contactMaterial, rbox, speckle, woodGrain } from '../util';
 
@@ -26,7 +27,7 @@ type Veg = 'tomato' | 'egg' | 'cabbage' | 'scallion' | 'lettuce' | 'chicken';
 type BasketVeg = Exclude<Veg, 'chicken'>;
 const VEG_NAME: Record<Veg, string> = { tomato: '番茄', egg: '鸡蛋', cabbage: '白菜', scallion: '葱', lettuce: '生菜', chicken: '鸡肉' };
 const VEG_COLOR: Record<Veg, number> = { tomato: 0xd8321e, egg: 0xf2c94c, cabbage: 0xd3e2a8, scallion: 0x4f9a3a, lettuce: 0x7cc24a, chicken: 0xeeb4a4 };
-const VEG_PORTION: Record<Veg, number> = { tomato: 7, egg: 8, cabbage: 9, scallion: 10, lettuce: 9, chicken: 9 };
+const VEG_PORTION: Record<Veg, number> = { tomato: 8, egg: 9, cabbage: 11, scallion: 14, lettuce: 11, chicken: 10 };
 /** 菜谱：放进去的菜（排好序用 + 连起来）→ 菜名、基础喜欢程度（1–5）、一句评价 */
 const RECIPES: Record<string, [string, number, string]> = {
   'egg+tomato': ['西红柿炒鸡蛋', 5, '酸甜下饭，家常第一名'],
@@ -74,6 +75,43 @@ export const kitchen: SceneObject = ({ scene, camera, tier, bus, pick, audio }) 
   const world = new THREE.Group(); scene.add(world); // 飞向锅、飞向盘子的东西
   root.updateMatrixWorld(true);
   const W = (x: number, y: number, z: number) => root.localToWorld(new THREE.Vector3(x, y, z));
+
+  // ---------------- 食材几何的小工具：顶点色画细节（果皮 / 果肉 / 籽、蛋白、菜帮、鸡皮），噪声鼓包 ----------------
+  type RGB = [number, number, number];
+  const hash3 = (x: number, y: number, z: number) => { const h = Math.sin(x * 127.1 + y * 311.7 + z * 74.7) * 43758.5453; return h - Math.floor(h); };
+  const vnoise = (x: number, y: number, z: number) => 0.5 * Math.sin(x * 2.1 + y * 1.3) * Math.sin(z * 1.7 - x * 0.9) + 0.3 * Math.sin(x * 4.3 - z * 3.1 + y * 2.7) + 0.2 * Math.sin(y * 6.1 + z * 5.3 + x * 1.1);
+  const mix3 = (a: RGB, b: RGB, t: number): RGB => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+  const mul3 = (a: RGB, k: number): RGB => [a[0] * k, a[1] * k, a[2] * k];
+  /** 法线已经算好的几何 → 去 uv、转非索引、按 f(位置, 法线) 上顶点色 */
+  const paint = (geo: THREE.BufferGeometry, f: (p: THREE.Vector3, n: THREE.Vector3) => RGB) => {
+    const g = geo.index ? geo.toNonIndexed() : geo; if (g.getAttribute('uv')) g.deleteAttribute('uv');
+    const P = g.getAttribute('position'), N = g.getAttribute('normal'), a = new Float32Array(P.count * 3), pp = new THREE.Vector3(), nn = new THREE.Vector3();
+    for (let i = 0; i < P.count; i++) { pp.fromBufferAttribute(P, i); nn.fromBufferAttribute(N, i); a.set(f(pp, nn), i * 3); }
+    g.setAttribute('color', new THREE.Float32BufferAttribute(a, 3)); return g;
+  };
+  /** 先合并顶点（不然鼓包时面会裂开），再按 fn 改每个顶点的位置，最后算光滑法线 */
+  const reshape = (geo: THREE.BufferGeometry, fn: (p: THREE.Vector3) => void) => {
+    geo.deleteAttribute('normal'); if (geo.getAttribute('uv')) geo.deleteAttribute('uv');
+    const g = mergeVertices(geo), P = g.getAttribute('position'), pp = new THREE.Vector3();
+    for (let i = 0; i < P.count; i++) { pp.fromBufferAttribute(P, i); fn(pp); P.setXYZ(i, pp.x, pp.y, pp.z); }
+    g.computeVertexNormals(); return g;
+  };
+  /** 一片菜叶（单位大小，长 1.6 沿 z、宽 2 沿 x）：叶缘不齐、整片往上兜、边上起皱；中间一道白色菜帮 */
+  const leafPiece = (ruffle: number, cup: number, base: RGB, rib: RGB, edge: RGB, seed: number) => {
+    const g = new THREE.PlaneGeometry(2, 1.6, 10, 8), P = g.getAttribute('position');
+    for (let i = 0; i < P.count; i++) {
+      let x = P.getX(i), y = P.getY(i);
+      x *= 1 + 0.12 * Math.sin(y * 6 + seed); y *= 1 + 0.1 * Math.sin(x * 5 + seed * 2);
+      const z = cup * x * x + ruffle * Math.sin(x * 9 + y * 6 + seed) * Math.max(0, Math.abs(x) - 0.35) + ruffle * 0.6 * Math.sin(y * 11 + seed) * Math.max(0, Math.abs(y) - 0.5) + 0.04 * Math.sin(y * 3 + seed);
+      P.setXYZ(i, x, y, z);
+    }
+    g.computeVertexNormals(); g.rotateX(-Math.PI / 2);
+    return paint(g, (p) => {
+      const ax = Math.abs(p.x), n = hash3(p.x * 9, p.z * 9, seed) * 0.08;
+      if (ax < 0.16) return mix3(rib, base, ax / 0.16 * 0.3);
+      return mul3(mix3(base, edge, Math.min(1, (ax - 0.16) / 0.9)), 0.96 + n);
+    });
+  };
 
   // ---------------- 灶台柜子 ----------------
   const wood = std({ roughness: 0.75, map: bin.add(canvasTex(512, 256, (g, w, h) => woodGrain(g, 0, 0, w, h, '#5a3a22', '40,22,12', 7), [1.5, 1])) });
@@ -258,7 +296,7 @@ export const kitchen: SceneObject = ({ scene, camera, tier, bus, pick, audio }) 
     return k;
   });
   // 火苗：从铜火盖侧面那圈出火孔斜着往外冒的蓝色小火舌（加色混合，轻轻跳），点着了才画
-  const flameGeo = bin.add(new THREE.ConeGeometry(0.006, 0.03, 5, 1, true).translate(0, 0.015, 0));
+  const flameGeo = bin.add(new THREE.ConeGeometry(0.006, 0.02, 5, 1, true).translate(0, 0.01, 0));
   const FL = 28;
   const flame = new THREE.InstancedMesh(flameGeo, bin.add(new THREE.MeshBasicMaterial({ color: 0x4f8cff, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false })), FL);
   flame.visible = false; flame.userData.noAO = true; flame.frustumCulled = false; root.add(flame);
@@ -335,7 +373,12 @@ export const kitchen: SceneObject = ({ scene, camera, tier, bus, pick, audio }) 
     handle.position.set(0, 0.151, 0.302); handle.rotation.x = -Math.atan2(0.058, 0.13); spatula.add(handle);
     const ring = new THREE.Mesh(bin.add(new THREE.TorusGeometry(0.0045, 0.0018, 5, 10).rotateY(Math.PI / 2)), ssteel); ring.position.copy(SP_END).add(new THREE.Vector3(0, 0.002, 0.004)); spatula.add(ring);
   }
-  spatula.userData.keepsStove = true;
+  spatula.userData.keepsStove = true; spatula.name = 'spatula'; wok.name = 'wok';
+  { // 锅铲很细，点不准：沿着铲面到柄尾套一根看不见的粗一点的点击区（HIT_LAYER，不画）
+    const dir = SP_END.clone().normalize(), hit = new THREE.Mesh(bin.add(new THREE.CylinderGeometry(0.02, 0.02, SP_END.length() + 0.06, 8)), bin.add(new THREE.MeshBasicMaterial()));
+    hit.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir); hit.position.copy(SP_END).multiplyScalar(0.5).addScaledVector(dir, -0.02);
+    hit.layers.set(HIT_LAYER); spatula.add(hit);
+  }
   // 姿势：位置 + 四元数。挂在墙上 / 搁在锅里 / 翻炒时按铲面在锅里的位置现算
   type Pose = { p: THREE.Vector3; q: THREE.Quaternion };
   const eul = new THREE.Euler(0, 0, 0, 'YXZ');
@@ -392,28 +435,122 @@ export const kitchen: SceneObject = ({ scene, camera, tier, bus, pick, audio }) 
     for (let i = 0; i < n; i++) { const k = 0.8 + 0.2 * nn.getY(i) + (Math.sin(p.getX(i) * 300 + p.getZ(i) * 170) * vary); a.set([c.r * k, c.g * k, c.b * k], i * 3); }
     g.setAttribute('color', new THREE.Float32BufferAttribute(a, 3)); g.deleteAttribute('uv'); return g;
   };
-  const mergeVeg = (parts: THREE.BufferGeometry[]) => { const bb = new Batch(['position', 'normal', 'color']); parts.forEach((p) => bb.add(vegMat, p)); const grp = new THREE.Group(); bb.build(grp, bin); return grp; };
-  const vegMeshes: Record<BasketVeg, THREE.Object3D> & { chicken?: THREE.Object3D } = {
-    cabbage: mergeVeg([shade(new THREE.SphereGeometry(0.055, 16, 12).scale(1, 0.9, 1), 0xd6e5ac, 0.08), ...[0, 1, 2, 3].map((i) => shade(new THREE.SphereGeometry(0.05, 10, 8, 0, Math.PI).scale(0.9, 1, 0.35).rotateY(i * 1.6).translate(Math.cos(i * 1.6) * 0.03, -0.005, -Math.sin(i * 1.6) * 0.03), 0x9ec36a, 0.1))]),
-    lettuce: mergeVeg([0, 1, 2, 3, 4, 5].map((i) => shade(new THREE.SphereGeometry(0.04, 10, 8, 0, Math.PI).scale(1, 0.8, 0.4).rotateX(-0.5).rotateY(i * 1.05).translate(Math.cos(i * 1.05) * 0.018, 0.01, -Math.sin(i * 1.05) * 0.018), 0x7cc24a, 0.12))),
-    tomato: mergeVeg([[0, 0], [0.065, 0.01]].map(([x, z]) => shade(new THREE.SphereGeometry(0.032, 14, 10).scale(1, 0.85, 1).translate(x, 0, z), 0xd8321e, 0.05))),
-    egg: mergeVeg([[0, 0], [0.04, 0.012], [0.02, -0.035]].map(([x, z], i) => shade(new THREE.SphereGeometry(0.02, 12, 10).scale(1, 1.3, 1).rotateZ(1.2 + i * 0.3).translate(x, 0, z), 0xf2dcc0, 0.03))),
-    scallion: mergeVeg([0, 1, 2, 3, 4].map((i) => shade(new THREE.CylinderGeometry(0.0045, 0.0045, 0.2, 6).rotateZ(Math.PI / 2 - 0.1).translate(0, i * 0.006, (i - 2) * 0.008), i % 2 ? 0x4f9a3a : 0x6cae4a, 0.05))),
+  const mergeVeg = (parts: THREE.BufferGeometry[], mat = vegMat) => { const bb = new Batch(['position', 'normal', 'color']); parts.forEach((p) => bb.add(mat, p)); const grp = new THREE.Group(); bb.build(grp, bin); return grp; };
+  const glossy = std({ vertexColors: true, roughness: 0.22 });
+  // 番茄：有棱、顶上一个小窝、五片绿萼 + 一截果柄；肩上偏橙
+  const tomatoGeo = (seed: number, r = 0.032) => {
+    const body = reshape(new THREE.SphereGeometry(1, 28, 18), (p) => {
+      const th = Math.acos(THREE.MathUtils.clamp(p.y, -1, 1)), ph = Math.atan2(p.z, p.x);
+      const rib = 1 - 0.055 * Math.pow(1 - Math.abs(Math.cos(2.5 * ph + seed)), 1.5) * Math.sin(th);
+      p.multiplyScalar(rib * r); p.y *= 0.84; p.y -= 0.006 * Math.exp(-((th / 0.4) ** 2)); p.y += 0.004 * Math.exp(-(((Math.PI - th) / 0.6) ** 2)) * 0;
+    });
+    const parts = [paint(body, (p) => { const k = 0.92 + hash3(p.x * 400, p.y * 400, p.z * 400) * 0.08; return mul3(mix3([0.8, 0.09, 0.05], [0.9, 0.36, 0.1], THREE.MathUtils.smoothstep(p.y / r, 0.35, 0.8) * 0.6), k); })];
+    for (let i = 0; i < 5; i++) {
+      const a = i * Math.PI * 2 / 5 + seed;
+      const sep = new THREE.ConeGeometry(0.0035, 0.02, 4).rotateZ(-Math.PI / 2).scale(1, 0.35, 1).translate(0.01, 0, 0).rotateZ(-0.25).rotateY(a).translate(0, r * 0.82 - 0.004, 0);
+      parts.push(paint(sep, () => [0.24, 0.46, 0.15]));
+    }
+    parts.push(paint(new THREE.CylinderGeometry(0.0022, 0.003, 0.011, 6).translate(0, r * 0.82 + 0.003, 0), () => [0.3, 0.45, 0.18]));
+    return parts;
   };
-  const VEG_POS: Record<BasketVeg, [number, number, number]> = { cabbage: [-0.05, 0.06, -0.04], lettuce: [0.05, 0.055, -0.05], tomato: [-0.07, 0.035, 0.06], egg: [0.03, 0.03, 0.07], scallion: [0.0, 0.085, 0.0] };
+  // 鸡蛋：一头大一头小，浅褐色带细斑
+  const eggGeo = () => paint(new THREE.LatheGeometry(Array.from({ length: 17 }, (_, i) => { const t = (i / 16) * Math.PI; return new THREE.Vector2(Math.max(0.0001, Math.sin(t) * 0.0195 * (1 + 0.1 * Math.cos(t))), -Math.cos(t) * 0.026); }), 20),
+    (p) => { const sp = hash3(p.x * 900, p.y * 900, p.z * 900); return sp > 0.94 ? [0.6, 0.44, 0.3] : mul3([0.84, 0.66, 0.48], 0.96 + sp * 0.05); });
+  // 大白菜：躺着放的一棵——长圆的芯 + 四层包着的叶子，下半截白、上头叶子绿、叶缘起皱、一道道白帮
+  const cabbageGeo = () => {
+    const parts: THREE.BufferGeometry[] = [];
+    const L = 0.07, R = 0.042;
+    const col = (p: THREE.Vector3): RGB => { const t = THREE.MathUtils.smoothstep(p.y / L, -0.1, 0.75); const rib = Math.pow(Math.abs(Math.cos(Math.atan2(p.z, p.x) * 3.5)), 6); return mix3(mix3([0.86, 0.88, 0.76], [0.42, 0.66, 0.22], t), [0.9, 0.92, 0.8], rib * 0.6 * (1 - t * 0.5)); };
+    parts.push(paint(reshape(new THREE.SphereGeometry(1, 20, 14), (p) => { p.set(p.x * R * 0.85, p.y * L * 0.95, p.z * R * 0.85); }), col));
+    for (let k = 0; k < 4; k++) {
+      const leaf = reshape(new THREE.SphereGeometry(1, 16, 14, 0, 2.3, 0.3, 2.5), (p) => {
+        const top = Math.max(0, p.y - 0.2);
+        const wob = 1 + 0.08 * Math.sin(Math.atan2(p.z, p.x) * 9 + p.y * 7 + k) * top;
+        p.set(p.x * R * (1 + k * 0.05) * wob, p.y * L * (1 + k * 0.02), p.z * R * (1 + k * 0.05) * wob);
+      }).rotateY(k * 1.7);
+      parts.push(paint(leaf, col));
+    }
+    return parts.map((g) => g.rotateZ(Math.PI / 2 - 0.25));
+  };
+  // 生菜：一圈往上兜、边缘大波浪的嫩叶
+  const lettuceGeo = () => {
+    const parts: THREE.BufferGeometry[] = [paint(reshape(new THREE.IcosahedronGeometry(0.018, 2), (p) => p.multiplyScalar(1 + 0.15 * vnoise(p.x * 200, p.y * 200, p.z * 200))), () => [0.62, 0.82, 0.4])];
+    for (let i = 0; i < 10; i++) {
+      const lf = leafPiece(0.28, 0.35, [0.5, 0.78, 0.28], [0.8, 0.93, 0.6], [0.36, 0.64, 0.18], i * 1.3).translate(0, 0, -0.8).rotateX(0.5 + (i % 3) * 0.25).rotateY(i * 2.4).scale(0.026, 0.026, 0.026);
+      parts.push(lf);
+    }
+    return parts;
+  };
+  // 一把葱：葱白（底下圆鼓的头和一撮须根）→ 两三根往外岔开的空心葱叶；红绳扎着
+  const scallionGeo = () => {
+    const parts: THREE.BufferGeometry[] = [];
+    for (let i = 0; i < 5; i++) {
+      const oy = (i % 2) * 0.007, oz = (i - 2) * 0.0065;
+      parts.push(paint(new THREE.CylinderGeometry(0.0042, 0.0048, 0.08, 8).rotateZ(Math.PI / 2).translate(-0.04, oy, oz), (p) => mix3([0.95, 0.96, 0.88], [0.62, 0.8, 0.45], THREE.MathUtils.smoothstep(p.x, -0.03, 0.0))));
+      parts.push(paint(new THREE.SphereGeometry(0.0058, 8, 6).scale(1.1, 1, 1).translate(-0.081, oy, oz), () => [0.96, 0.95, 0.88]));
+      for (let r2 = 0; r2 < 4; r2++) parts.push(paint(new THREE.CylinderGeometry(0.0005, 0.0006, 0.014, 3).rotateZ(Math.PI / 2 + (r2 - 1.5) * 0.35).translate(-0.092, oy + (r2 - 1.5) * 0.002, oz), () => [0.86, 0.8, 0.66]));
+      for (let l = 0; l < 2; l++) {
+        const lf = new THREE.CylinderGeometry(0.0011, 0.0038, 0.13, 6).rotateZ(-Math.PI / 2).translate(0.065, 0, 0).rotateY((l - 0.5) * 0.12 + (i - 2) * 0.04).rotateZ((l - 0.5) * 0.08).translate(0, oy, oz);
+        parts.push(paint(lf, (p) => mul3(mix3([0.45, 0.7, 0.32], [0.24, 0.52, 0.16], THREE.MathUtils.smoothstep(p.x, 0, 0.08)), 0.95 + 0.05 * Math.sin(p.x * 300))));
+      }
+    }
+    parts.push(paint(new THREE.TorusGeometry(0.013, 0.0013, 5, 18).rotateY(Math.PI / 2).translate(-0.02, 0.003, 0), () => [0.75, 0.1, 0.08]));
+    return parts;
+  };
+  const vegMeshes: Record<BasketVeg, THREE.Object3D> & { chicken?: THREE.Object3D } = {
+    cabbage: mergeVeg(cabbageGeo()),
+    lettuce: mergeVeg(lettuceGeo()),
+    tomato: mergeVeg([...tomatoGeo(0.3), ...tomatoGeo(1.7).map((g) => g.rotateZ(0.5).translate(0.065, 0, 0.01))], glossy),
+    egg: mergeVeg([[0, 0], [0.04, 0.012], [0.02, -0.035]].map(([x, z], i) => eggGeo().rotateZ(1.25 + i * 0.25).rotateY(i * 1.1).translate(x, 0, z)), glossy),
+    scallion: mergeVeg(scallionGeo().map((g) => g.rotateY(0.15))),
+  };
+  const VEG_POS: Record<BasketVeg, [number, number, number]> = { cabbage: [-0.04, 0.05, -0.045], lettuce: [0.06, 0.045, -0.05], tomato: [-0.075, 0.032, 0.055], egg: [0.03, 0.026, 0.07], scallion: [-0.02, 0.07, -0.085] };
   (Object.keys(VEG_POS) as BasketVeg[]).forEach((k) => {
     const m = vegMeshes[k]; const [x, y, z] = VEG_POS[k];
     m.position.set(BASKET.x + x, TOP + y, BASKET.z + z); m.userData.keepsStove = true; root.add(m);
+    if (k === 'scallion') m.rotation.z = 0.32; // 一把葱斜靠在筐的后沿上，葱叶探出筐外，不压着别的菜
     pick(m, { click: () => onVeg(k) });
   });
 
-  // ---------------- 鸡肉：窗外抓回来的鸡，一盘切好的生鸡块（粉色的块 + 一点鸡皮的浅黄），抓到才出现 ----------------
+  // ---------------- 切好下锅的菜块（单位大小，锅里、盘里的实例化网格用）----------------
+  const FOOD_GEO: Record<Veg, THREE.BufferGeometry> = (() => {
+    // 番茄瓣：一瓣球面的皮 + 两个切面（外圈红果肉、中间一圈带籽的果胶）
+    const WA = 1.05;
+    const cut = (rot: number) => new THREE.RingGeometry(0.001, 1, 10, 6, -Math.PI / 2, Math.PI).rotateY(rot);
+    const tomatoCol = (p: THREE.Vector3): RGB => {
+      const d = p.length();
+      if (d > 0.97) return mul3([0.82, 0.11, 0.06], 0.94 + hash3(p.x * 50, p.y * 50, p.z * 50) * 0.08);
+      if (d > 0.82) return [0.86, 0.2, 0.11];
+      if (d > 0.4 && d < 0.76 && Math.abs(p.y) < 0.62) return hash3(p.x * 31, p.y * 31, p.z * 31) > 0.72 ? [0.96, 0.86, 0.52] : [0.95, 0.5, 0.25];
+      return [0.9, 0.32, 0.18];
+    };
+    const tomato = mergeGeometries([new THREE.SphereGeometry(1, 8, 10, 0, WA), cut(Math.PI), cut(Math.PI + WA)].map((g) => paint(g, tomatoCol)))!.scale(1, 0.9, 1);
+    // 炒蛋：一团团蓬松、皱巴巴的蛋块，黄里夹着没炒匀的蛋白、底下有一点焦黄
+    const egg = paint(reshape(new THREE.IcosahedronGeometry(1, 3), (p) => { const k = 1 + 0.3 * vnoise(p.x * 2.4, p.y * 2.4, p.z * 2.4); p.multiplyScalar(k); p.y *= 0.55; }),
+      (p, n) => { const w = vnoise(p.x * 3 + 5, p.y * 3, p.z * 3 - 2); const c: RGB = w > 0.5 ? [0.97, 0.93, 0.8] : mix3([0.98, 0.72, 0.16], [0.99, 0.82, 0.3], hash3(p.x * 20, p.y * 20, p.z * 20)); return n.y < -0.5 ? mix3(c, [0.86, 0.58, 0.24], 0.5) : c; });
+    const cabbage = leafPiece(0.08, 0.28, [0.86, 0.92, 0.66], [0.97, 0.97, 0.9], [0.62, 0.78, 0.38], 2.3);
+    const lettuce = leafPiece(0.24, 0.18, [0.45, 0.74, 0.25], [0.78, 0.92, 0.55], [0.3, 0.58, 0.15], 4.1);
+    // 葱段：空心的小管，顺着一道道浅色的细纹
+    const scallion = paint(new THREE.CylinderGeometry(1, 1, 2.6, 10, 1, true).rotateZ(Math.PI / 2), (p) => mul3([0.3, 0.6, 0.21], 0.86 + 0.14 * Math.sin(Math.atan2(p.z, p.y) * 8)));
+    // 鸡块：圆角、鼓鼓囊囊的肉块，一面带鸡皮（浅黄、有毛孔），肉上有顺着的肌理
+    const chicken = paint(reshape(new THREE.BoxGeometry(1.5, 1.1, 1.25, 4, 3, 4), (p) => {
+      const sph = p.clone().normalize().multiplyScalar(0.78); p.lerp(sph, 0.35); p.multiplyScalar(1 + 0.12 * vnoise(p.x * 2.5, p.y * 2.5, p.z * 2.5));
+    }), (p, n) => n.y > 0.45 ? mul3([0.9, 0.76, 0.52], hash3(p.x * 40, p.y * 40, p.z * 40) > 0.85 ? 0.88 : 1) : mul3([0.8, 0.42, 0.37], 0.92 + 0.08 * Math.sin(p.x * 24 + p.z * 6)));
+    return { tomato, egg, cabbage, lettuce, scallion, chicken };
+  })();
+  Object.values(FOOD_GEO).forEach((g) => bin.add(g));
+
+  // ---------------- 鸡肉：窗外抓回来的鸡，一盘切好的生鸡块 + 一只鸡腿，抓到才出现 ----------------
   let chickenStock = 0;
   const meat = new THREE.Group(); meat.position.set(0.3, TOP, 0.2); meat.visible = false; meat.userData.keepsStove = true; root.add(meat);
   {
     const dish = new THREE.LatheGeometry([[0, 0.003], [0.07, 0.003], [0.085, 0.014], [0.088, 0.016], [0, 0.006]].map(([r2, y]) => new THREE.Vector2(r2, y)), 28);
     const parts = [shade(dish, 0xf3f1ea, 0.01)];
-    for (let i = 0; i < 9; i++) { const a = i * 2.4, rr = 0.02 + (i % 3) * 0.018; parts.push(shade(new THREE.BoxGeometry(0.022, 0.014, 0.018, 2, 1, 2).rotateY(a).translate(Math.cos(a) * rr, 0.016 + (i % 2) * 0.006, Math.sin(a) * rr), i % 4 === 0 ? 0xf2dcb0 : 0xeeb0a0, 0.08)); }
+    for (let i = 0; i < 7; i++) { const a = i * 2.4, rr = 0.018 + (i % 3) * 0.016, sc = 0.012 + (i % 3) * 0.0015; parts.push(FOOD_GEO.chicken.clone().scale(sc, sc, sc).rotateY(a * 1.7).translate(Math.cos(a) * rr - 0.01, 0.016 + (i % 2) * 0.005, Math.sin(a) * rr)); }
+    // 鸡腿：躺在盘边，一头露着骨头
+    const leg = paint(new THREE.LatheGeometry([[0, 0], [0.0045, 0.001], [0.005, 0.012], [0.0045, 0.022], [0.008, 0.032], [0.014, 0.046], [0.016, 0.06], [0.012, 0.072], [0, 0.076]].map(([r2, y]) => new THREE.Vector2(r2, y)), 14),
+      (p2) => p2.y < 0.011 ? [0.93, 0.9, 0.82] : mul3([0.88, 0.7, 0.48], hash3(p2.x * 500, p2.y * 500, p2.z * 500) > 0.88 ? 0.9 : 1));
+    parts.push(leg.rotateZ(Math.PI / 2 - 0.1).rotateY(0.6).translate(0.035, 0.024, 0.03));
     meat.add(mergeVeg(parts));
   }
   vegMeshes.chicken = meat;
@@ -437,72 +574,89 @@ export const kitchen: SceneObject = ({ scene, camera, tier, bus, pick, audio }) 
   const sauce = new THREE.Mesh(bin.add(new THREE.CircleGeometry(0.075, 24).rotateX(-Math.PI / 2)), std({ color: 0xc0391e, roughness: 0.1, transparent: true, opacity: 0.85, depthWrite: false }));
   sauce.position.y = 0.0095; sauce.visible = false; plate.add(sauce);
 
-  // ---------------- 菜块：锅里、盘里各一个实例化网格 ----------------
-  const MAX = 48;
-  const chunkGeo = bin.add(new THREE.IcosahedronGeometry(1, 1));
-  const chunkMat = std({ roughness: 0.35, metalness: 0.05 });
-  const makeChunks = (parent: THREE.Object3D) => {
-    const im = new THREE.InstancedMesh(chunkGeo, chunkMat, MAX); im.count = 0; im.frustumCulled = false; parent.add(im);
-    im.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(MAX * 3), 3);
-    return im;
+  // ---------------- 菜块：锅里、盘里各一组实例化网格（每样菜一个，几何各不相同；顶点色是生的样子，实例颜色乘上去管熟没熟、糊没糊）----------------
+  const MAX = 64;
+  const VEGS: Veg[] = ['tomato', 'egg', 'cabbage', 'lettuce', 'scallion', 'chicken'];
+  const chunkMat = std({ vertexColors: true, roughness: 0.32, metalness: 0.02, side: THREE.DoubleSide });
+  type ChunkSet = Record<Veg, THREE.InstancedMesh>;
+  const makeChunks = (parent: THREE.Object3D): ChunkSet => {
+    const set = {} as ChunkSet;
+    for (const k of VEGS) {
+      const im = new THREE.InstancedMesh(FOOD_GEO[k], chunkMat, MAX); im.count = 0; im.visible = false; im.frustumCulled = false;
+      im.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(MAX * 3).fill(1), 3);
+      parent.add(im); set[k] = im;
+    }
+    return set;
   };
   const wokChunks = makeChunks(wok), plateChunks = makeChunks(plate);
-  /** 一块菜：r（0–1，按锅的半径算）、a 角度；翻炒时从 (fr, fa) 被铲起、在空中翻个身落到 (r, a)（时间按翻炒进度 u 算，t0–t1） */
-  type Chunk = { veg: Veg; r: number; a: number; s: THREE.Vector3; rot: THREE.Euler; seed: number; fr?: number; fa?: number; t0?: number; t1?: number; hop?: number; spin?: THREE.Euler; frot?: THREE.Euler };
+  const clearChunks = (set: ChunkSet) => { for (const k of VEGS) { set[k].count = 0; set[k].visible = false; } };
+  /** 一块菜：r（0–1，按锅的半径算）、a 角度、hh 半高；翻炒 / 颠勺时从 (fr, fa) 被抛起、在空中翻个身落到 (r, a)（时间按动作进度 u 算，t0–t1） */
+  type Chunk = { veg: Veg; r: number; a: number; s: THREE.Vector3; hh: number; rot: THREE.Euler; seed: number; fr?: number; fa?: number; t0?: number; t1?: number; hop?: number; spin?: THREE.Euler; frot?: THREE.Euler };
   let pot: Chunk[] = [];
-  const scaleFor = (veg: Veg, r: () => number) => veg === 'tomato' ? new THREE.Vector3(0.016, 0.011, 0.013).multiplyScalar(0.85 + r() * 0.4)
-    : veg === 'egg' ? new THREE.Vector3(0.017, 0.01, 0.015).multiplyScalar(0.8 + r() * 0.5)
-    : veg === 'scallion' ? new THREE.Vector3(0.006, 0.005, 0.012).multiplyScalar(0.8 + r() * 0.4)
-    : veg === 'chicken' ? new THREE.Vector3(0.015, 0.011, 0.013).multiplyScalar(0.85 + r() * 0.35)
-    : new THREE.Vector3(0.024, 0.0035, 0.018).multiplyScalar(0.8 + r() * 0.5);
+  const SIZE: Record<Veg, [number, number]> = { tomato: [0.019, 0.014], egg: [0.021, 0.011], cabbage: [0.02, 0.004], lettuce: [0.02, 0.004], scallion: [0.0055, 0.005], chicken: [0.014, 0.009] };
   let seedN = 1;
   const rnd = () => { seedN = (seedN * 16807) % 2147483647; return seedN / 2147483647; };
-  /** 颜色：熟的程度 0–3 慢慢变深一点、变亮油；糊了变成焦黑 */
+  const FLAT = (v: Veg) => v === 'cabbage' || v === 'lettuce' || v === 'scallion';
+  /** 叶子、葱段基本平躺着（随便转个方向，稍微歪一点）；块状的随便滚 */
+  const randRot = (v: Veg, out = new THREE.Euler()) => FLAT(v) ? out.set((rnd() - 0.5) * 0.8, rnd() * 6.3, (rnd() - 0.5) * 0.8) : out.set(rnd() * 6.3, rnd() * 6.3, rnd() * 6.3);
+  const newChunk = (veg: Veg): Chunk => { const v2 = 0.82 + rnd() * 0.4, [sz, hh] = SIZE[veg]; return { veg, r: Math.sqrt(rnd()) * 0.95, a: rnd() * Math.PI * 2, s: new THREE.Vector3(sz, sz, sz).multiplyScalar(v2), hh: hh * v2, rot: randRot(veg), seed: rnd() * 10 }; };
+  /** 熟了以后的色调（乘在生的顶点色上）：番茄变深变软、蛋金黄、菜叶蔫绿、鸡肉从粉炒到金黄 */
+  const COOKED: Record<Veg, RGB> = { tomato: [0.88, 0.8, 0.78], egg: [1, 0.9, 0.74], cabbage: [0.88, 0.94, 0.72], lettuce: [0.72, 0.84, 0.56], scallion: [0.82, 0.9, 0.7], chicken: [1.02, 0.86, 0.6] };
+  const BURNT = new THREE.Color(0.11, 0.08, 0.065);
   const chunkColor = (c: Chunk, done: number, burnt: number, out: THREE.Color) => {
-    out.setHex(VEG_COLOR[c.veg]);
-    if (c.veg === 'egg') out.lerp(new THREE.Color(0xe8a93a), done * 0.12);
-    else if (c.veg === 'cabbage' || c.veg === 'lettuce') out.lerp(new THREE.Color(0x8aa84a), done * 0.12);
-    else if (c.veg === 'tomato') out.lerp(new THREE.Color(0xb3200f), done * 0.12);
-    else if (c.veg === 'chicken') out.lerp(new THREE.Color(0xc98a4a), Math.min(1, done * 0.3)); // 生鸡肉的粉色炒成金黄
-    out.multiplyScalar(0.92 + (c.seed % 1) * 0.16);
-    return out.lerp(new THREE.Color(0x1d140e), burnt);
+    const k = Math.min(1, done / 3), ck = COOKED[c.veg], v2 = 0.92 + (c.seed % 1) * 0.16;
+    out.setRGB(1 + (ck[0] - 1) * k, 1 + (ck[1] - 1) * k, 1 + (ck[2] - 1) * k).multiplyScalar(v2);
+    if (c.veg === 'scallion' && c.seed % 1 < 0.3) out.multiply(tmpPale); // 三成是葱白段
+    return out.lerp(BURNT, burnt);
   };
-  const tmpC = new THREE.Color();
+  const tmpC = new THREE.Color(), tmpPale = new THREE.Color(2.5, 1.5, 3.3);
   const eA = new THREE.Euler(), qA = new THREE.Quaternion(), qB = new THREE.Quaternion();
-  const layout = (im: THREE.InstancedMesh, list: Chunk[], surf: (r: number) => number, rMax: number, jump: number, t: number, done: number, burnt: number, u = -1) => {
-    im.count = list.length;
+  const idx: Record<Veg, number> = { tomato: 0, egg: 0, cabbage: 0, lettuce: 0, scallion: 0, chicken: 0 };
+  /** 摆菜：surf(r) 是表面高度；u ≥ 0 时按每块的 t0–t1 抛起翻身；slx/slz 是整锅菜被晃到一边的量（锅壁处会顺着往上爬） */
+  const layout = (set: ChunkSet, list: Chunk[], surf: (r: number) => number, rMax: number, jump: number, t: number, done: number, burnt: number, u = -1, slx = 0, slz = 0) => {
+    for (const k of VEGS) idx[k] = 0;
     list.forEach((c, i) => {
-      let rr = c.r * rMax, ang = c.a, lift = 0;
+      let x = Math.cos(c.a) * c.r * rMax, z = Math.sin(c.a) * c.r * rMax, lift = 0;
       q.setFromEuler(c.rot);
       if (u >= 0 && c.t0 !== undefined && c.t1 !== undefined && c.fr !== undefined && c.fa !== undefined) {
-        // 被铲起来：先贴着锅面往前推一小段，再抛起、翻身、落到新位置
         const k = THREE.MathUtils.clamp((u - c.t0) / (c.t1 - c.t0), 0, 1), ke = k * k * (3 - 2 * k);
-        const x0 = Math.cos(c.fa) * c.fr * rMax, z0 = Math.sin(c.fa) * c.fr * rMax, x1 = Math.cos(c.a) * rr, z1 = Math.sin(c.a) * rr;
-        const x = x0 + (x1 - x0) * ke, z = z0 + (z1 - z0) * ke;
-        rr = Math.hypot(x, z); ang = Math.atan2(z, x);
+        const x0 = Math.cos(c.fa) * c.fr * rMax, z0 = Math.sin(c.fa) * c.fr * rMax;
+        x = x0 + (x - x0) * ke; z = z0 + (z - z0) * ke;
         lift = Math.sin(k * Math.PI) * (c.hop ?? 0.03);
         if (c.frot && c.spin) { qA.setFromEuler(c.frot); qB.setFromEuler(eA.set(c.rot.x + c.spin.x * (1 - ke), c.rot.y + c.spin.y * (1 - ke), c.rot.z + c.spin.z * (1 - ke))); q.copy(qA).slerp(qB, ke); }
       }
-      const h = surf(Math.min(rr, rMax)) + c.s.y * 0.8 + (i % 3) * 0.004 * (1 - rr / rMax) + Math.max(0, Math.sin(t * 9 + c.seed * 7)) * jump * (0.5 + (c.seed % 0.5)) + lift;
-      v.set(Math.cos(ang) * rr, h, Math.sin(ang) * rr);
+      // 晃：每块跟得不一样多，在锅底的跟得多、已经在锅壁上的少
+      const w = (0.65 + 0.55 * ((c.seed * 3.7) % 1)) * (lift > 0.004 ? 0.3 : 1);
+      x += slx * w; z += slz * w;
+      let rr = Math.hypot(x, z); const lim = rMax * 1.25; if (rr > lim) { x *= lim / rr; z *= lim / rr; rr = lim; }
+      const h = surf(rr) + c.hh + (i % 3) * 0.0035 * Math.max(0, 1 - rr / rMax) + Math.max(0, Math.sin(t * 9 + c.seed * 7)) * jump * (0.5 + (c.seed % 0.5)) + lift;
+      v.set(x, h, z);
+      const im = set[c.veg], j = idx[c.veg]++;
       m4.compose(v, q, s3.copy(c.s));
-      im.setMatrixAt(i, m4);
-      im.setColorAt(i, chunkColor(c, done, burnt, tmpC));
+      im.setMatrixAt(j, m4);
+      im.setColorAt(j, chunkColor(c, done, burnt, tmpC));
     });
-    im.instanceMatrix.needsUpdate = true; if (im.instanceColor) im.instanceColor.needsUpdate = true;
+    for (const k of VEGS) { const im = set[k]; im.count = idx[k]; im.visible = idx[k] > 0; if (idx[k]) { im.instanceMatrix.needsUpdate = true; im.instanceColor!.needsUpdate = true; } }
   };
-  /** 开始翻一下：每块菜记下现在的位置，挑一个新位置；铲子从靠人那边推到对面，所以离人近的先被铲到、对面的最后被翻回来 */
-  const tossPlan = () => {
+  /** 开始翻 / 颠一下：每块菜记下现在的位置，挑一个新位置。
+   *  翻（锅铲从靠人那边推到对面）：离人近的先被铲到，对面的最后翻回来，抛得低；
+   *  颠勺：整锅差不多同时腾空，抛得高、翻得猛 */
+  const tossPlan = (flip: boolean) => {
     const hx = Math.sin(STROKE_YAW), hz = Math.cos(STROKE_YAW);
     for (const c of pot) {
       c.fr = c.r; c.fa = c.a; c.frot = c.rot.clone();
-      const proj = (Math.cos(c.a) * hx + Math.sin(c.a) * hz) * c.r; // -1（对面）… 1（靠人）
-      c.t0 = 0.2 + 0.32 * (1 - (proj + 1) / 2) + rnd() * 0.04;
-      c.t1 = Math.min(0.97, Math.max(c.t0 + 0.25, 0.68 + rnd() * 0.24));
-      c.hop = 0.025 + rnd() * 0.04;
+      if (flip) { c.t0 = 0.3 + rnd() * 0.08; c.t1 = 0.74 + rnd() * 0.2; c.hop = 0.07 + rnd() * 0.06; }
+      else {
+        const proj = (Math.cos(c.a) * hx + Math.sin(c.a) * hz) * c.r; // -1（对面）… 1（靠人）
+        c.t0 = 0.2 + 0.32 * (1 - (proj + 1) / 2) + rnd() * 0.04;
+        c.t1 = Math.min(0.97, Math.max(c.t0 + 0.25, 0.68 + rnd() * 0.24));
+        c.hop = 0.025 + rnd() * 0.04;
+      }
       c.r = Math.sqrt(rnd()) * 0.95; c.a = rnd() * Math.PI * 2;
-      c.spin = new THREE.Euler((rnd() - 0.5) * 7, (rnd() - 0.5) * 4, (rnd() - 0.5) * 7);
-      c.rot.set(rnd() * 6.3, rnd() * 6.3, rnd() * 6.3);
+      const sp = flip ? 1.7 : 1;
+      c.spin = new THREE.Euler((rnd() - 0.5) * 7 * sp, (rnd() - 0.5) * 4 * sp, (rnd() - 0.5) * 7 * sp);
+      if (FLAT(c.veg)) c.spin.x = Math.round(c.spin.x / Math.PI) * Math.PI; // 叶子翻个面还是平躺着落下
+      randRot(c.veg, c.rot);
     }
   };
 
@@ -551,7 +705,12 @@ export const kitchen: SceneObject = ({ scene, camera, tier, bus, pick, audio }) 
   let phase: 'prep' | 'cooking' | 'plating' = 'prep';
   let ct = 0, stirs = 0, nextPrompt = 3, prompt = false, promptAt = 0, burnt = 0, oilCold = false;
   const reactions: number[] = [];
-  let pourT = -1, stirT = -1, plateT = -1;
+  let pourT = -1, stirT = -1, plateT = -1, tossT = -1, flips = 0;
+  let queued: 'stir' | 'toss' | null = null;
+  // 整锅菜被晃到一边的量（锅局部坐标的 x、z）：弹簧追着目标走，所以推一下、颠一下以后会来回晃几下
+  const sl = new THREE.Vector2(), slV = new THREE.Vector2(), slT = new THREE.Vector2();
+  const DIRH = new THREE.Vector3(Math.sin(WOK_HY), 0, Math.cos(WOK_HY)), TILT_AX = new THREE.Vector3(DIRH.z, 0, -DIRH.x);
+  const wokOff = new THREE.Vector3(), wokQ = new THREE.Quaternion(), qT = new THREE.Quaternion(), X_AX = new THREE.Vector3(1, 0, 0);
   const stirFrom: Pose = { p: new THREE.Vector3(), q: new THREE.Quaternion() };
   const tmpPose: Pose = { p: new THREE.Vector3(), q: new THREE.Quaternion() };
   let plated: { list: Chunk[]; done: number; burnt: number; tomato: boolean; smoke: number } | null = null;
@@ -562,8 +721,8 @@ export const kitchen: SceneObject = ({ scene, camera, tier, bus, pick, audio }) 
     if (phase === 'plating') return '出锅……';
     if (phase === 'cooking') {
       if (!fire) return '火关了，菜在锅里等着 · 拧旋钮点火接着炒';
-      if (prompt) return '翻一下！点炒勺（或锅）';
-      return `炒着呢……（翻了 ${stirs}/3 次）${stirs === 0 ? ' · 还能再放菜' : ''}`;
+      if (prompt) return '翻一下！点锅铲';
+      return `炒着呢……（翻了 ${stirs}/3 次${flips ? ` · 颠了 ${flips} 下勺` : ''}）${stirs === 0 ? ' · 还能再放菜' : ''} · 点锅能颠勺`;
     }
     if (!fire && !oil) return '拧灶台前面左边的旋钮点火';
     if (!oil) return '点油壶，往锅里倒油';
@@ -600,16 +759,18 @@ export const kitchen: SceneObject = ({ scene, camera, tier, bus, pick, audio }) 
     const to = wok.localToWorld(new THREE.Vector3(0, 0.05, 0));
     flies.push({ obj: fly, from: fly.position.clone(), to, t: 0, done: () => {
       world.remove(fly);
-      for (let i = 0; i < VEG_PORTION[k]; i++) pot.push({ veg: k, r: Math.sqrt(rnd()) * 0.95, a: rnd() * Math.PI * 2, s: scaleFor(k, rnd), rot: new THREE.Euler(rnd() * 3, rnd() * 3, rnd() * 3), seed: rnd() * 10 });
+      for (let i = 0; i < VEG_PORTION[k]; i++) pot.push(newChunk(k));
       noise(0.6, 3000, 0.5, 0.4, 'highpass'); // 下锅「刺啦」一声
-      if (phase === 'prep') { phase = 'cooking'; ct = 0; stirs = 0; nextPrompt = 3; prompt = false; burnt = 0; reactions.length = 0; oilCold = heat < 1; }
+      if (phase === 'prep') { phase = 'cooking'; ct = 0; stirs = 0; flips = 0; nextPrompt = 3; prompt = false; burnt = 0; reactions.length = 0; oilCold = heat < 1; }
+      slV.x += (rnd() - 0.5) * 0.4; slV.y += 0.3; // 菜落进锅里，整锅晃一下
       refresh();
     } });
   };
   const onStir = () => {
     if (!focused) { emit(bus, 'stove:focus'); return; } ensureAudio();
-    if (phase !== 'cooking' || stirT >= 0) { if (phase === 'prep') { say('先点火倒油、下菜，再用锅铲翻'); setTimeout(refresh, 1500); } return; }
-    stirT = 0; stirFrom.p.copy(spatula.position); stirFrom.q.copy(spatula.quaternion); tossPlan();
+    if (phase === 'cooking' && (stirT >= 0 || tossT >= 0)) { queued = stirT >= 0 ? null : 'stir'; return; } // 正在颠勺：颠完马上翻
+    if (phase !== 'cooking') { if (phase === 'prep') { say('先点火倒油、下菜，再用锅铲翻'); setTimeout(refresh, 1500); } return; }
+    stirT = 0; stirFrom.p.copy(spatula.position); stirFrom.q.copy(spatula.quaternion); tossPlan(false);
     noise(0.45, 1800, 0.8, 0.12, 'bandpass', 0.12); // 铲子刮锅底「嚓」
     tone(620, 0.07, 0.05, 0.5, 420, 'triangle'); noise(0.4, 3200, 0.6, 0.3, 'highpass', 0.5); // 翻过来、菜落回锅里「刺啦」
     if (prompt) {
@@ -619,20 +780,32 @@ export const kitchen: SceneObject = ({ scene, camera, tier, bus, pick, audio }) 
     }
     refresh();
   };
+  /** 颠勺（用户要的「点炒锅颠勺，能适当增加菜品红心」）：锅往前一送、猛地往回一带、远边抬起，整锅菜腾空翻个身落回来。
+   *  一锅里颠满两下，出锅多一颗心（最多 5 颗）；不算「翻一下」，提醒了还得用锅铲翻 */
+  const onToss = () => {
+    if (!focused) { emit(bus, 'stove:focus'); return; } ensureAudio();
+    if (phase !== 'cooking') { if (phase === 'prep') { say(oil ? '锅里还没菜 · 下了菜再颠勺' : '先点火、倒油、下菜，再颠勺'); setTimeout(refresh, 1500); } return; }
+    if (tossT >= 0 || stirT >= 0) { queued = tossT >= 0 ? null : 'toss'; return; } // 锅铲还在翻：翻完马上颠
+    tossT = 0; flips++; tossPlan(true);
+    noise(0.35, 380, 0.7, 0.25, 'lowpass', 0.12); // 锅底擦过锅架「呼」的一下
+    noise(0.5, 3400, 0.6, 0.35, 'highpass', 0.62); // 落回锅里「刺啦」
+    tone(520, 0.06, 0.04, 0.6, 380, 'triangle');
+    refresh();
+  };
   const onPlate = () => {
     if (!focused) { emit(bus, 'stove:focus'); return; }
-    if (plated && phase !== 'plating') { plated = null; plateChunks.count = 0; sauce.visible = false; emit(bus, 'dish:hide'); say('盘子收拾干净了'); setTimeout(refresh, 1300); }
+    if (plated && phase !== 'plating') { plated = null; clearChunks(plateChunks); sauce.visible = false; emit(bus, 'dish:hide'); say('盘子收拾干净了'); setTimeout(refresh, 1300); }
   };
   knobs.forEach((k) => pick(k, { click: onKnob }));
   pick(oilBottle, { click: onOil });
   pick(spatula, { click: onStir });
-  pick(wok, { click: onStir });
+  pick(wok, { click: onToss });
   pick(plate, { click: onPlate });
 
   /** 出锅：锅里的菜飞到盘子上；算菜名和喜欢程度，发 dish:show */
   const finish = (isBurnt: boolean) => {
     if (phase !== 'cooking') return;
-    phase = 'plating'; prompt = false; spatGlow.emissiveIntensity = 0;
+    phase = 'plating'; prompt = false; queued = null; spatGlow.emissiveIntensity = 0;
     const set = vegIn();
     const [name0, base, comment0] = recipeOf(set);
     let hearts = base, comment = comment0, name = name0;
@@ -643,6 +816,7 @@ export const kitchen: SceneObject = ({ scene, camera, tier, bus, pick, audio }) 
       if (oilCold) { hearts--; notes.push('油还没热就下锅了，有点粘'); }
       if (avg > 1.3) { hearts--; notes.push('翻得慢了点，有点焦边'); }
       else if (avg < 0.7 && !oilCold) notes.push('火候正好');
+      if (flips >= 2) { hearts++; notes.push(`颠了 ${flips} 下勺，锅气十足`); }
       hearts = Math.max(1, Math.min(5, hearts));
       if (notes.length) comment = `${comment0}。${notes.join('，')}`;
     }
@@ -659,7 +833,7 @@ export const kitchen: SceneObject = ({ scene, camera, tier, bus, pick, audio }) 
       emit(bus, 'dish:show', { name, hearts, comment, burnt: isBurnt });
       // 一锅做完：关火、锅里的油用完了
       setFire(false); oil = 0; heat = 0; oilDisc.visible = false;
-      phase = 'prep'; burnt = 0; wokChunks.count = 0;
+      phase = 'prep'; burnt = 0; clearChunks(wokChunks);
       say(isBurnt ? '糊了……点盘子收拾，再来一锅' : '出锅！点盘子收拾，再来一锅');
     } });
     if (isBurnt) { tone(140, 0.6, 0.12, 0, 90, 'sawtooth'); }
@@ -683,7 +857,7 @@ export const kitchen: SceneObject = ({ scene, camera, tier, bus, pick, audio }) 
         for (let i = 0; i < FL; i++) {
           const a = (i / FL) * Math.PI * 2, fl = 0.8 + 0.35 * Math.sin(t * 23 + i * 2.1) + 0.15 * Math.sin(t * 37 + i);
           v.set(BURN[0].x + Math.cos(a) * 0.04, Y0 + 0.018, BURN[0].z + Math.sin(a) * 0.04);
-          q.setFromEuler(e.set(Math.sin(a) * 0.95, 0, -Math.cos(a) * 0.95));
+          q.setFromEuler(e.set(Math.sin(a) * 1.15, 0, -Math.cos(a) * 1.15)); // 贴着锅底往外舔，火苗尖不能高过锅底（用户指出过火从锅里穿出来）
           m4.compose(v, q, s3.set(1, fl, 1)); flame.setMatrixAt(i, m4);
         }
         flame.instanceMatrix.needsUpdate = true;
@@ -715,10 +889,12 @@ export const kitchen: SceneObject = ({ scene, camera, tier, bus, pick, audio }) 
       setSizzle(phase === 'cooking' && fire ? 1 : oil && fire && heat > 0.6 ? 0.25 : 0);
       // 翻炒（用户嫌过「炒勺炒菜的动作不够逼真」）：锅铲从搁着的地方抬起来，铲面贴着锅底从靠人这边推到对面锅壁，
       // 顺着锅壁往上一铲、手腕一翻把菜翻回来；菜按被铲到的先后抛起、翻个身落到新位置；锅跟着往前一送、一颠
+      const sm = THREE.MathUtils.smootherstep;
+      const bump = (x: number, a2: number, b2: number) => Math.sin(Math.PI * THREE.MathUtils.clamp((x - a2) / (b2 - a2), 0, 1));
       let jump = phase === 'cooking' && fire ? 0.004 : 0, u = -1;
+      wokOff.set(0, 0, 0); wokQ.identity(); slT.set(0, 0);
       if (stirT >= 0) {
         stirT = Math.min(1, stirT + dt / 0.95); u = stirT;
-        const sm = THREE.MathUtils.smootherstep;
         const S0 = inWok(0.115, STROKE_YAW), S1 = inWok(-0.085, STROKE_YAW);
         const FLIP = inWok(-0.02, STROKE_YAW + 0.15, 0.065, 0.55, -1.15);
         const mix = (A: Pose, B: Pose, k: number, arc = 0) => { tmpPose.p.lerpVectors(A.p, B.p, k); tmpPose.p.y += Math.sin(k * Math.PI) * arc; tmpPose.q.copy(A.q).slerp(B.q, k); return tmpPose; };
@@ -729,18 +905,40 @@ export const kitchen: SceneObject = ({ scene, camera, tier, bus, pick, audio }) 
         else P = mix(FLIP, REST, sm(u, 0.74, 1), 0.02);
         spatula.position.copy(P.p); spatula.quaternion.copy(P.q);
         // 锅：推的时候稳着，翻的那一下往前送、再往回一颠
-        const toss = Math.sin(THREE.MathUtils.clamp((u - 0.5) / 0.4, 0, 1) * Math.PI);
-        wok.position.set(WOK.x - Math.sin(STROKE_YAW) * toss * 0.012, WOK.y + Math.max(0, Math.sin(THREE.MathUtils.clamp((u - 0.62) / 0.25, 0, 1) * Math.PI)) * 0.012, WOK.z - Math.cos(STROKE_YAW) * toss * 0.012);
-        wok.rotation.x = -toss * 0.05;
-        if (stirT >= 1) { stirT = -1; wok.position.copy(WOK); wok.rotation.x = 0; for (const c of pot) c.t0 = c.t1 = undefined; }
-      } else {
-        // 平时：开炒以后搁在锅里（柄靠着锅沿），别的时候挂回墙上；换地方时顺着走过去
-        const goal = phase === 'cooking' || phase === 'plating' ? REST : HANG, k = 1 - Math.exp(-dt * 7);
-        spatula.position.lerp(goal.p, k); spatula.quaternion.slerp(goal.q, k);
+        const kick = bump(u, 0.5, 0.9);
+        wokOff.set(-Math.sin(STROKE_YAW) * kick * 0.012, bump(u, 0.62, 0.87) * 0.012, -Math.cos(STROKE_YAW) * kick * 0.012);
+        wokQ.setFromAxisAngle(X_AX, -kick * 0.05);
+        // 菜被铲子推着往对面挤，翻过来以后又晃回来
+        const push = sm(u, 0.16, 0.55) * (1 - sm(u, 0.55, 0.78));
+        slT.set(-Math.sin(STROKE_YAW), -Math.cos(STROKE_YAW)).multiplyScalar(0.045 * push);
+        if (stirT >= 1) { stirT = -1; for (const c of pot) c.t0 = c.t1 = undefined; if (queued === 'toss') { queued = null; setTimeout(onToss, 0); } }
+      }
+      if (tossT >= 0) {
+        // 颠勺 0.8 秒：往前一送（菜因为惯性往人这边溜）→ 猛地往回一带、锅抬起来、远边翘高（菜腾空翻身）→ 落回、锅放回火上
+        tossT = Math.min(1, tossT + dt / 0.8); u = tossT;
+        const away = 0.04 * sm(u, 0, 0.28) * (1 - sm(u, 0.28, 0.5)) - 0.012 * bump(u, 0.45, 0.8);
+        wokOff.addScaledVector(DIRH, -away); wokOff.y += 0.03 * bump(u, 0.3, 0.75);
+        wokQ.multiply(qT.setFromAxisAngle(TILT_AX, 0.24 * bump(u, 0.28, 0.72) - 0.06 * bump(u, 0, 0.3)));
+        slT.set(DIRH.x, DIRH.z).multiplyScalar(0.035 * bump(u, 0, 0.32) - 0.03 * bump(u, 0.78, 1));
+        if (tossT >= 1) { tossT = -1; for (const c of pot) c.t0 = c.t1 = undefined; slV.x -= DIRH.x * 0.35; slV.y -= DIRH.z * 0.35; if (queued === 'stir') { queued = null; setTimeout(onStir, 0); } }
+      }
+      wok.position.copy(WOK).add(wokOff); wok.quaternion.copy(wokQ);
+      if (stirT < 0) {
+        // 平时：开炒以后搁在锅里（柄靠着锅沿，跟着锅一起动），别的时候挂回墙上；换地方时顺着走过去
+        const inPot = phase === 'cooking' || phase === 'plating';
+        const gp = inPot ? tmpPose.p.copy(REST.p).sub(WOK).applyQuaternion(wokQ).add(wok.position) : HANG.p;
+        const gq = inPot ? tmpPose.q.copy(wokQ).multiply(REST.q) : HANG.q;
+        if (tossT >= 0 && spatula.position.distanceTo(gp) < 0.08) { spatula.position.copy(gp); spatula.quaternion.copy(gq); }
+        else { const k = 1 - Math.exp(-dt * 7); spatula.position.lerp(gp, k); spatula.quaternion.slerp(gq, k); }
+      }
+      // 晃：弹簧（约 1.6 赫兹、几下就停），分小步积分
+      for (let n = 0, steps = Math.ceil(dt / 0.012), h = dt / Math.max(1, steps); n < steps; n++) {
+        slV.x += ((slT.x - sl.x) * 100 - slV.x * 5) * h; slV.y += ((slT.y - sl.y) * 100 - slV.y * 5) * h;
+        sl.x += slV.x * h; sl.y += slV.y * h;
       }
       // 锅里的菜
-      if (pot.length) layout(wokChunks, pot, (r) => wokY(r) + 0.006, 0.12, jump, t, stirs, burnt, u);
-      else wokChunks.count = 0;
+      if (pot.length) layout(wokChunks, pot, (r) => wokY(r) + 0.006, 0.12, jump, t, stirs, burnt, u, sl.x, sl.y);
+      else clearChunks(wokChunks);
       // 盘里的菜：堆在中间、外圈低；糊了冒黑烟
       if (plated) {
         layout(plateChunks, plated.list, (r) => 0.012 + Math.max(0, 0.03 - r * 0.3), 0.085, 0, t, plated.done, plated.burnt);
