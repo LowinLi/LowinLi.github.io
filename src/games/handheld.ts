@@ -1,8 +1,8 @@
 /**
- * 书架上那台掌机里的游戏（用户要的）：一个主页菜单 + 两个小游戏。纯 canvas 2D，不依赖 three.js，
- * 打开掌机时才按需加载（不占首屏）。low 档没有 3D，也能通过「游戏」按钮打开同一个界面玩。
+ * 书架上那台掌机里的游戏（用户要的）：一个主页菜单 + 十二个小游戏（贪吃蛇、小飞机在这里，另外十个在 minigames.ts）。
+ * 纯 canvas 2D，不依赖 three.js，打开掌机时才按需加载（不占首屏）。low 档没有 3D，也能通过「游戏」按钮打开同一个界面玩。
  *
- * - 主页：两张游戏卡片，左右键 / 点卡片选择，A / 点一下开始。
+ * - 主页：4×3 的游戏卡片，十字键选、A 开始；点卡片直接开始。
  * - 贪吃蛇：方向键或屏幕上滑动、手柄十字键控制；吃一个苹果长一节、越来越快；撞墙或撞到自己就结束。
  * - 小飞机：横版，点一下（空格 / A）往上飞一下，不点就慢慢往下掉；躲开上下的管道一直往前飞，速度越来越快；
  *   左上角记飞了多少米，撞上管道或地面就结束。
@@ -10,54 +10,9 @@
  *
  * 画布的逻辑尺寸是 640×360（16:9），按设备像素比放大绘制。
  */
-export type Key = 'up' | 'down' | 'left' | 'right' | 'a' | 'b' | 'home';
-
-const W = 640, H = 360;
-const FONT = '"PingFang SC","Noto Sans CJK SC","Microsoft YaHei",system-ui,sans-serif';
-const store = {
-  get(k: string) { try { return Number(localStorage.getItem(k)) || 0; } catch { return 0; } },
-  set(k: string, v: number) { try { localStorage.setItem(k, String(v)); } catch { /* 隐私模式 */ } },
-};
-
-// ---------------- 音效：WebAudio 现合成的短音 ----------------
-let actx: AudioContext | null = null;
-const ctxA = () => { try { actx ??= new AudioContext(); if (actx.state === 'suspended') void actx.resume(); } catch { actx = null; } return actx; };
-function beep(f0: number, f1: number, dur: number, type: OscillatorType = 'square', vol = 0.06) {
-  const a = actx; if (!a) return;
-  const o = a.createOscillator(), g = a.createGain(), t = a.currentTime;
-  o.type = type; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(Math.max(20, f1), t + dur);
-  g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0005, t + dur);
-  o.connect(g).connect(a.destination); o.start(t); o.stop(t + dur + 0.02); o.onended = () => { o.disconnect(); g.disconnect(); };
-}
-function boom() {
-  const a = actx; if (!a) return;
-  const n = a.createBufferSource(), b = a.createBuffer(1, a.sampleRate * 0.6, a.sampleRate), d = b.getChannelData(0);
-  for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length) ** 2;
-  const f = a.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 900; const g = a.createGain(); g.gain.value = 0.25;
-  n.buffer = b; n.connect(f).connect(g).connect(a.destination); n.start(); n.onended = () => { n.disconnect(); f.disconnect(); g.disconnect(); };
-}
-
-// ---------------- 小工具 ----------------
-const rr = (g: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) => {
-  g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath();
-};
-const text = (g: CanvasRenderingContext2D, s: string, x: number, y: number, size: number, color = '#fff', align: CanvasTextAlign = 'center', weight = 600, outline?: string) => {
-  g.font = `${weight} ${size}px ${FONT}`; g.textAlign = align; g.textBaseline = 'middle';
-  if (outline) { g.lineJoin = 'round'; g.lineWidth = size * 0.28; g.strokeStyle = outline; g.strokeText(s, x, y); }
-  g.fillStyle = color; g.fillText(s, x, y);
-};
-/** 半透明的结算牌 */
-const panel = (g: CanvasRenderingContext2D, lines: [string, number, string?][], t: number) => {
-  g.fillStyle = 'rgba(10,14,24,.55)'; g.fillRect(0, 0, W, H);
-  const h = 40 + lines.length * 34;
-  rr(g, W / 2 - 170, H / 2 - h / 2, 340, h, 18); g.fillStyle = 'rgba(255,255,255,.95)'; g.fill();
-  lines.forEach(([s, size, c], i) => text(g, s, W / 2, H / 2 - h / 2 + 38 + i * 34, size, c ?? '#1d2433'));
-  g.globalAlpha = 0.55 + 0.45 * Math.sin(t * 5);
-  text(g, '按 A 或点一下屏幕 再来一局', W / 2, H / 2 + h / 2 + 22, 15, '#fff', 'center', 500);
-  g.globalAlpha = 1;
-};
-
-interface Game { update(dt: number): void; draw(g: CanvasRenderingContext2D, t: number): void; key(k: Key): void; tap(x: number, y: number): void; swipe?(dx: number, dy: number): void }
+import { W, H, store, ctxA, beep, boom, rr, text, panel, type Game, type Key } from './kit';
+import { MINI, drawMiniIcon } from './minigames';
+export type { Key } from './kit';
 
 // ---------------- 贪吃蛇 ----------------
 function snake(): Game {
@@ -276,12 +231,16 @@ function plane(): Game {
 }
 
 // ---------------- 主页 ----------------
-const GAMES = [
+const GAMES: { id: string; name: string; sub: string; color: readonly string[]; make: () => Game }[] = [
   { id: 'snake', name: '贪吃蛇', sub: '吃苹果，越长越快', color: ['#4caf50', '#1b6b3a'], make: snake },
   { id: 'plane', name: '小飞机', sub: '点一下飞一下，看能飞多远', color: ['#46a6f0', '#1c5fa8'], make: plane },
-] as const;
+  ...MINI,
+];
+const COLS = 4, CW = 138, CH = 74, GX = 12, GY = 10, GX0 = (W - (COLS * CW + (COLS - 1) * GX)) / 2, GY0 = 52;
+const cardAt = (i: number) => ({ x: GX0 + (i % COLS) * (CW + GX), y: GY0 + Math.floor(i / COLS) * (CH + GY) });
 
 function drawIcon(g: CanvasRenderingContext2D, id: string, cx: number, cy: number, t: number) {
+  if (id !== 'snake' && id !== 'plane') { drawMiniIcon(g, id, cx, cy, t); return; }
   if (id === 'snake') {
     g.lineCap = 'round'; g.lineJoin = 'round'; g.strokeStyle = '#d8f5b0'; g.lineWidth = 16;
     g.beginPath(); for (let i = 0; i <= 20; i++) { const x = cx - 50 + i * 5, y = cy + Math.sin(i * 0.45 + t * 3) * 12; i ? g.lineTo(x, y) : g.moveTo(x, y); } g.stroke();
@@ -310,22 +269,20 @@ export function drawHome(g: CanvasRenderingContext2D, sel: number, t: number) {
   const d = new Date();
   text(g, `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`, W - 70, 28, 16, '#2b2f38', 'right', 600);
   g.strokeStyle = '#2b2f38'; g.lineWidth = 1.5; rr(g, W - 58, 20, 28, 15, 3); g.stroke(); g.fillStyle = '#2b2f38'; g.fillRect(W - 29, 24, 3, 7); g.fillStyle = '#3bb54a'; g.fillRect(W - 55, 23, 20, 9);
-  // 两张游戏卡片
-  const cw = 230, ch = 190, gap = 40, y0 = 62;
+  // 4×3 的游戏卡片：渐变底、缩小的动画图标、名字；选中的那张往上浮一点、描一圈亮边
   GAMES.forEach((game, i) => {
-    const x = W / 2 - cw - gap / 2 + i * (cw + gap), on = i === sel;
-    const lift = on ? 4 + Math.sin(t * 4) : 0;
+    const { x, y } = cardAt(i), on = i === sel, lift = on ? 3 + Math.sin(t * 4) : 0;
     g.save(); g.translate(0, -lift);
-    g.fillStyle = 'rgba(0,0,0,.12)'; rr(g, x + 2, y0 + 6 + lift, cw, ch, 14); g.fill();
-    const cg = g.createLinearGradient(x, y0, x + cw, y0 + ch); cg.addColorStop(0, game.color[0]); cg.addColorStop(1, game.color[1]);
-    g.fillStyle = cg; rr(g, x, y0, cw, ch, 14); g.fill();
-    g.save(); rr(g, x, y0, cw, ch, 14); g.clip(); drawIcon(g, game.id, x + cw / 2, y0 + 80, t); g.restore();
-    text(g, game.name, x + cw / 2, y0 + 150, 24, '#fff', 'center', 800);
-    if (on) { g.strokeStyle = '#2fd5ff'; g.lineWidth = 4; rr(g, x - 5, y0 - 5, cw + 10, ch + 10, 18); g.stroke(); }
+    g.fillStyle = 'rgba(0,0,0,.12)'; rr(g, x + 2, y + 4 + lift, CW, CH, 11); g.fill();
+    const cg = g.createLinearGradient(x, y, x + CW, y + CH); cg.addColorStop(0, game.color[0]); cg.addColorStop(1, game.color[1]);
+    g.fillStyle = cg; rr(g, x, y, CW, CH, 11); g.fill();
+    g.save(); rr(g, x, y, CW, CH, 11); g.clip(); g.translate(x + CW / 2, y + 29); g.scale(0.4, 0.4); drawIcon(g, game.id, 0, 0, t); g.restore();
+    text(g, game.name, x + CW / 2, y + CH - 13, 15, '#fff', 'center', 800, 'rgba(0,0,0,.25)');
+    if (on) { g.strokeStyle = '#2fd5ff'; g.lineWidth = 3.5; rr(g, x - 4, y - 4, CW + 8, CH + 8, 14); g.stroke(); }
     g.restore();
   });
-  text(g, GAMES[sel].sub, W / 2, 288, 16, '#2b2f38', 'center', 600);
-  text(g, '← → 选择 · A 或点卡片开始 · HOME 回到这里', W / 2, 330, 13, '#7a808c', 'center', 500);
+  text(g, GAMES[sel].sub, W / 2, 316, 15, '#2b2f38', 'center', 600);
+  text(g, '十字键选择 · A 或点卡片开始 · HOME 回到这里', W / 2, 341, 12, '#7a808c', 'center', 500);
 }
 
 /** 掌机：管理主页 / 游戏切换、输入和绘制循环 */
@@ -350,8 +307,10 @@ export function createHandheld(canvas: HTMLCanvasElement) {
   const onDown = (e: PointerEvent) => {
     e.preventDefault(); const p = toLocal(e); down = { ...p, id: e.pointerId }; swiped = false;
     if (game && !game.swipe) game.tap(p.x, p.y); // 小飞机：按下就飞，不等抬起
+    game?.point?.(p.x, p.y);
   };
   const onMove = (e: PointerEvent) => {
+    if (game?.point && (!down || down.id === e.pointerId)) { const p = toLocal(e); game.point(p.x, p.y); } // 挡板、篮子跟着手指 / 鼠标走
     if (!down || down.id !== e.pointerId || !game?.swipe || swiped) return;
     const p = toLocal(e), dx = p.x - down.x, dy = p.y - down.y;
     if (Math.hypot(dx, dy) > 24) { game.swipe(dx, dy); swiped = true; }
@@ -360,8 +319,8 @@ export function createHandheld(canvas: HTMLCanvasElement) {
     if (!down || down.id !== e.pointerId) return;
     const p = toLocal(e); down = null;
     if (!game) { // 主页：点哪张卡片开哪个
-      const i = p.x < W / 2 ? 0 : 1;
-      if (p.y > 50 && p.y < 270) { if (i === sel) startGame(i); else { sel = i; beep(700, 700, 0.04, 'square', 0.03); } }
+      const i = GAMES.findIndex((_, j) => { const c = cardAt(j); return p.x >= c.x && p.x <= c.x + CW && p.y >= c.y && p.y <= c.y + CH; });
+      if (i >= 0) startGame(i);
       return;
     }
     if (game.swipe && !swiped) game.tap(p.x, p.y);
@@ -375,7 +334,10 @@ export function createHandheld(canvas: HTMLCanvasElement) {
       ctxA();
       if (k === 'home') { if (game) { game = null; beep(500, 300, 0.08, 'triangle', 0.04); } return; }
       if (!game) {
-        if (k === 'left' || k === 'right') { sel = k === 'left' ? 0 : 1; beep(700, 700, 0.04, 'square', 0.03); }
+        const n = GAMES.length, prev = sel;
+        if (k === 'left') sel = (sel + n - 1) % n; else if (k === 'right') sel = (sel + 1) % n;
+        else if (k === 'up' && sel >= COLS) sel -= COLS; else if (k === 'down' && sel + COLS < n) sel += COLS;
+        if (sel !== prev) beep(700, 700, 0.04, 'square', 0.03);
         else if (k === 'a') startGame(sel);
         return;
       }
