@@ -9,17 +9,19 @@ export const store = {
 };
 
 // ---------------- 音效：WebAudio 现合成的短音 ----------------
+/** 主页「声音」按钮的静音开关（记在 localStorage） */
+export const audioPrefs = { muted: store.get('game.muted') === 1, toggle() { this.muted = !this.muted; store.set('game.muted', this.muted ? 1 : 0); if (this.muted) music.stop(); } };
 let actx: AudioContext | null = null;
 export const ctxA = () => { try { actx ??= new AudioContext(); if (actx.state === 'suspended') void actx.resume(); } catch { actx = null; } return actx; };
 export function beep(f0: number, f1: number, dur: number, type: OscillatorType = 'square', vol = 0.06) {
-  const a = actx; if (!a) return;
+  const a = actx; if (!a || audioPrefs.muted) return;
   const o = a.createOscillator(), g = a.createGain(), t = a.currentTime;
   o.type = type; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(Math.max(20, f1), t + dur);
   g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0005, t + dur);
   o.connect(g).connect(a.destination); o.start(t); o.stop(t + dur + 0.02); o.onended = () => { o.disconnect(); g.disconnect(); };
 }
 export function boom() {
-  const a = actx; if (!a) return;
+  const a = actx; if (!a || audioPrefs.muted) return;
   const n = a.createBufferSource(), b = a.createBuffer(1, a.sampleRate * 0.6, a.sampleRate), d = b.getChannelData(0);
   for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length) ** 2;
   const f = a.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 900; const g = a.createGain(); g.gain.value = 0.25;
@@ -107,14 +109,14 @@ export class Fx {
 // ---------------- 音效库：比单个 beep 更像回事的几种声音 ----------------
 const noiseBuf = (a: AudioContext, dur: number) => { const b = a.createBuffer(1, Math.ceil(a.sampleRate * dur), a.sampleRate), d = b.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; return b; };
 function nz(dur: number, f: number, q: number, vol: number, type: BiquadFilterType = 'bandpass', at = 0, f2?: number) {
-  const a = actx; if (!a) return;
+  const a = actx; if (!a || audioPrefs.muted) return;
   const t = a.currentTime + at, n = a.createBufferSource(), fl = a.createBiquadFilter(), g = a.createGain();
   n.buffer = noiseBuf(a, dur); fl.type = type; fl.frequency.setValueAtTime(f, t); if (f2) fl.frequency.exponentialRampToValueAtTime(f2, t + dur); fl.Q.value = q;
   g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0005, t + dur);
   n.connect(fl).connect(g).connect(a.destination); n.start(t); n.onended = () => { n.disconnect(); fl.disconnect(); g.disconnect(); };
 }
 function note(f: number, dur: number, at = 0, type: OscillatorType = 'square', vol = 0.05, f2 = f) {
-  const a = actx; if (!a) return;
+  const a = actx; if (!a || audioPrefs.muted) return;
   const t = a.currentTime + at, o = a.createOscillator(), g = a.createGain();
   o.type = type; o.frequency.setValueAtTime(f, t); if (f2 !== f) o.frequency.exponentialRampToValueAtTime(f2, t + dur);
   g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.008); g.gain.exponentialRampToValueAtTime(0.0005, t + dur);
@@ -161,7 +163,7 @@ let mus: { name: string; step: number; next: number; timer: number } | null = nu
 export const music = {
   /** 放某首（同一首在放就不动）；null 停 */
   play(name: string | null) {
-    if (!name) { music.stop(); return; }
+    if (!name || audioPrefs.muted) { music.stop(); return; }
     if (mus?.name === name) return;
     music.stop();
     const a = actx; if (!a) return;

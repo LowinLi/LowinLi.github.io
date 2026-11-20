@@ -2,7 +2,10 @@
  * 书架上那台掌机里的游戏（用户要的）：一个主页菜单 + 十二个小游戏（贪吃蛇、小飞机在这里，另外十个在 minigames.ts）。
  * 纯 canvas 2D，不依赖 three.js，打开掌机时才按需加载（不占首屏）。low 档没有 3D，也能通过「游戏」按钮打开同一个界面玩。
  *
- * - 主页：4×3 的游戏卡片，十字键选、A 开始；点卡片直接开始。
+ * - 主页：照着真实掌机的 HOME 菜单排（用户要的「和真实的 switch 尽可能对齐」）：浅灰底；左上用户头像，右上时间、Wi‑Fi、电量；
+ *   中间一排横着滚动的正方形游戏图块，选中的那块描一圈闪动的青色框、标题用青色字写在图块上方；下面一排圆形功能按钮
+ *  （成绩、声音、操作说明、休眠），选中时上方出名字；最底下一条细线，左边手柄图标，右边「Ⓐ 开始」。没有用任何商标和官方图标。
+ *   左右键在一排里挪，上下键在图块和圆按钮之间切换，A 确定；点图块直接开始。
  * - 贪吃蛇：方向键或屏幕上滑动、手柄十字键控制；吃一个苹果长一节、越来越快；撞墙或撞到自己就结束。
  * - 小飞机：横版，点一下（空格 / A）往上飞一下，不点就慢慢往下掉；躲开上下的管道一直往前飞，速度越来越快；
  *   左上角记飞了多少米，撞上管道或地面就结束。
@@ -10,7 +13,7 @@
  *
  * 画布的逻辑尺寸是 640×360（16:9），按设备像素比放大绘制。
  */
-import { W, H, store, ctxA, beep, boom, rr, text, panel, music, sfx, type Game, type Key } from './kit';
+import { W, H, store, ctxA, beep, boom, rr, text, panel, music, sfx, audioPrefs, type Game, type Key } from './kit';
 import { MINI, drawMiniIcon } from './minigames';
 export type { Key } from './kit';
 
@@ -240,8 +243,22 @@ const GAMES: { id: string; name: string; sub: string; color: readonly string[]; 
 ];
 /** 每个游戏放哪首背景音乐（反应力、节奏黑块不放：一个要安静，一个自己就是曲子） */
 const BGM: Record<string, string | null> = { snake: 'bright', plane: 'chill', mole: 'bright', catch: 'bright', bricks: 'drive', runner: 'drive', reaction: null, memory: 'think', merge: 'think', stack: 'chill', pong: 'drive', tiles: null };
-const COLS = 4, CW = 138, CH = 74, GX = 12, GY = 10, GX0 = (W - (COLS * CW + (COLS - 1) * GX)) / 2, GY0 = 52;
-const cardAt = (i: number) => ({ x: GX0 + (i % COLS) * (CW + GX), y: GY0 + Math.floor(i / COLS) * (CH + GY) });
+// 主页版式（640×360，真机 1280×720 的一半）：图块 128 见方、间隔 7，第一块离左边 46；圆按钮直径 40、间隔 58
+const TS = 128, TG = 7, TX0 = 46, TY = 92, BY = 272, BR = 20, BGAP = 58;
+const BTNS = [
+  { id: 'records', name: '成绩', color: '#2c8ff0' },
+  { id: 'sound', name: '声音', color: '#f2793b' },
+  { id: 'help', name: '操作说明', color: '#7a7f88' },
+  { id: 'sleep', name: '休眠', color: '#7a7f88' },
+] as const;
+/** 主页的状态（3D 掌机屏幕上画的那一帧也用它，默认值就是刚开机的样子） */
+const HS = { row: 0 as 0 | 1, btn: 0, scroll: 0, page: null as null | 'records' | 'help' };
+const tileX = (i: number) => TX0 + i * (TS + TG) - HS.scroll;
+const btnX = (i: number) => W / 2 + (i - (BTNS.length - 1) / 2) * BGAP;
+const BEST_FMT: Record<string, (v: number) => string> = {
+  snake: (v) => `${v} 个苹果`, plane: (v) => `${v} 米`, mole: (v) => `${v} 分`, catch: (v) => `${v} 分`, bricks: (v) => `${v} 分`, runner: (v) => `${v} 米`,
+  reaction: (v) => (v ? `${v} 毫秒` : '—'), memory: (v) => (v ? `${v} 次` : '—'), merge: (v) => `${v} 分`, stack: (v) => `${v} 层`, pong: (v) => `赢 ${v} 局`, tiles: (v) => `${v} 块`,
+};
 
 function drawIcon(g: CanvasRenderingContext2D, id: string, cx: number, cy: number, t: number) {
   if (id !== 'snake' && id !== 'plane') { drawMiniIcon(g, id, cx, cy, t); return; }
@@ -265,33 +282,100 @@ function drawIcon(g: CanvasRenderingContext2D, id: string, cx: number, cy: numbe
 
 /** 掌机的主页画面（3D 模型的屏幕贴图也用它画一帧） */
 export function drawHome(g: CanvasRenderingContext2D, sel: number, t: number) {
-  const bg = g.createLinearGradient(0, 0, 0, H); bg.addColorStop(0, '#f6f7fa'); bg.addColorStop(1, '#dfe3ea');
-  g.fillStyle = bg; g.fillRect(0, 0, W, H);
-  g.fillStyle = 'rgba(120,140,180,.07)'; for (let i = 0; i < 9; i++) { g.beginPath(); g.arc((i * 173 + t * 6) % (W + 80) - 40, 60 + ((i * 97) % 240), 30 + (i % 3) * 18, 0, 7); g.fill(); }
-  // 顶栏：头像、时间、电量
-  g.fillStyle = '#ff8a3d'; g.beginPath(); g.arc(30, 28, 13, 0, 7); g.fill();
-  text(g, '🙂', 30, 29, 14);
+  g.fillStyle = '#ebebeb'; g.fillRect(0, 0, W, H);
+  // ---- 顶栏：左上用户头像（圆形、白边），右上时间、Wi-Fi、电量 ----
+  g.save(); g.shadowColor = 'rgba(0,0,0,.18)'; g.shadowBlur = 4; g.shadowOffsetY = 1;
+  g.fillStyle = '#fff'; g.beginPath(); g.arc(34, 32, 17, 0, 7); g.fill(); g.restore();
+  const av = g.createLinearGradient(20, 18, 48, 46); av.addColorStop(0, '#ffb15c'); av.addColorStop(1, '#f07a2c'); g.fillStyle = av; g.beginPath(); g.arc(34, 32, 15, 0, 7); g.fill();
+  g.fillStyle = '#fff3e4'; g.beginPath(); g.moveTo(25, 28); g.lineTo(27, 19); g.lineTo(31, 25); g.fill(); g.beginPath(); g.moveTo(37, 25); g.lineTo(41, 19); g.lineTo(43, 28); g.fill(); // 一只橘猫头像的耳朵
+  g.fillStyle = '#5a3416'; g.beginPath(); g.arc(30, 32, 1.8, 0, 7); g.arc(38, 32, 1.8, 0, 7); g.fill(); g.fillStyle = '#ff9fb0'; g.beginPath(); g.arc(34, 36, 1.6, 0, 7); g.fill();
   const d = new Date();
-  text(g, `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`, W - 70, 28, 16, '#2b2f38', 'right', 600);
-  g.strokeStyle = '#2b2f38'; g.lineWidth = 1.5; rr(g, W - 58, 20, 28, 15, 3); g.stroke(); g.fillStyle = '#2b2f38'; g.fillRect(W - 29, 24, 3, 7); g.fillStyle = '#3bb54a'; g.fillRect(W - 55, 23, 20, 9);
-  // 4×3 的游戏卡片：渐变底、缩小的动画图标、名字；选中的那张往上浮一点、描一圈亮边
+  text(g, `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`, W - 92, 32, 15, '#3c3c3c', 'right', 500);
+  g.strokeStyle = '#3c3c3c'; g.lineWidth = 1.8; g.lineCap = 'round';
+  for (const r of [4, 8, 12]) { g.beginPath(); g.arc(W - 74, 38, r, -Math.PI * 0.75, -Math.PI * 0.25); g.stroke(); }
+  g.fillStyle = '#3c3c3c'; g.beginPath(); g.arc(W - 74, 38, 1.6, 0, 7); g.fill();
+  g.lineWidth = 1.4; rr(g, W - 56, 26, 24, 12, 2.5); g.stroke(); g.fillRect(W - 31, 29.5, 2, 5); g.fillRect(W - 54, 28, 20, 8);
+  // ---- 图块上方：选中的游戏名（青色）----
+  const on0 = HS.row === 0 && !HS.page;
+  const sx = tileX(sel);
+  if (on0) text(g, GAMES[sel].name, clamp2(sx + TS / 2, 60, W - 60), TY - 15, 15, '#00a2d8', 'center', 600);
+  // ---- 一排正方形游戏图块（横着滚动）----
   GAMES.forEach((game, i) => {
-    const { x, y } = cardAt(i), on = i === sel, lift = on ? 3 + Math.sin(t * 4) : 0;
-    g.save(); g.translate(0, -lift);
-    g.fillStyle = 'rgba(0,0,0,.12)'; rr(g, x + 2, y + 4 + lift, CW, CH, 11); g.fill();
-    const cg = g.createLinearGradient(x, y, x + CW, y + CH); cg.addColorStop(0, game.color[0]); cg.addColorStop(1, game.color[1]);
-    g.fillStyle = cg; rr(g, x, y, CW, CH, 11); g.fill();
-    g.save(); rr(g, x, y, CW, CH, 11); g.clip(); g.translate(x + CW / 2, y + 29); g.scale(0.4, 0.4); drawIcon(g, game.id, 0, 0, t); g.restore();
-    text(g, game.name, x + CW / 2, y + CH - 13, 15, '#fff', 'center', 800, 'rgba(0,0,0,.25)');
-    if (on) { g.strokeStyle = '#2fd5ff'; g.lineWidth = 3.5; rr(g, x - 4, y - 4, CW + 8, CH + 8, 14); g.stroke(); }
-    g.restore();
+    const x = tileX(i); if (x > W + 10 || x + TS < -10) return;
+    g.save(); g.shadowColor = 'rgba(0,0,0,.18)'; g.shadowBlur = 6; g.shadowOffsetY = 2; g.fillStyle = '#fff'; g.fillRect(x, TY, TS, TS); g.restore();
+    g.save(); g.beginPath(); g.rect(x, TY, TS, TS); g.clip();
+    const cg = g.createLinearGradient(x, TY, x + TS, TY + TS); cg.addColorStop(0, game.color[0]); cg.addColorStop(1, game.color[1]); g.fillStyle = cg; g.fillRect(x, TY, TS, TS);
+    const hl = g.createRadialGradient(x + TS * 0.3, TY + TS * 0.2, 4, x + TS * 0.3, TY + TS * 0.2, TS * 0.9); hl.addColorStop(0, 'rgba(255,255,255,.28)'); hl.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = hl; g.fillRect(x, TY, TS, TS);
+    g.translate(x + TS / 2, TY + 54); g.scale(0.72, 0.72); drawIcon(g, game.id, 0, 0, i === sel ? t : 0); g.restore();
+    text(g, game.name, x + TS / 2, TY + TS - 18, 17, '#fff', 'center', 900, 'rgba(0,0,0,.28)'); // 封面上的「游戏标志」
   });
-  text(g, GAMES[sel].sub, W / 2, 316, 15, '#2b2f38', 'center', 600);
-  text(g, '十字键选择 · A 或点卡片开始 · HOME 回到这里', W / 2, 341, 12, '#7a808c', 'center', 500);
+  if (on0) { // 选中框：离图块 3 像素，一圈青色，亮度一闪一闪
+    const k = 0.5 + 0.5 * Math.sin(t * 5);
+    g.strokeStyle = `rgb(${Math.round(0 + 90 * k)},${Math.round(195 + 45 * k)},${Math.round(227 + 28 * k)})`; g.lineWidth = 3.5;
+    g.strokeRect(sx - 4, TY - 4, TS + 8, TS + 8);
+  }
+  // ---- 圆形功能按钮 ----
+  BTNS.forEach((b, i) => {
+    const x = btnX(i), on = HS.row === 1 && HS.btn === i && !HS.page;
+    g.save(); g.shadowColor = 'rgba(0,0,0,.16)'; g.shadowBlur = 5; g.shadowOffsetY = 1.5; g.fillStyle = '#fff'; g.beginPath(); g.arc(x, BY, BR, 0, 7); g.fill(); g.restore();
+    drawBtnIcon(g, b.id, x, BY, b.color);
+    if (on) {
+      const k = 0.5 + 0.5 * Math.sin(t * 5);
+      g.strokeStyle = `rgb(${Math.round(90 * k)},${Math.round(195 + 45 * k)},${Math.round(227 + 28 * k)})`; g.lineWidth = 3; g.beginPath(); g.arc(x, BY, BR + 4, 0, 7); g.stroke();
+      text(g, b.id === 'sound' ? (audioPrefs.muted ? '声音：关' : '声音：开') : b.name, x, BY - BR - 16, 13, '#00a2d8', 'center', 600);
+    }
+  });
+  // ---- 底栏：细线、左边手柄、右边按键提示 ----
+  g.fillStyle = '#c9c9c9'; g.fillRect(24, 318, W - 48, 1);
+  g.fillStyle = '#4a4a4a'; rr(g, 34, 330, 9, 20, 4.5); g.fill(); rr(g, 46, 330, 9, 20, 4.5); g.fill(); // 一对手柄的剪影
+  g.fillStyle = '#ebebeb'; g.beginPath(); g.arc(38.5, 336, 1.8, 0, 7); g.arc(50.5, 344, 1.8, 0, 7); g.fill();
+  g.fillStyle = '#3c3c3c'; g.beginPath(); g.arc(W - 86, 340, 9, 0, 7); g.fill(); text(g, 'A', W - 86, 340.5, 11, '#ebebeb', 'center', 800);
+  text(g, HS.row === 0 ? '开始' : '确定', W - 72, 340, 13, '#3c3c3c', 'left', 500);
+  // ---- 「成绩」「操作说明」两个小页面 ----
+  if (HS.page) {
+    g.fillStyle = '#ebebeb'; g.fillRect(0, 0, W, H);
+    text(g, HS.page === 'records' ? '成绩' : '操作说明', 40, 34, 20, '#3c3c3c', 'left', 700);
+    g.fillStyle = '#c9c9c9'; g.fillRect(24, 54, W - 48, 1);
+    if (HS.page === 'records') {
+      GAMES.forEach((game, i) => {
+        const col = i % 2, row = Math.floor(i / 2), x = 40 + col * 290, y = 78 + row * 38;
+        g.fillStyle = game.color[0]; rr(g, x, y - 12, 24, 24, 5); g.fill();
+        text(g, game.name, x + 34, y, 14, '#3c3c3c', 'left', 600);
+        const key = `game.${game.id}.best`, v = store.get(key);
+        text(g, BEST_FMT[game.id]?.(v) ?? String(v), x + 262, y, 14, v ? '#00a2d8' : '#9a9a9a', 'right', 700);
+        g.fillStyle = '#dadada'; g.fillRect(x, y + 17, 262, 1);
+      });
+    } else {
+      [['十字键 / 方向键 / WASD', '移动、选择'], ['A / 空格 / 回车 / J', '确定、跳、发球、翻牌'], ['B / X / 退格', '从游戏退回主页'], ['HOME / H', '回到主页'], ['ESC / 「放下」', '把掌机放回书架上'], ['直接点、拖屏幕', '所有游戏都能用手指玩']].forEach(([k, v], i) => {
+        const y = 86 + i * 38; text(g, k, 48, y, 15, '#3c3c3c', 'left', 700); text(g, v, W - 48, y, 15, '#5a5a5a', 'right', 500); g.fillStyle = '#dadada'; g.fillRect(40, y + 18, W - 80, 1);
+      });
+    }
+    g.fillStyle = '#3c3c3c'; g.beginPath(); g.arc(W - 86, 340, 9, 0, 7); g.fill(); text(g, 'B', W - 86, 340.5, 11, '#ebebeb', 'center', 800); text(g, '返回', W - 72, 340, 13, '#3c3c3c', 'left', 500);
+  }
+}
+const clamp2 = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
+/** 圆形功能按钮上的小图标 */
+function drawBtnIcon(g: CanvasRenderingContext2D, id: string, x: number, y: number, c: string) {
+  g.save(); g.strokeStyle = c; g.fillStyle = c; g.lineWidth = 2; g.lineCap = 'round'; g.lineJoin = 'round';
+  if (id === 'records') { // 奖杯
+    g.beginPath(); g.moveTo(x - 7, y - 8); g.lineTo(x + 7, y - 8); g.lineTo(x + 6, y - 1); g.quadraticCurveTo(x, y + 4, x - 6, y - 1); g.closePath(); g.fill();
+    g.beginPath(); g.arc(x - 8, y - 4, 3.5, Math.PI * 0.5, Math.PI * 1.5); g.stroke(); g.beginPath(); g.arc(x + 8, y - 4, 3.5, -Math.PI * 0.5, Math.PI * 0.5); g.stroke();
+    g.fillRect(x - 1.2, y + 2, 2.4, 4); rr(g, x - 5, y + 6, 10, 3, 1); g.fill();
+  } else if (id === 'sound') { // 喇叭，静音时打叉
+    g.beginPath(); g.moveTo(x - 9, y - 3.5); g.lineTo(x - 5, y - 3.5); g.lineTo(x, y - 8); g.lineTo(x, y + 8); g.lineTo(x - 5, y + 3.5); g.lineTo(x - 9, y + 3.5); g.closePath(); g.fill();
+    if (audioPrefs.muted) { g.beginPath(); g.moveTo(x + 4, y - 4); g.lineTo(x + 10, y + 4); g.moveTo(x + 10, y - 4); g.lineTo(x + 4, y + 4); g.stroke(); }
+    else { g.beginPath(); g.arc(x + 1, y, 5, -0.8, 0.8); g.stroke(); g.beginPath(); g.arc(x + 1, y, 9, -0.8, 0.8); g.stroke(); }
+  } else if (id === 'help') { // 一对手柄
+    rr(g, x - 10, y - 8, 8, 16, 4); g.fill(); rr(g, x + 2, y - 8, 8, 16, 4); g.fill();
+    g.fillStyle = '#fff'; g.beginPath(); g.arc(x - 6, y - 3, 1.6, 0, 7); g.arc(x + 6, y + 3, 1.6, 0, 7); g.fill();
+  } else { // 电源
+    g.beginPath(); g.arc(x, y + 1, 7.5, -Math.PI * 0.32, Math.PI * 1.32); g.stroke(); g.beginPath(); g.moveTo(x, y - 9); g.lineTo(x, y - 1); g.stroke();
+  }
+  g.restore();
 }
 
 /** 掌机：管理主页 / 游戏切换、输入和绘制循环 */
-export function createHandheld(canvas: HTMLCanvasElement) {
+export function createHandheld(canvas: HTMLCanvasElement, opts: { onSleep?: () => void } = {}) {
   const g = canvas.getContext('2d')!;
   let sel = 0, game: Game | null = null, raf = 0, last = 0, t = 0;
   const fit = () => {
@@ -303,15 +387,27 @@ export function createHandheld(canvas: HTMLCanvasElement) {
   const loop = (now: number) => {
     const dt = Math.min(0.05, (now - last) / 1000 || 0); last = now; t += dt;
     fit();
-    if (game) { game.update(dt); game.draw(g, t); } else drawHome(g, sel, t);
+    if (game) { game.update(dt); game.draw(g, t); }
+    else { // 让选中的图块留在画面里：左右各留 46 像素
+      const n = GAMES.length, maxScroll = Math.max(0, TX0 * 2 + n * (TS + TG) - TG - W);
+      const want = clamp2(HS.scroll, sel * (TS + TG) + TS + TX0 - (W - TX0), sel * (TS + TG));
+      HS.scroll += (clamp2(want, 0, maxScroll) - HS.scroll) * Math.min(1, dt * 12);
+      drawHome(g, sel, t);
+    }
     music.play(game && game.state?.() === 'play' ? BGM[GAMES[sel].id] ?? null : null); // 只在玩的时候放背景音乐
     raf = requestAnimationFrame(loop);
   };
   const startGame = (i: number) => { sel = i; ctxA(); sfx.start(); game = GAMES[i].make(); };
   const toLocal = (e: { clientX: number; clientY: number }) => { const b = canvas.getBoundingClientRect(); return { x: (e.clientX - b.left) / b.width * W, y: (e.clientY - b.top) / b.height * H }; };
-  let down: { x: number; y: number; id: number } | null = null, swiped = false;
+  let down: { x: number; y: number; id: number } | null = null, swiped = false, pdown: { x: number; y: number } | null = null;
+  const pressBtn = () => {
+    const b = BTNS[HS.btn].id; ctxA();
+    if (b === 'records' || b === 'help') { HS.page = b; sfx.pop(); }
+    else if (b === 'sound') { audioPrefs.toggle(); if (!audioPrefs.muted) sfx.coin(); }
+    else { sfx.tick(); opts.onSleep?.(); }
+  };
   const onDown = (e: PointerEvent) => {
-    e.preventDefault(); const p = toLocal(e); down = { ...p, id: e.pointerId }; swiped = false;
+    e.preventDefault(); const p = toLocal(e); down = { ...p, id: e.pointerId }; pdown = { ...p }; swiped = false;
     if (game && !game.swipe) game.tap(p.x, p.y); // 小飞机：按下就飞，不等抬起
     game?.point?.(p.x, p.y);
   };
@@ -324,9 +420,14 @@ export function createHandheld(canvas: HTMLCanvasElement) {
   const onUp = (e: PointerEvent) => {
     if (!down || down.id !== e.pointerId) return;
     const p = toLocal(e); down = null;
-    if (!game) { // 主页：点哪张卡片开哪个
-      const i = GAMES.findIndex((_, j) => { const c = cardAt(j); return p.x >= c.x && p.x <= c.x + CW && p.y >= c.y && p.y <= c.y + CH; });
-      if (i >= 0) startGame(i);
+    if (!game) { // 主页：横着划一下翻几块；点图块直接开始；点圆按钮就按
+      if (HS.page) { HS.page = null; sfx.tick(); return; }
+      const dx = p.x - (pdown?.x ?? p.x);
+      if (Math.abs(dx) > 30) { sel = clamp2(sel + (dx < 0 ? 3 : -3), 0, GAMES.length - 1); HS.row = 0; sfx.tick(); return; }
+      const i = GAMES.findIndex((_, j) => { const x = tileX(j); return p.x >= x && p.x <= x + TS && p.y >= TY && p.y <= TY + TS; });
+      if (i >= 0) { HS.row = 0; startGame(i); return; }
+      const bi = BTNS.findIndex((_, j) => Math.hypot(p.x - btnX(j), p.y - BY) < BR + 6);
+      if (bi >= 0) { HS.row = 1; HS.btn = bi; pressBtn(); }
       return;
     }
     if (game.swipe && !swiped) game.tap(p.x, p.y);
@@ -340,11 +441,15 @@ export function createHandheld(canvas: HTMLCanvasElement) {
       ctxA();
       if (k === 'home') { if (game) { game = null; music.stop(); beep(500, 300, 0.08, 'triangle', 0.04); } return; }
       if (!game) {
-        const n = GAMES.length, prev = sel;
-        if (k === 'left') sel = (sel + n - 1) % n; else if (k === 'right') sel = (sel + 1) % n;
-        else if (k === 'up' && sel >= COLS) sel -= COLS; else if (k === 'down' && sel + COLS < n) sel += COLS;
-        if (sel !== prev) sfx.tick();
-        else if (k === 'a') startGame(sel);
+        if (HS.page) { if (k === 'a' || k === 'b') { HS.page = null; sfx.tick(); } return; }
+        const n = GAMES.length;
+        if (k === 'down' && HS.row === 0) { HS.row = 1; sfx.tick(); }
+        else if (k === 'up' && HS.row === 1) { HS.row = 0; sfx.tick(); }
+        else if (k === 'left' || k === 'right') {
+          const d = k === 'left' ? -1 : 1;
+          if (HS.row === 0) { const nx = clamp2(sel + d, 0, n - 1); if (nx !== sel) { sel = nx; sfx.tick(); } }
+          else { const nx = clamp2(HS.btn + d, 0, BTNS.length - 1); if (nx !== HS.btn) { HS.btn = nx; sfx.tick(); } }
+        } else if (k === 'a') { if (HS.row === 0) startGame(sel); else pressBtn(); }
         return;
       }
       if (k === 'b' && game) { game = null; music.stop(); return; }

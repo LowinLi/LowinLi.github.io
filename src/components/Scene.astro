@@ -397,7 +397,7 @@ const { data } = Astro.props;
     const anim = hhFrom && !still.matches ? hhBox.animate([{ transform: hhFly(hhFrom) }, { transform: 'none' }], { duration: 600, easing: EASE }) : null;
     hhUi.animate([{ backgroundColor: 'rgba(11,20,36,0)' }, {}], { duration: 500 });
     try {
-      if (!hh) { const { createHandheld } = await import('../games/handheld'); hh = createHandheld(hhCanvas); }
+      if (!hh) { const { createHandheld } = await import('../games/handheld'); hh = createHandheld(hhCanvas, { onSleep: () => emit('handheld:close') }); }
       hh.start();
     } catch (err) { console.error('[handheld] 游戏加载失败', err); }
     await anim?.finished.catch(() => {});
