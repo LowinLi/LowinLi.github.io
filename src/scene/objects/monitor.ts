@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { Bin, emit, on, type SceneObject } from '../types';
 import { L } from '../layout';
 import { SEARCH } from '../search';
-import { Batch, blob, canvasTex, contactMaterial, rbox } from '../util';
+import { asset, Batch, blob, canvasTex, contactMaterial, rbox } from '../util';
 
 const W = 1536, H = 888;
 const SANS = '"PingFang SC","Noto Sans CJK SC","Microsoft YaHei",system-ui,sans-serif';
@@ -80,14 +80,16 @@ export const monitor: SceneObject = ({ scene, camera, renderer, tier, bus, pick 
     text('设置', 1844, 139, '#222', 15.5, false, 'center');
     pill(1897, 122, 66, 34, 17); ctx.fillStyle = '#4e6ef2'; ctx.fill();
     text('登录', 1930, 139, '#fff', 15.5, false, 'center');
-    // ---- 标志 ----
+    // ---- 标志：百度官方标志的矢量图（用户嫌过画出来的「不太像」；SVG 取自英文维基百科的 File:Baidu.svg，按真实首页的大小放）。没加载完先画近似的 ----
     const cx = 1000, cy = 282;
+    if (logo) { const lw = 270, lh = lw * 79 / 231; ctx.drawImage(logo, X(cx - lw / 2 - 6), X(cy - lh / 2 - 6), X(lw), X(lh)); } else {
     font(64, true, 'Arial, sans-serif'); ctx.fillStyle = '#e10602'; ctx.textAlign = 'right'; ctx.fillText('Bai', X(cx - 36), X(cy + 8));
     ctx.fillStyle = '#2932e1';
     ctx.beginPath(); ctx.ellipse(X(cx), X(cy + 14), X(31), X(26), 0, 0, 7); ctx.fill();
     for (const [dx, dy, r, a] of [[-29, -12, 9.5, -0.4], [-11, -27, 10.5, -0.12], [11, -27, 10.5, 0.12], [29, -12, 9.5, 0.4]]) { ctx.beginPath(); ctx.ellipse(X(cx + dx), X(cy + dy), X(r * 0.78), X(r), a, 0, 7); ctx.fill(); }
     font(31, true, 'Arial, sans-serif'); ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.fillText('du', X(cx), X(cy + 17));
     font(52, true); ctx.fillStyle = '#e10602'; ctx.textAlign = 'left'; ctx.fillText('百度', X(cx + 40), X(cy + 10));
+    }
     // ---- 搜索框：蓝紫渐变的细边，框里右下角是麦克风、加号和「百度一下」----
     const bx = SEARCH.x * 2000, by = (SEARCH.y * H) / k, bw = (SEARCH.w + SEARCH.btn) * 2000, bh = (SEARCH.h * H) / k;
     const edge = ctx.createLinearGradient(X(bx), 0, X(bx + bw), 0);
@@ -132,6 +134,9 @@ export const monitor: SceneObject = ({ scene, camera, renderer, tier, bus, pick 
     text('关于百度   About Baidu   使用百度前必读   帮助中心   企业推广   ·   这是画在屏幕上的示意页面，搜索会在新标签页打开 baidu.com', 1000, 1105, '#9195a3', 13, false, 'center');
     tex.needsUpdate = true;
   };
+  // 标志用 three 的 ImageLoader 载（加载中那一层会等它），载完重画一遍屏幕
+  let logo: HTMLImageElement | null = null;
+  new THREE.ImageLoader().load(asset('monitor/baidu-logo.svg'), (img) => { logo = img; draw(); });
   draw();
 
   pick(screen, { click() { if (!focused) emit(bus, 'monitor:focus'); } });
