@@ -38,5 +38,3 @@
 | [hls.js](https://github.com/video-dev/hls.js)（精简版） | Apache-2.0 | 收音机播放 HLS 直播流 |
 
 收音机放的是各电台公开的网络直播流，版权归各电台所有，本站不存储、不转发。
-
-显示器里那张示意的百度首页上，标志用的是百度的官方标志（矢量图 `public/assets/monitor/baidu-logo.svg`，取自英文维基百科的 [File:Baidu.svg](https://en.wikipedia.org/wiki/File:Baidu.svg)，只去掉了编辑器的元数据）。这是百度公司的注册商标，归百度所有；这里只是在 3D 房间里画出一个打开着百度的浏览器，搜索交给 baidu.com 本身。

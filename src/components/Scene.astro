@@ -1,10 +1,8 @@
 ---
 // 首页唯一的 3D island。low 档只显示静态回退，不加载 three.js；书本阅读器是纯 HTML，三档都能用。
 import type { SiteData } from '../scene/types';
-import { SEARCH } from '../scene/search';
 interface Props { data: SiteData }
 const { data } = Astro.props;
-const pct = (n: number) => `${(n * 100).toFixed(2)}%`;
 ---
 <section class="scene" data-tier="pending" data-mode="" aria-label="我的小屋">
   <div class="fallback" aria-hidden="true">
@@ -37,7 +35,7 @@ const pct = (n: number) => `${(n * 100).toFixed(2)}%`;
       <a href="#" data-book="about">关于我</a>
       <a href={data.postsIndex} data-book="posts">文章</a>
       <a href="#" data-action="window" data-webgl-only>看窗外</a>
-      <a href="#" data-action="search" data-webgl-only>搜索</a>
+      <a href="#" data-action="search" data-webgl-only>电脑</a>
       <a href="#" data-action="music" data-webgl-only>音乐</a>
       <a href="#" data-action="radio" data-webgl-only>收音机</a>
       <a href="#" data-action="fridge" data-webgl-only>冰箱</a>
@@ -74,13 +72,8 @@ const pct = (n: number) => `${(n * 100).toFixed(2)}%`;
     <p class="hint"><span class="wide">拖动旋转 · 滚轮缩放 · 点窗外看菜园 · 点书、磁带、咖啡、饭菜、黄历、座钟（拨时间）、茶几（泡茶）、左墙前面的灶台（炒菜）、冰箱上的便利贴和火车票、左墙的青海湖、书顶上的掌机、右墙书架、显示器 · 录音机上的「波段」旋钮切收音机</span><span class="narrow">拖动旋转 · 双指缩放 · 点一点桌上的东西</span></p>
   </div>
 
-  <!-- 镜头推到显示器时，真正的输入框叠在屏幕上画的搜索框上 -->
-  <form class="screen-ui" action="https://www.baidu.com/s" method="get" target="_blank" rel="noopener" hidden>
-    <input name="wd" type="search" autocomplete="off" placeholder="输入后回车，在新标签页打开百度" aria-label="百度搜索"
-      style={`left:${pct(SEARCH.x)};top:${pct(SEARCH.y)};width:${pct(SEARCH.w)};height:${pct(SEARCH.h)}`} />
-    <button type="submit" aria-label="百度一下"
-      style={`left:${pct(SEARCH.x + SEARCH.w)};top:${pct(SEARCH.y)};width:${pct(SEARCH.btn)};height:${pct(SEARCH.h)}`}></button>
-  </form>
+  <!-- 镜头推到显示器时，屏幕的位置叠一个真正的网页框：本站的文章列表，点进去就是文章（用户要的「只放我自己的博客文章列表和展开博客」） -->
+  <div class="screen-ui" hidden><iframe title="博客文章" tabindex="0"></iframe></div>
 
   <div class="reader" hidden role="dialog" aria-modal="true" aria-label="书">
     <button class="close" type="button" aria-label="合上书">×</button>
@@ -210,22 +203,48 @@ const pct = (n: number) => `${(n * 100).toFixed(2)}%`;
   root.querySelectorAll<HTMLAnchorElement>('.chips [data-book]').forEach((a) =>
     a.addEventListener('click', (e) => { e.preventDefault(); emit('book:open', { id: a.dataset.book }); }));
 
-  // ---- 显示器上的搜索框 ----
-  const screenUi = $<HTMLFormElement>('.screen-ui');
-  const input = screenUi.querySelector('input')!;
+  // ---- 显示器：屏幕上叠一个真的网页框，放本站的文章列表 / 文章 ----
+  const screenUi = $<HTMLDivElement>('.screen-ui');
+  const frame = screenUi.querySelector('iframe')!;
   const back = $<HTMLButtonElement>('.back');
+  const postsBase = new URL(data.postsIndex, location.href).pathname;
+  // 网页框里的页面是零脚本的文章页：载入后从外面（同源）给它补几样东西——固定浅色（和 3D 屏幕上画的一样）、
+  // 去掉「Home」（点了会在屏幕里再开一个小屋）、外站链接改在新标签页打开、站内只许在 /posts/ 下面走、ESC 退出
+  const fixFrame = () => {
+    let doc: Document | null = null;
+    try { doc = frame.contentDocument; } catch { return; }
+    if (!doc || !doc.body) return;
+    if (!doc.location.pathname.startsWith(postsBase)) { doc.location.replace(data.postsIndex); return; }
+    const st = doc.createElement('style');
+    st.textContent = ':root{color-scheme:light;--bg:#f7f5f0;--fg:#1d1b18;--muted:#6b665e;--accent:#c2410c;--line:#e2ddd3}.site-header .brand{visibility:hidden}.site-footer{display:none}';
+    doc.head.appendChild(st);
+    doc.addEventListener('click', (e) => {
+      const a = (e.target as Element).closest?.('a'); if (!a || !a.href) return;
+      const u = new URL(a.href, doc!.location.href);
+      if (u.origin !== location.origin) { e.preventDefault(); window.open(u.href, '_blank', 'noopener'); }
+      else if (!u.pathname.startsWith(postsBase)) e.preventDefault();
+    });
+    doc.addEventListener('keydown', (e) => { if (e.key === 'Escape') emit('monitor:blur'); });
+  };
+  frame.addEventListener('load', fixFrame);
+  const loadFrame = () => { if (!frame.getAttribute('src')) frame.src = data.postsIndex; };
+  on('load:done', () => setTimeout(loadFrame, 2500)); // 揭开小屋以后悄悄先载好，第一次推近就是现成的
   on('monitor:focus', () => {
     if (root.dataset.mode === 'window') emit('window:blur');
+    loadFrame();
     root.dataset.mode = 'monitor'; back.hidden = false; screenUi.hidden = false;
-    if (matchMedia('(pointer: fine)').matches) setTimeout(() => root.dataset.mode === 'monitor' && input.focus({ preventScroll: true }), 900);
   });
   on('monitor:blur', () => {
     if (root.dataset.mode === 'monitor') root.dataset.mode = '';
-    back.hidden = true; screenUi.hidden = true; input.blur();
+    back.hidden = true; screenUi.hidden = true; frame.blur();
   });
   on<{ x: number; y: number; w: number; h: number } | null>('monitor:rect', (r) => {
     if (!r) return;
-    Object.assign(screenUi.style, { left: `${r.x}px`, top: `${r.y}px`, width: `${r.w}px`, height: `${r.h}px`, fontSize: `${r.h * 0.017}px` });
+    Object.assign(screenUi.style, { left: `${r.x}px`, top: `${r.y}px`, width: `${r.w}px`, height: `${r.h}px` });
+    // 网页至少按 760（手机上 500）宽排版再缩放进屏幕：电脑上屏幕本来就有 900 来宽，原样显示、字最清楚；
+    // 手机上屏幕只有三四百宽，整页等比缩小一点（不缩会挤成一长条，按 760 缩字又太小）
+    const vw = Math.max(r.w, r.w < 600 ? 500 : 760), sc = r.w / vw;
+    Object.assign(frame.style, { width: `${vw}px`, height: `${r.h / sc}px`, transform: `scale(${sc})` });
   });
   back.addEventListener('click', () => { emit('monitor:blur'); emit('window:blur'); emit('cup:blur'); emit('calendar:close'); emit('fridge:close'); emit('shelf:blur'); emit('clock:blur'); emit('inspect:blur'); emit('tea:blur'); emit('stove:blur'); });
   // ---- 看右墙边的书架（顶上的奖杯）----
@@ -271,7 +290,6 @@ const pct = (n: number) => `${(n * 100).toFixed(2)}%`;
     if (root.dataset.mode !== 'window') return;
     root.dataset.mode = ''; back.hidden = true;
   });
-  screenUi.addEventListener('submit', (e) => { if (!input.value.trim()) e.preventDefault(); });
 
   // ---- 音乐 ----
   const playing = $<HTMLButtonElement>('.playing');
@@ -722,12 +740,8 @@ const pct = (n: number) => `${(n * 100).toFixed(2)}%`;
   .screen-ui { position: absolute; margin: 0; opacity: 0; animation: appear .3s .75s forwards; }
   .screen-ui[hidden] { display: none; }
   @keyframes appear { to { opacity: 1; } }
-  .screen-ui input, .screen-ui button { position: absolute; box-sizing: border-box; border: 0; background: transparent; outline: 0; font: inherit; }
-  /* 输入的字靠搜索框的上沿（和真实页面一样），所以底部留出一截 */
-  .screen-ui input { padding: 0 1.2em 3.3em; color: #222; font-size: 1em; font-family: system-ui, "PingFang SC", sans-serif; border-radius: .7em 0 0 .7em; }
-  .screen-ui input::placeholder { color: #9195a3; }
-  .screen-ui button { cursor: pointer; }
-  .screen-ui button:focus-visible { outline: 2px solid #ffd27a; }
+  .screen-ui { overflow: hidden; background: #f7f5f0; }
+  .screen-ui iframe { display: block; border: 0; transform-origin: 0 0; background: #f7f5f0; }
 
   /* 阅读器 */
   .reader { position: absolute; inset: 0; display: grid; grid-template: minmax(0, 1fr) / minmax(0, 1fr); place-items: center; padding: 56px 16px 64px; background: #0b1424b3; backdrop-filter: blur(5px); animation: appear .25s forwards; opacity: 0; }
