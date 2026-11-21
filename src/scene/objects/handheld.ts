@@ -98,7 +98,27 @@ export const handheld: SceneObject = ({ scene, camera, tier, bus, pick }) => {
   const paintHome = () => import('../../games/handheld').then(({ drawHome }) => {
     sg.save(); drawHome(sg, 0, homeT); sg.restore(); scrTex.needsUpdate = true;
   }).catch(() => {});
-  setTimeout(paintHome, 4000); // 首屏之后再去取游戏模块，画一帧主页
+  // 用户要的「switch 里的游戏不用一上来就加载，等打开 switch 后展示加载页面」：平时屏幕上画一张自己现画的主页（不碰游戏模块），
+  // 打开过一次、游戏模块已经在了以后，放回书顶时才用真主页重画（paintHome 里的 import 那时是现成的）
+  {
+    const g = sg, Wd = 640;
+    g.fillStyle = '#ebebeb'; g.fillRect(0, 0, Wd, 360);
+    g.fillStyle = '#f2a04a'; g.beginPath(); g.arc(48, 40, 20, 0, 7); g.fill(); g.strokeStyle = '#fff'; g.lineWidth = 3; g.stroke();
+    g.fillStyle = '#3c3c3c'; g.font = '600 16px sans-serif'; g.textAlign = 'right'; g.textBaseline = 'middle'; g.fillText('12:00', Wd - 70, 40);
+    g.fillRect(Wd - 56, 33, 30, 14); g.fillStyle = '#7cd35a'; g.fillRect(Wd - 54, 35, 22, 10);
+    const tiles: [string, string, string][] = [['#29b6f6', '#01579b', '鱼吃鱼'], ['#ffcf7a', '#c98d3a', '狗狗快跑'], ['#a8dc78', '#3f8a35', '熊猫爬竹'], ['#ffb3c6', '#d6305a', '兔子蹦蹦'], ['#7fd0ff', '#2f7a22', '青蛙过河']];
+    tiles.forEach(([c1, c2, name], i) => {
+      const x = 46 + i * 135, y = 92, gr = g.createLinearGradient(0, y, 0, y + 128); gr.addColorStop(0, c1); gr.addColorStop(1, c2);
+      g.fillStyle = gr; g.fillRect(x, y, 128, 128);
+      g.fillStyle = 'rgba(255,255,255,.85)'; g.beginPath(); g.arc(x + 64, y + 54, 26, 0, 7); g.fill();
+      g.fillStyle = '#fff'; g.font = '700 15px sans-serif'; g.textAlign = 'center'; g.fillText(name, x + 64, y + 108);
+      if (!i) { g.strokeStyle = '#00c3e3'; g.lineWidth = 4; g.strokeRect(x - 4, y - 4, 136, 136); }
+    });
+    for (let i = 0; i < 4; i++) { g.fillStyle = '#fff'; g.beginPath(); g.arc(Wd / 2 + (i - 1.5) * 58, 272, 20, 0, 7); g.fill(); g.fillStyle = ['#2c8ff0', '#f2793b', '#7a7f88', '#7a7f88'][i]; g.beginPath(); g.arc(Wd / 2 + (i - 1.5) * 58, 272, 7, 0, 7); g.fill(); }
+    g.fillStyle = '#c9c9c9'; g.fillRect(24, 318, Wd - 48, 1);
+    scrTex.needsUpdate = true;
+  }
+  let opened = false;
 
   // 摆在书顶上：那排技术书最高约 0.255 米；支着支架往后仰，转一点朝向镜头
   const SHELF_POS = new THREE.Vector3(L.books.x0 + 0.14, 0.256, L.books.z + 0.01);
@@ -131,11 +151,11 @@ export const handheld: SceneObject = ({ scene, camera, tier, bus, pick }) => {
 
   const off = [
     on(bus, 'handheld:pick', pickUp),
-    on(bus, 'handheld:shown', () => { if (state === 'held') root.visible = false; }),
+    on(bus, 'handheld:shown', () => { opened = true; if (state === 'held') root.visible = false; }),
     on(bus, 'handheld:closed', () => {
       if (state !== 'held') return;
       root.visible = true; state = 'back'; k = 0; from.copy(root.position); fromQ.copy(root.quaternion);
-      paintHome();
+      if (opened) paintHome();
     }),
   ];
   const ease = (x: number) => x * x * (3 - 2 * x);

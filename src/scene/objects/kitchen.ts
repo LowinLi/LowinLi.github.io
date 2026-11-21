@@ -1014,25 +1014,57 @@ export const kitchen: SceneObject = ({ scene, camera, tier, bus, pick, audio }) 
     phase = 'plating'; prompt = false; queued = null; spatGlow.emissiveIntensity = 0;
     const set = vegIn();
     const [name0, base, comment0] = recipeOf(set);
-    let hearts = base, comment = comment0, name = name0;
-    if (isBurnt) { hearts = 0; name = `糊了的${name0}`; comment = '黑乎乎的……下次提醒了就快翻'; }
+    // 评价（用户要的「做菜的评价不错，也要再丰富一点」）：菜名、红心之外，卡片上还有几个小标签（火候、锅气、口味……）、
+    // 一句尝起来怎么样（按放了什么菜挑）、做的过程哪里好哪里差（每条好几种说法，随机挑），最后一句「食客」的点评
+    const any = <T,>(a: T[]) => a[Math.floor(Math.random() * a.length)];
+    let hearts = base, name = name0;
+    const tags: string[] = [], notes: string[] = [];
+    const meats = set.filter((x) => MEATS.includes(x)), hot = set.includes('chili'), veg = set.some((x) => x === 'cabbage' || x === 'lettuce' || x === 'scallion');
+    if (isBurnt) { hearts = 0; name = `糊了的${name0}`; tags.push('糊了'); notes.push(any(['黑乎乎的……下次提醒了就快翻', '一股焦味，锅底都黑了', '炒成了炭，下回手快点'])); }
     else {
       const avg = reactions.reduce((a, x) => a + x, 0) / Math.max(1, reactions.length);
-      const notes: string[] = [];
-      if (oilCold) { hearts--; notes.push('油还没热就下锅了，有点粘'); }
-      if (avg > 1.3) { hearts--; notes.push('翻得慢了点，有点焦边'); }
-      else if (avg < 0.7 && !oilCold) notes.push('火候正好');
-      if (flips >= 2) { hearts++; notes.push(`颠了 ${flips} 下勺，锅气十足`); }
-      // 调料：放一下、放对了菜加一颗心；放多了扣一颗。酱油配鸡肉、白菜、生菜、葱（番茄、光炒蛋不放）；醋配白菜、生菜（醋溜）
+      if (oilCold) { hearts--; tags.push('粘锅'); notes.push(any(['油还没热就下锅了，有点粘', '油温不够就下菜，吃着有点水', '冷锅冷油，菜有点塌'])); }
+      if (avg > 1.3) { hearts--; tags.push('焦边'); notes.push(any(['翻得慢了点，有点焦边', '翻晚了，底下有点糊味', '手慢了半拍，边上焦了'])); }
+      else if (avg < 0.7 && !oilCold) { tags.push('火候正好'); notes.push(any(['火候正好', '每次都翻得及时，一点没焦', '翻得又快又匀，火候拿捏得准'])); }
+      if (flips >= 2) { hearts++; tags.push('锅气足'); notes.push(any([`颠了 ${flips} 下勺，锅气十足`, `${flips} 下颠勺，有大厨的范儿`, '颠勺颠得漂亮，香味全炒出来了'])); }
+      // 调料：放一下、放对了菜加一颗心；放多了扣一颗。酱油配肉、白菜、生菜、葱（番茄、光炒蛋不放）；醋配白菜、生菜（醋溜）
       const soyLover = set.some((x) => MEATS.includes(x) || x === 'cabbage' || x === 'lettuce' || x === 'scallion') && !set.includes('tomato');
       const vinLover = (set.includes('cabbage') || set.includes('lettuce')) && !set.includes('tomato') && !set.includes('egg');
-      if (soy === 1) { if (soyLover) { hearts++; notes.push('一勺酱油提鲜上色'); } else notes.push('这道菜其实不用放酱油'); }
-      else if (soy >= 2) { hearts--; notes.push('酱油放多了，齁咸'); }
-      if (vin === 1) { if (vinLover) { hearts++; notes.push('沿锅边点了醋，酸香开胃'); name = VIN_NAME[name0] ?? name; } else notes.push('醋放得有点怪'); }
-      else if (vin >= 2) { hearts--; notes.push('醋放多了，酸得倒牙'); }
+      if (soy === 1) { if (soyLover) { hearts++; tags.push('酱香'); notes.push(any(['一勺酱油提鲜上色', '酱油点得刚好，颜色红亮', '酱油一烹，香味一下就出来了'])); } else notes.push(any(['这道菜其实不用放酱油', '酱油抢了原本的味'])); }
+      else if (soy >= 2) { hearts--; tags.push('偏咸'); notes.push(any(['酱油放多了，齁咸', '咸得要喝两碗水', '酱油倒多了，颜色发黑'])); }
+      if (vin === 1) { if (vinLover) { hearts++; tags.push('酸香'); notes.push(any(['沿锅边点了醋，酸香开胃', '一点醋，脆生生又开胃'])); name = VIN_NAME[name0] ?? name; } else notes.push(any(['醋放得有点怪', '这道菜放醋，味道有点打架'])); }
+      else if (vin >= 2) { hearts--; tags.push('太酸'); notes.push(any(['醋放多了，酸得倒牙', '酸得眯起了眼睛'])); }
       hearts = Math.max(1, Math.min(5, hearts));
-      if (notes.length) comment = `${comment0}。${notes.join('，')}`;
     }
+    // 口味标签和一句「尝起来」：按放了什么挑
+    if (!isBurnt) {
+      if (hot) tags.push('香辣'); if (set.includes('tomato')) tags.push('酸甜'); if (meats.length && veg) tags.push('荤素搭配');
+      else if (meats.length >= 2) tags.push('硬菜'); else if (!meats.length && !set.includes('egg')) tags.push('清淡');
+      if (set.length >= 3) tags.push('料足');
+    }
+    const TASTE: [boolean, string[]][] = [
+      [hot && meats.length > 0, ['辣得过瘾，越吃越想吃', '香辣下饭，米饭不够了', '辣椒的香全裹在肉上']],
+      [hot, ['辣乎乎的，额头冒汗', '一口下去辣得直吸气']],
+      [set.includes('beef'), ['牛肉片嫩，嚼着有劲', '牛肉吸饱了汁，越嚼越香']],
+      [set.includes('mutton'), ['羊肉鲜嫩，一点不膻', '羊肉香，吃完身上暖暖的']],
+      [set.includes('pork'), ['肥瘦相间，油润不腻', '肉片焦香，满口肉味']],
+      [set.includes('chicken'), ['鸡肉紧实，越嚼越香', '散养鸡就是香']],
+      [set.includes('tomato'), ['番茄炒出了沙，汤汁浓', '酸甜的汤汁拌饭正好']],
+      [set.includes('egg'), ['鸡蛋金黄蓬松', '蛋炒得嫩，一夹就散']],
+      [veg, ['清清爽爽，一股菜园的清香', '脆嫩爽口，吃着不腻']],
+    ];
+    const taste = isBurnt ? '' : any(TASTE.find(([ok]) => ok)?.[1] ?? ['家常味道']);
+    const comment = isBurnt ? comment0 : `${comment0}。${taste}`;
+    const VERDICT: Record<number, string[]> = {
+      0: ['锅都快烧穿了……', '黑乎乎的，猫都不吃', '还是叫外卖吧'],
+      1: ['……还是叫外卖吧', '吃了两口就放下了', '下次换个做法试试'],
+      2: ['有点难以下咽', '能吃，但不太想吃第二口', '味道怪怪的'],
+      3: ['能吃，还有进步空间', '味道一般般，凑合', '中规中矩的家常菜'],
+      4: ['挺好吃，下次还做', '家常味，吃着舒服', '有妈妈做的味道了'],
+      5: ['这手艺能开饭馆了！', '再来一盘！', '香得邻居都探头来看', '吃得盘子都舔干净了'],
+    };
+    const by = any(['隔壁王大爷', '楼下张婶', '窗外的橘猫', '门口的大黄', '自己', '路过的邮递员']);
+    const verdict = any(VERDICT[hearts] ?? VERDICT[3]);
     const list = pot; pot = [];
     plateT = 0;
     const from = wok.localToWorld(new THREE.Vector3(0, 0.05, 0)), to = plate.localToWorld(new THREE.Vector3(0, 0.03, 0));
@@ -1044,7 +1076,7 @@ export const kitchen: SceneObject = ({ scene, camera, tier, bus, pick, audio }) 
       bites = 0; bite = -1; moreBite = false; chop.visible = false;
       sauce.visible = !isBurnt; (sauce.material as THREE.MeshStandardMaterial).color.setHex(set.includes('tomato') ? 0xc0391e : soy > 0 ? 0x6a3818 : 0xd9a52a);
       (sauce.material as THREE.MeshStandardMaterial).opacity = set.includes('tomato') ? 0.85 : soy > 0 ? 0.75 : 0.45;
-      emit(bus, 'dish:show', { name, hearts, comment, burnt: isBurnt });
+      emit(bus, 'dish:show', { name, hearts, comment, notes, tags: [...new Set(tags)].slice(0, 5), verdict, by, burnt: isBurnt });
       // 一锅做完：关火、锅里的油用完了
       setFire(false); oil = 0; heat = 0; oilDisc.visible = false;
       phase = 'prep'; burnt = 0; clearChunks(wokChunks);

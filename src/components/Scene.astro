@@ -56,7 +56,10 @@ const { data } = Astro.props;
     <div class="dish" role="status" aria-live="polite" hidden>
       <p class="dish-name"></p>
       <p class="dish-hearts" role="img"></p>
+      <p class="dish-tags"></p>
       <p class="dish-comment"></p>
+      <p class="dish-notes"></p>
+      <p class="dish-verdict"></p>
     </div>
     <div class="radio" role="group" aria-label="收音机" hidden>
       <button type="button" data-seek="-1" aria-label="上一个台">◀</button>
@@ -388,6 +391,29 @@ const { data } = Astro.props;
     hhBox.style.transformOrigin = `${c.left - b.left + c.width / 2}px ${c.top - b.top + c.height / 2}px`;
     return `translate(${r.left + r.width / 2 - (c.left + c.width / 2)}px, ${r.top + r.height / 2 - (c.top + c.height / 2)}px) scale(${r.width / c.width})`;
   };
+  /** 掌机的加载页：深色底、一圈转着的彩色圆点、进度条、一句游戏小贴士。进度先慢慢走到九成，模块到了再走满 */
+  const HH_TIPS = ['熊猫爬竹：哪边长着竹枝，就从另一边爬', '狗狗快跑：乌鸦飞过来时往下划，趴下钻过去', '兔子蹦蹦：粉蘑菇弹得特别高', '青蛙过河：荷叶上的蜻蜓 +5', '企鹅滑雪：从红旗蓝旗中间穿过去', '鱼吃鱼：长到 3 级能冲刺，鲨鱼一分钟后才来', '小猫跳跳：空中还能再跳一次'];
+  const hhLoading = (cv: HTMLCanvasElement) => {
+    const g = cv.getContext('2d')!, t0 = performance.now(), tip = HH_TIPS[Math.floor(Math.random() * HH_TIPS.length)];
+    let p = 0, done = false, raf = 0;
+    const draw = (now: number) => {
+      const t = (now - t0) / 1000, k = cv.width / 640;
+      p += ((done ? 1 : 0.9 * (1 - Math.exp(-t * 1.4))) - p) * (done ? 0.25 : 0.12);
+      g.setTransform(k, 0, 0, k, 0, 0);
+      const bg = g.createLinearGradient(0, 0, 0, 360); bg.addColorStop(0, '#1b2233'); bg.addColorStop(1, '#0d111b'); g.fillStyle = bg; g.fillRect(0, 0, 640, 360);
+      const cs = ['#ff4d6a', '#ffd23f', '#3ddc84', '#2fd5ff', '#a77bff', '#ff9a3c'];
+      for (let i = 0; i < 6; i++) { const a = t * 3 + i * Math.PI / 3, r = 6 + 2 * Math.sin(t * 6 + i); g.fillStyle = cs[i]; g.beginPath(); g.arc(320 + Math.cos(a) * 30, 140 + Math.sin(a) * 30, r, 0, 7); g.fill(); }
+      g.fillStyle = '#fff'; g.font = '700 20px "PingFang SC","Noto Sans CJK SC",sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.fillText(done ? '好了！' : `游戏加载中${'.'.repeat(1 + Math.floor(t * 3) % 3)}`, 320, 208);
+      g.fillStyle = '#ffffff22'; g.beginPath(); g.roundRect(170, 232, 300, 8, 4); g.fill();
+      const pg = g.createLinearGradient(170, 0, 470, 0); pg.addColorStop(0, '#2fd5ff'); pg.addColorStop(1, '#3ddc84'); g.fillStyle = pg; g.beginPath(); g.roundRect(170, 232, Math.max(8, 300 * p), 8, 4); g.fill();
+      g.fillStyle = '#9fb0c8'; g.font = '500 13px "PingFang SC","Noto Sans CJK SC",sans-serif'; g.fillText(`小贴士 · ${tip}`, 320, 282);
+      g.setTransform(1, 0, 0, 1, 0, 0);
+      if (!(done && p > 0.995)) raf = requestAnimationFrame(draw);
+    };
+    raf = requestAnimationFrame(draw);
+    return { finish: () => new Promise<void>((res) => { done = true; const chk = () => (p > 0.99 ? (cancelAnimationFrame(raf), setTimeout(res, 150)) : setTimeout(chk, 30)); chk(); }) };
+  };
   on<{ rect?: Rect }>('handheld:open', async (d) => {
     if (!hhUi.hidden || hhBusy) return;
     hhBusy = true;
@@ -397,7 +423,13 @@ const { data } = Astro.props;
     const anim = hhFrom && !still.matches ? hhBox.animate([{ transform: hhFly(hhFrom) }, { transform: 'none' }], { duration: 600, easing: EASE }) : null;
     hhUi.animate([{ backgroundColor: 'rgba(11,20,36,0)' }, {}], { duration: 500 });
     try {
-      if (!hh) { const { createHandheld } = await import('../games/handheld'); hh = createHandheld(hhCanvas, { onSleep: () => emit('handheld:close') }); }
+      if (!hh) {
+        // 游戏模块打开掌机时才下载（用户要的「不用一上来就加载，打开后展示加载页面，加载好再玩」）：下载时屏幕上是加载页
+        const ld = hhLoading(hhCanvas);
+        const [{ createHandheld }] = await Promise.all([import('../games/handheld'), new Promise((r) => setTimeout(r, 700))]);
+        await ld.finish();
+        hh = createHandheld(hhCanvas, { onSleep: () => emit('handheld:close') });
+      }
       hh.start();
     } catch (err) { console.error('[handheld] 游戏加载失败', err); }
     await anim?.finished.catch(() => {});
@@ -512,11 +544,17 @@ const { data } = Astro.props;
 
   // 炒好的菜：菜名、n 颗红心、一句评价（kitchen 发 dish:show）
   const dishUi = $<HTMLDivElement>('.dish');
-  on<{ name: string; hearts: number; comment: string; burnt: boolean }>('dish:show', (d) => {
+  on<{ name: string; hearts: number; comment: string; burnt: boolean; tags?: string[]; notes?: string[]; verdict?: string; by?: string }>('dish:show', (d) => {
     dishUi.querySelector('.dish-name')!.textContent = d.name;
     dishUi.querySelector('.dish-hearts')!.innerHTML = Array.from({ length: 5 }, (_, i) => `<span class="${i < d.hearts ? 'on' : ''}">${i < d.hearts ? '❤' : '♡'}</span>`).join('');
     dishUi.querySelector('.dish-hearts')!.setAttribute('aria-label', `喜欢程度 ${d.hearts} / 5`);
     dishUi.querySelector('.dish-comment')!.textContent = d.comment;
+    // 小标签（火候、锅气、口味）、做的过程、食客点评
+    const tagEl = dishUi.querySelector<HTMLElement>('.dish-tags')!;
+    tagEl.replaceChildren(...(d.tags ?? []).map((t) => { const s2 = document.createElement('span'); s2.textContent = t; if (/糊|粘|焦|咸|酸得|太酸/.test(t)) s2.className = 'bad'; return s2; }));
+    tagEl.hidden = !d.tags?.length;
+    const notesEl = dishUi.querySelector<HTMLElement>('.dish-notes')!; notesEl.textContent = (d.notes ?? []).join(' · '); notesEl.hidden = !d.notes?.length;
+    const vEl = dishUi.querySelector<HTMLElement>('.dish-verdict')!; vEl.textContent = d.verdict ? `「${d.verdict}」—— ${d.by ?? ''}` : ''; vEl.hidden = !d.verdict;
     dishUi.classList.toggle('burnt', d.burnt);
     dishUi.hidden = false;
   });
@@ -747,6 +785,12 @@ const { data } = Astro.props;
   .dish-hearts :global(span) { color: #ffffff55; }
   .dish-hearts :global(span.on) { color: #ff4b5c; text-shadow: 0 0 8px #ff4b5c80; }
   .dish-comment { font-size: 13px; color: #ffffffc8; }
+  .dish-tags { display: flex; flex-wrap: wrap; justify-content: center; gap: 5px; margin: 4px 0 6px !important; }
+  .dish-tags[hidden], .dish-notes[hidden], .dish-verdict[hidden] { display: none; }
+  .dish-tags :global(span) { padding: 1px 8px; border-radius: 999px; font-size: 11.5px; color: #fff3d6; background: #ffb34d2e; border: 1px solid #ffc86a66; }
+  .dish-tags :global(span.bad) { color: #ffd9d0; background: #ff6b5a26; border-color: #ff8a7a66; }
+  .dish-notes { margin-top: 4px !important; font-size: 12px; color: #ffffffa0; }
+  .dish-verdict { margin-top: 6px !important; font-size: 12.5px; color: #ffe2a8; font-style: italic; }
   .dish.burnt .dish-name { color: #c9b7a0; }
   @keyframes dish-in { from { opacity: 0; transform: translate(-50%, -8px); } }
   @media (prefers-reduced-motion: reduce) { .dish { animation: none; } }

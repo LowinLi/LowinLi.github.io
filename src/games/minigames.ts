@@ -36,6 +36,13 @@ const hud = (g: CanvasRenderingContext2D, left: string, right: string, color = '
   if (left) hudPill(g, left, 12, 22, 'left', color);
   if (right) hudPill(g, right, W - 12, 22, 'right', color);
 };
+/** 眼睛：白眼球 + 瞳孔 + 高光；blink 时画成一道弯线 */
+const eye = (g: CanvasRenderingContext2D, x: number, y: number, r: number, lookX = 0, lookY = 0, blink = false) => {
+  if (blink) { g.strokeStyle = '#2a1a10'; g.lineWidth = Math.max(1.5, r * 0.4); g.beginPath(); g.moveTo(x - r, y); g.quadraticCurveTo(x, y + r * 0.6, x + r, y); g.stroke(); return; }
+  g.fillStyle = '#fff'; g.beginPath(); g.arc(x, y, r, 0, 7); g.fill();
+  g.fillStyle = '#1d1410'; g.beginPath(); g.arc(x + lookX * r * 0.35, y + lookY * r * 0.35, r * 0.62, 0, 7); g.fill();
+  g.fillStyle = '#fff'; g.beginPath(); g.arc(x + lookX * r * 0.35 + r * 0.22, y + lookY * r * 0.35 - r * 0.25, r * 0.22, 0, 7); g.fill();
+};
 type Pop = { x: number; y: number; s: string; c: string; life: number };
 const drawPops = (g: CanvasRenderingContext2D, pops: Pop[]) => { for (const p of pops) { g.globalAlpha = Math.min(1, p.life * 2); text(g, p.s, p.x, p.y - (1 - p.life) * 30, 22, p.c, 'center', 800, 'rgba(0,0,0,.4)'); } g.globalAlpha = 1; };
 const agePops = (pops: Pop[], dt: number) => { for (const p of pops) p.life -= dt; return pops.filter((p) => p.life > 0); };
@@ -306,27 +313,55 @@ function runner(): Game {
       g.fillStyle = '#8a5a34'; g.fillRect(0, GY, W, H - GY); g.fillStyle = '#6fae4a'; g.fillRect(0, GY, W, 8);
       g.fillStyle = 'rgba(0,0,0,.12)'; for (let i = 0; i < 12; i++) { const x = ((i * 70 - scroll) % W + W) % W; g.fillRect(x, GY + 20, 26, 4); }
       for (const o of obs) {
-        if (o.kind === 0) { // 白菜
-          g.fillStyle = '#d6e9a8'; g.beginPath(); g.ellipse(o.x + o.w / 2, GY - 14, o.w / 2, 16, 0, 0, 7); g.fill();
-          g.fillStyle = '#6aa84f'; for (const dx of [-12, 0, 12]) { g.beginPath(); g.ellipse(o.x + o.w / 2 + dx, GY - 22, 9, 12, dx * 0.04, 0, 7); g.fill(); }
-        } else { // 一把葱
-          for (let i = 0; i < 4; i++) { g.fillStyle = '#4f9a3a'; g.fillRect(o.x + i * 5, GY - o.h, 4, o.h - 16); g.fillStyle = '#f4f4e6'; g.fillRect(o.x + i * 5, GY - 16, 4, 16); }
-          g.fillStyle = '#c0392b'; g.fillRect(o.x - 1, GY - 20, o.w, 4);
+        g.fillStyle = 'rgba(0,0,0,.16)'; g.beginPath(); g.ellipse(o.x + o.w / 2, GY + 3, o.w / 2 + 4, 4, 0, 0, 7); g.fill();
+        if (o.kind === 0) { // 白菜：外面几片舒展的老叶（叶脉、深浅），里面抱着的嫩芯
+          const cx = o.x + o.w / 2;
+          for (const [dx, a, c] of [[-14, -0.6, '#4f8f3a'], [14, 0.6, '#4f8f3a'], [-8, -0.25, '#5fa245'], [8, 0.25, '#5fa245']] as const) {
+            g.save(); g.translate(cx + dx * 0.4, GY - 2); g.rotate(a);
+            const lg = g.createLinearGradient(0, 0, 0, -30); lg.addColorStop(0, '#e8f2c8'); lg.addColorStop(0.35, c); lg.addColorStop(1, '#3f7a2e'); g.fillStyle = lg;
+            g.beginPath(); g.moveTo(-3, 0); g.bezierCurveTo(-14, -8, -12, -28, 0, -32); g.bezierCurveTo(12, -28, 14, -8, 3, 0); g.fill();
+            g.strokeStyle = 'rgba(240,250,220,.7)'; g.lineWidth = 1.6; g.beginPath(); g.moveTo(0, 0); g.lineTo(0, -28); g.stroke();
+            g.lineWidth = 0.8; for (const yy of [-8, -15, -22]) { g.beginPath(); g.moveTo(0, yy); g.lineTo(-7, yy - 4); g.moveTo(0, yy); g.lineTo(7, yy - 4); g.stroke(); }
+            g.restore();
+          }
+          const hg = g.createRadialGradient(cx - 3, GY - 22, 2, cx, GY - 16, 14); hg.addColorStop(0, '#f6fadc'); hg.addColorStop(1, '#c8e08a'); g.fillStyle = hg;
+          g.beginPath(); g.ellipse(cx, GY - 15, 10, 15, 0, 0, 7); g.fill();
+          g.strokeStyle = 'rgba(120,160,70,.5)'; g.lineWidth = 1; g.beginPath(); g.moveTo(cx, GY - 2); g.quadraticCurveTo(cx - 3, GY - 15, cx, GY - 28); g.stroke();
+        } else { // 一把葱：带须根的葱白、渐变的葱叶，红绳扎着
+          for (let i = 0; i < 4; i++) {
+            const x = o.x + i * 5 + 1, top = GY - o.h + (i % 2) * 6, lean = (i - 1.5) * 2;
+            const lg = g.createLinearGradient(x, 0, x + 4, 0); lg.addColorStop(0, '#3f8a2e'); lg.addColorStop(0.5, '#6cbf4a'); lg.addColorStop(1, '#3f8a2e'); g.fillStyle = lg;
+            g.beginPath(); g.moveTo(x, GY - 16); g.lineTo(x + lean, top + 6); g.quadraticCurveTo(x + 2 + lean, top - 4, x + 4 + lean, top + 6); g.lineTo(x + 4, GY - 16); g.fill();
+            const wg = g.createLinearGradient(0, GY - 20, 0, GY); wg.addColorStop(0, '#d8ecc0'); wg.addColorStop(0.4, '#f8f8ee'); wg.addColorStop(1, '#ffffff'); g.fillStyle = wg; rr(g, x, GY - 20, 4, 18, 2); g.fill();
+          }
+          g.strokeStyle = '#c8b898'; g.lineWidth = 0.8; for (let i = 0; i < 7; i++) { g.beginPath(); g.moveTo(o.x + 4 + i * 2, GY - 2); g.lineTo(o.x + 1 + i * 3, GY + 2); g.stroke(); }
+          g.fillStyle = '#c0392b'; rr(g, o.x - 1, GY - 22, o.w + 2, 4, 2); g.fill(); g.fillStyle = 'rgba(255,255,255,.35)'; g.fillRect(o.x, GY - 22, o.w, 1.2);
         }
       }
-      // 橘猫
-      const cy = GY - y, ph = Math.sin(run), air = y > 0;
-      g.save(); g.translate(CX, cy);
-      g.strokeStyle = '#e8892e'; g.lineWidth = 6; g.lineCap = 'round'; g.beginPath(); g.moveTo(-20, -22); g.quadraticCurveTo(-38, -30 - ph * 6, -32, -46); g.stroke();
-      g.fillStyle = '#f39a3d';
-      for (const [lx, s] of [[-12, 1], [12, -1]] as const) { const sw = air ? 0.5 : ph * s * 0.6; g.save(); g.translate(lx, -12); g.rotate(sw); g.fillRect(-3, 0, 6, 13); g.restore(); }
-      g.beginPath(); g.ellipse(0, -22, 24, 13, 0, 0, 7); g.fill();
-      g.fillStyle = '#e07a26'; for (const sx2 of [-8, 0, 8]) g.fillRect(sx2 - 2, -33, 3, 8);
-      g.fillStyle = '#f39a3d'; g.beginPath(); g.arc(22, -34, 13, 0, 7); g.fill();
-      g.beginPath(); g.moveTo(13, -42); g.lineTo(15, -55); g.lineTo(22, -45); g.fill(); g.beginPath(); g.moveTo(24, -45); g.lineTo(31, -55); g.lineTo(33, -41); g.fill();
-      g.fillStyle = '#222'; g.beginPath(); g.arc(27, -36, 2.2, 0, 7); g.fill(); g.fillStyle = '#f08aa0'; g.beginPath(); g.arc(34, -32, 2, 0, 7); g.fill();
-      g.restore();
+      // 橘猫：渐变毛色、一道道虎斑、白胸口白爪、粉耳朵、会眨的眼睛、胡须，尾巴卷着摆
+      const cy = GY - y, ph = Math.sin(run), air = y > 0, blinkNow = (run * 0.08) % 4 > 3.85;
       g.fillStyle = 'rgba(0,0,0,.15)'; g.beginPath(); g.ellipse(CX, GY + 3, 24 - Math.min(14, y / 8), 4, 0, 0, 7); g.fill();
+      g.save(); g.translate(CX, cy);
+      g.strokeStyle = '#d9792a'; g.lineWidth = 7; g.lineCap = 'round'; g.beginPath(); g.moveTo(-20, -22); g.bezierCurveTo(-36, -24, -40, -40 - ph * 6, -30, -50); g.stroke();
+      g.strokeStyle = '#a8561a'; g.lineWidth = 2; for (const k of [0.35, 0.6, 0.85]) { const tx = -20 + (-30 + 20) * k - 8 * Math.sin(k * 3), ty = -22 + (-50 + 22) * k; g.beginPath(); g.moveTo(tx - 3, ty); g.lineTo(tx + 3, ty - 1); g.stroke(); }
+      const fur = g.createLinearGradient(0, -36, 0, -8); fur.addColorStop(0, '#e98a32'); fur.addColorStop(0.6, '#f6a24a'); fur.addColorStop(1, '#f9c68a');
+      for (const [lx, s, back] of [[-13, 1, 1], [-7, -1, 0], [10, -1, 1], [15, 1, 0]] as const) {
+        const sw = air ? (lx < 0 ? -0.6 : 0.6) : ph * s * 0.6; g.save(); g.translate(lx, -12); g.rotate(sw);
+        g.fillStyle = back ? '#d9792a' : '#f39a3d'; rr(g, -3, 0, 6, 13, 3); g.fill(); g.fillStyle = '#fff6ea'; g.beginPath(); g.ellipse(0, 13, 4, 2.5, 0, 0, 7); g.fill(); g.restore();
+      }
+      g.fillStyle = fur; g.beginPath(); g.ellipse(0, -22, 24, 13, 0, 0, 7); g.fill();
+      g.fillStyle = '#fff6ea'; g.beginPath(); g.ellipse(12, -15, 11, 6, 0.2, 0, 7); g.fill(); // 白胸口
+      g.strokeStyle = '#c4601c'; g.lineWidth = 2.6; g.lineCap = 'round'; for (const sx2 of [-14, -6, 2]) { g.beginPath(); g.moveTo(sx2 - 2, -34); g.quadraticCurveTo(sx2 + 2, -28, sx2, -23); g.stroke(); }
+      g.save(); g.translate(22, -34 + (air ? 0 : Math.abs(ph)));
+      g.fillStyle = fur; g.beginPath(); g.arc(0, 0, 13, 0, 7); g.fill();
+      for (const [ex, ey, tx] of [[-9, -8, -7], [5, -10, 9]]) { g.fillStyle = '#e98a32'; g.beginPath(); g.moveTo(ex - 2, ey + 2); g.lineTo(tx - 1, ey - 12); g.lineTo(ex + 8, ey); g.fill(); g.fillStyle = '#ffb3b8'; g.beginPath(); g.moveTo(ex + 1, ey + 1); g.lineTo(tx, ey - 8); g.lineTo(ex + 5, ey); g.fill(); }
+      g.strokeStyle = '#c4601c'; g.lineWidth = 2; for (const dx of [-4, 0, 4]) { g.beginPath(); g.moveTo(dx, -12); g.lineTo(dx * 0.6, -7); g.stroke(); }
+      g.fillStyle = '#fff6ea'; g.beginPath(); g.ellipse(7, 5, 7, 5, 0, 0, 7); g.fill();
+      eye(g, 5, -2, 3.4, 0.6, 0, blinkNow);
+      g.fillStyle = '#f08aa0'; g.beginPath(); g.moveTo(11, 2); g.lineTo(14, 2); g.lineTo(12.5, 4.5); g.fill();
+      g.strokeStyle = 'rgba(80,50,30,.7)'; g.lineWidth = 0.8; for (const dy of [-1, 2]) { g.beginPath(); g.moveTo(12, 4 + dy * 0.5); g.lineTo(24, 2 + dy * 2); g.stroke(); }
+      g.restore();
+      g.restore();
       fx.draw(g); g.restore(); vignette(g, 0.18);
       hud(g, `${Math.floor(dist)} 米`, `最好 ${best} 米`);
       if (st === 'ready') intro(g, t, '小猫跳跳', ['点一下（A / 上）跳，空中还能再跳一次', '跳过白菜和一把把的葱', '越跑越快，看能跑多远'], '#e07a26');

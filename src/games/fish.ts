@@ -5,7 +5,7 @@
  * - 比自己小的鱼游过去就吃掉，吃得越多长得越大（一共 5 级）；比自己大的鱼平时不理你，
  *   但你凑得太近（招惹它）它会先愣一下冒个「!」，然后追你几秒，被追上就被吃掉——赶紧跑。不招惹它就不咬。
  * - 长到 3 级有绝招：点鼠标左键（或 A）往前猛冲一下，冲的时候嘴张得更大、能一口吞掉面前的小鱼；冲完要歇 1.4 秒。
- * - 隔一阵会来一条鲨鱼：屏幕边上先闪「鲨鱼来了」，它进来以后会主动追你七八秒再游走，鲨鱼谁也吃不了它，只能逃。
+ * - 开局一分钟后才来第一条鲨鱼（用户要的），之后隔一阵来一条：屏幕边上先闪「鲨鱼来了」，它进来以后会主动追你七八秒再游走，鲨鱼谁也吃不了它，只能逃。
  * 被吃掉就结束；分数按吃掉的鱼算（大鱼分多），最好成绩记在 game.fish.best。
  */
 import { W, H, store, rr, text, panel, Fx, sfx, hudPill, vignette, keyChip, type Game, type Key } from './kit';
@@ -110,7 +110,7 @@ export function fishGame(): Game {
   let px = W / 2, py = H / 2, ang = 0, ph = 0, mouth = 0, lv = 1, xp = 0, score = 0, eaten = 0, best = store.get(BEST);
   let dirX = 0, dirY = 0, mode: 'key' | 'mouse' | 'idle' = 'idle', mx = W / 2, my = H / 2, lastPX = -1, lastPY = -1;
   let dash = 0, cool = 0, rTarget = LV_R[1], r = LV_R[1], inv = 0, el = 0;
-  let npcs: Npc[] = [], shark: Shark | null = null, sharkIn = 18, warn = 0, warnSide = 1, spawn = 0, pops: Pop[] = [], dead = 0;
+  let npcs: Npc[] = [], shark: Shark | null = null, sharkIn = 60, warn = 0, warnSide = 1, spawn = 0, pops: Pop[] = [], dead = 0;
   // 场景装饰：气泡、水草、光柱
   const bubbles = Array.from({ length: 26 }, () => ({ x: rand(0, W), y: rand(0, H), r: rand(1.5, 4), v: rand(14, 40) }));
   const weeds = Array.from({ length: 14 }, (_, i) => ({ x: i * 48 + rand(-10, 10), h: rand(40, 95), c: Math.random() < 0.5 ? '#2f8a5a' : '#3fa36b', ph: rand(0, 6) }));
@@ -119,7 +119,7 @@ export function fishGame(): Game {
   const say = (x: number, y: number, s: string, c = '#fff', size = 20) => pops.push({ x, y, s, c, life: 1, size });
   const reset = () => {
     px = W / 2; py = H / 2; ang = 0; lv = 1; xp = 0; score = 0; eaten = 0; r = rTarget = LV_R[1]; dash = cool = 0; inv = 1.5; el = 0;
-    npcs = []; shark = null; sharkIn = rand(16, 22); warn = 0; spawn = 0; pops = []; dirX = dirY = 0; mode = 'idle'; dead = 0;
+    npcs = []; shark = null; sharkIn = 60; warn = 0; spawn = 0; pops = []; dirX = dirY = 0; mode = 'idle'; dead = 0; // 鲨鱼开局一分钟后才来（用户要的）
     for (let i = 0; i < 8; i++) addNpc(true, i < 2);
   };
   /** 加一条野鱼：大多比你小，三成左右比你大；从左右两边游进来 */
