@@ -11,6 +11,8 @@
   owl                             Wikimedia Commons「Strix aluco male.oga」（灰林鸮雄鸟），Vianney Bajart，CC BY-SA 4.0
   rat                             OpenGameArt「Squeaky Rat」，Iwan 'qubodup' Gabovitch，CC0（预览文件 montage-sfx-20130922@153659.ogg，改名 squeaky_rat.ogg）
   crickets                        OpenGameArt「Crickets Ambient Noise - loopable」，Wolfgang_ / Ted Kerr，CC0（crickets_1.mp3）
+  cow / pig2 / pig3               Wikimedia Commons「Mudchute cow 1.ogg」「Mudchute pig 2.ogg」「Mudchute pig 3.ogg」，Secretlondon（伦敦 Mudchute 城市农场的录音），CC BY-SA 3.0
+  sheep                           OpenGameArt「Sheep Baa」，AntumDeluge，CC0（sheep_baa_0.ogg，改名 sheep_baa.ogg）
 
 用法：python tools/build_animal_sounds.py <原始录音所在目录> public/assets/sounds
 （需要系统 ffmpeg 和 numpy）
@@ -25,6 +27,7 @@ FILES = {
     'hen_egg': 'Hen_announcing_shes_lain_an_egg.ogg', 'dog': 'dog_barking_mono.wav',
     'meow': 'Meow.ogg', 'softmew': 'cat_softmew.wav', 'mewfood': 'cat_mewfood.wav', 'pleading': 'Meow_of_a_pleading_cat.oga',
     'owl': 'Strix_aluco_male.oga', 'rat': 'squeaky_rat.ogg', 'crickets': 'crickets_1.mp3',
+    'cow': 'Mudchute_cow_1.ogg', 'pig2': 'Mudchute_pig_2.ogg', 'pig3': 'Mudchute_pig_3.ogg', 'sheep': 'sheep_baa.ogg',
 }
 # 种类 → [(文件, 开始秒, 结束秒)]；起止是看频谱图定的
 CLIPS = {
@@ -38,6 +41,10 @@ CLIPS = {
     'squeak': [('rat', 0.42, 0.78), ('rat', 1.12, 1.62), ('rat', 2.02, 2.32)],
     # 蛐蛐：一段可以首尾相接循环的底噪（不淡入淡出，循环时才不会一跳一跳）
     'cricket': [('crickets', 0.0, 11.45)],
+    # 圈里的牲口（livestock.ts）：牛「哞——」、猪「哼」、羊「咩」
+    'moo': [('cow', 0.45, 2.19)],
+    'oink': [('pig2', 0.02, 0.33), ('pig3', 0.0, 0.2)],
+    'baa': [('sheep', 0.25, 0.87)],
 }
 LOOP = {'cricket'}
 GAP = 0.35  # 片段之间留空白：mp3 编码的前后延迟不会让一段的头尾串到隔壁

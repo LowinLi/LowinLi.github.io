@@ -95,3 +95,34 @@ export function crow(ctx: AudioContext, dest: AudioNode, t0: number) {
   }
   setTimeout(() => lp.disconnect(), (t0 - ctx.currentTime + 2) * 1000);
 }
+
+/** 牛叫：「哞——」低沉的长音，音高先起来一点再慢慢往下沉，嘴从闭着的「m」张成「oo」（共振峰低、窄） */
+export function moo(ctx: AudioContext, dest: AudioNode, t0: number) {
+  const d = 1.1 + Math.random() * 0.5, f = 105 + Math.random() * 25;
+  syllable(ctx, dest, t0, { dur: d, f0: [[0, f * 0.9], [0.25, f * 1.35], [d * 0.6, f * 1.25], [d, f * 0.85]], formants: [[320, 4, 1.3], [720, 6, 0.7], [2400, 8, 0.12]], fMove: [[0, 0.7], [0.3, 1.1], [d, 0.85]], noise: 0.08, attack: 0.12, vib: [4.5, 3], gain: 1.1 });
+}
+
+/** 羊叫：「咩——」中高音、一抖一抖的（颤音又快又深），共振峰是「e」 */
+export function baa(ctx: AudioContext, dest: AudioNode, t0: number) {
+  const d = 0.7 + Math.random() * 0.3, f = 330 + Math.random() * 90;
+  syllable(ctx, dest, t0, { dur: d, f0: [[0, f * 0.9], [0.08, f * 1.08], [d * 0.7, f * 1.02], [d, f * 0.86]], formants: [[620, 4, 1], [1850, 6, 0.55], [2700, 8, 0.2]], fMove: [[0, 0.75], [0.1, 1], [d, 0.95]], noise: 0.12, attack: 0.04, vib: [8.5, f * 0.09], gain: 0.85 });
+}
+
+/** 猪：两三声短促的「哼哼」——低音、鼻音重（噪声多、共振峰低），每声往下掉 */
+export function oink(ctx: AudioContext, dest: AudioNode, t0: number, n = 2 + Math.floor(Math.random() * 2)) {
+  const f = 150 + Math.random() * 50;
+  let t = t0;
+  for (let i = 0; i < n; i++) {
+    const d = 0.13 + Math.random() * 0.06;
+    syllable(ctx, dest, t, { dur: d, f0: [[0, f * 1.25], [d, f * 0.8]], formants: [[420, 3, 1.2], [1100, 4, 0.6], [2500, 6, 0.15]], noise: 0.55, attack: 0.008, gain: 1.0, drive: true });
+    t += d + 0.06 + Math.random() * 0.08;
+  }
+}
+
+/** 猪被抓时的尖叫：高、破、往上挑再落下来，连着两声 */
+export function squeal(ctx: AudioContext, dest: AudioNode, t0: number) {
+  for (let i = 0; i < 2; i++) {
+    const d = 0.45 + Math.random() * 0.15, f = 900 + Math.random() * 200, t = t0 + i * 0.55;
+    syllable(ctx, dest, t, { dur: d, f0: [[0, f * 0.8], [0.08, f * 1.3], [d, f * 0.95]], formants: [[1400, 3, 1], [3000, 5, 0.5]], noise: 0.25, attack: 0.02, vib: [12, 30], drive: true, gain: 0.6 });
+  }
+}

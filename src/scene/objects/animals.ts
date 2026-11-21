@@ -4,7 +4,8 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { asset, canvasTex } from '../util';
 import { addFace, addFur } from '../animalDetail';
 import { Bin, emit, HIT_LAYER, on, type SceneObject } from '../types';
-import { bark, cluck, crow, meow } from '../animalSounds';
+import { baa, bark, cluck, crow, meow, moo, oink, squeal } from '../animalSounds';
+import { createLivestock } from '../livestock';
 import { L } from '../layout';
 import { applyDayTint, SKY } from '../daytime';
 
@@ -121,7 +122,8 @@ export const animals: SceneObject = ({ scene, tier, camera, bus, audio, pick }) 
   let stopped = false, buffalo: THREE.Object3D | null = null;
   const loaded: THREE.Object3D[] = [], mixers: THREE.AnimationMixer[] = [];
   const loader = new GLTFLoader();
-  const prepare = (model: THREE.Object3D, recolor: Record<string, number>, height: number) => {
+  // precise：按蒙皮以后的顶点量高度（猪、羊是 FBX 转的，几何是厘米、骨架里再缩 0.01，只量几何会差一百倍）
+  const prepare = (model: THREE.Object3D, recolor: Record<string, number>, height: number, precise = false) => {
     model.traverse((o) => {
       const m = o as THREE.Mesh;
       if (!m.isMesh) return;
@@ -136,7 +138,8 @@ export const animals: SceneObject = ({ scene, tier, camera, bus, audio, pick }) 
       m.frustumCulled = false; // 蒙皮网格的包围盒不跟着骨骼动
       m.userData.noAO = true;
     });
-    const box = new THREE.Box3().setFromObject(model);
+    if (precise) model.updateMatrixWorld(true);
+    const box = new THREE.Box3().setFromObject(model, precise);
     model.scale.multiplyScalar(height / (box.max.y - box.min.y));
     return model;
   };
@@ -422,7 +425,7 @@ export const animals: SceneObject = ({ scene, tier, camera, bus, audio, pick }) 
     on(bus, 'window:blur', () => { atWindow = false; }),
   ];
   // 录音（tools/build_animal_sounds.py 拼的声音精灵：一个 mp3 + 每段的起止），第一次走到窗前才下载；到之前、失败时用合成的
-  type Kind = 'crow' | 'cluck' | 'bark' | 'meow' | 'owl' | 'squeak' | 'cricket';
+  type Kind = 'crow' | 'cluck' | 'bark' | 'meow' | 'owl' | 'squeak' | 'cricket' | 'moo' | 'baa' | 'oink' | 'squeal';
   let sprite: { buf: AudioBuffer; clips: Record<Kind, [number, number][]> } | null = null, spriteLoading = false;
   const loadSprite = (ctx: AudioContext) => {
     if (spriteLoading) return; spriteLoading = true;
@@ -433,13 +436,12 @@ export const animals: SceneObject = ({ scene, tier, camera, bus, audio, pick }) 
   };
   // 猫头鹰、老鼠、蛐蛐只有录音：录音没到就不出声
   const none = () => {};
-  const SYNTH: Record<Kind, (ctx: AudioContext, dest: AudioNode, t0: number) => void> = { crow, cluck, bark, meow, owl: none, squeak: none, cricket: none };
+  const SYNTH: Record<Kind, (ctx: AudioContext, dest: AudioNode, t0: number) => void> = { crow, cluck, bark, meow, owl: none, squeak: none, cricket: none, moo, baa, oink: (a, b, t) => oink(a, b, t), squeal };
   /** 播一声：有录音就随机挑一段（音高随机差一点，听着不像同一段），狗叫连着来一到三下 */
   const voice = (kind: Kind) => (ctx: AudioContext, dest: AudioNode, t0: number) => {
-    if (!sprite) { SYNTH[kind](ctx, dest, t0); return; }
-    const list = sprite.clips[kind];
-    if (!list) return;
-    const n = kind === 'bark' || kind === 'squeak' ? 1 + Math.floor(Math.random() * 3) : 1;
+    const list = sprite?.clips[kind];
+    if (!sprite || !list) { SYNTH[kind](ctx, dest, t0); return; } // 没有录音的（或录音还没到）用合成的
+    const n = kind === 'bark' || kind === 'squeak' ? 1 + Math.floor(Math.random() * 3) : kind === 'oink' ? 2 + Math.floor(Math.random() * 2) : 1; // 猪哼哼也连着两三声
     let t = t0;
     for (let i = 0; i < n; i++) {
       const [off, dur] = list[Math.floor(Math.random() * list.length)];
@@ -460,6 +462,9 @@ export const animals: SceneObject = ({ scene, tier, camera, bus, audio, pick }) 
     setTimeout(() => { g.disconnect(); pan.disconnect(); }, 6000);
   };
   const tmp = new THREE.Vector3();
+  // 猪圈、羊圈、牛棚里的牲口（livestock.ts）：借这里的叫声通道
+  const livestock = createLivestock({ group, loader, camera, bus, pick, prepare, loaded, stopped: () => stopped, atWindow: () => atWindow,
+    voice: (kind, p, loud) => { ensureAudio(); emitAt(p, voice(kind), loud); } });
   /** 蛐蛐：白天在窗前时一层循环的底噪，跟着天色淡入淡出（夜里只有猫头鹰和老鼠） */
   const cricketBed = (dt: number) => {
     const want = actx && sprite?.clips.cricket && !document.hidden ? 0.13 * SKY.day : 0;
@@ -571,6 +576,7 @@ export const animals: SceneObject = ({ scene, tier, camera, bus, audio, pick }) 
       if (buffalo) buffalo.visible = dayOut;
       nightLife(dt, t, night);
       for (const m of mixers) m.update(dt);
+      livestock.frame(dt, t);
       for (const b of blinks) b(dt);
       for (const a of [cat, dog]) {
         const isCat = a.spec.kind === 'cat';
@@ -673,7 +679,7 @@ export const animals: SceneObject = ({ scene, tier, camera, bus, audio, pick }) 
       stopped = true; offs.forEach((f) => f()); out?.disconnect();
       gestures.forEach((g) => removeEventListener(g, ensureAudio)); document.removeEventListener('visibilitychange', onHide);
       if (crickets) { crickets.src.stop(); crickets.src.disconnect(); crickets.gain.disconnect(); }
-      mixers.forEach((m) => m.stopAllAction());
+      mixers.forEach((m) => m.stopAllAction()); livestock.stop();
       for (const m of loaded) m.traverse((o) => { const x = o as THREE.Mesh; if (x.isMesh) { x.geometry.dispose(); const mm = x.material as THREE.MeshLambertMaterial; mm.map?.dispose?.(); } });
       scene.remove(group); bin.dispose();
     },

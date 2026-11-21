@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { Bin, emit, HIT_LAYER, type SceneObject } from '../types';
+import { Bin, emit, HIT_LAYER, on, type SceneObject } from '../types';
 import { L } from '../layout';
 import { Batch, canvasTex, leafGeo, place, rbox, rng, speckle, type V3 } from '../util';
 import { Impostors, outdoorMaterial, photo, worldUV } from '../impostor';
@@ -14,6 +14,13 @@ import { applyDayTint } from '../daytime';
  * 朝上的面亮、朝下的面暗，叶子从叶柄到叶尖有深浅、中脉偏浅，越远越泛白；地上的影子是单独一层半透明的暗色片（清晨的长影子，朝屋子这边拖）。
  * 菜园里所有静态的东西合成一个网格。
  */
+/** 顶点色只管明暗（朝上的面亮），颜色交给材质或实例颜色 */
+const paintUp = (g: THREE.BufferGeometry) => {
+  const n = g.attributes.normal, a = new Float32Array(n.count * 3);
+  for (let i = 0; i < n.count; i++) { const s = 0.62 + 0.38 * (n.getY(i) * 0.5 + 0.5) + 0.1 * Math.abs(n.getX(i)); a[i * 3] = a[i * 3 + 1] = a[i * 3 + 2] = s; }
+  g.setAttribute('color', new THREE.Float32BufferAttribute(a, 3));
+  return g;
+};
 export const countryside: SceneObject = ({ scene, tier, bus, pick: pickable }) => {
   const bin = new Bin();
   const group = new THREE.Group();
@@ -122,16 +129,22 @@ export const countryside: SceneObject = ({ scene, tier, bus, pick: pickable }) =
   group.add(ground);
 
   // ---------- 菜畦 ----------
-  type Crop = 'cabbage' | 'lettuce' | 'scallion' | 'chili' | 'eggplant' | 'tomato' | 'bean' | 'pumpkin' | 'corn';
+  type Crop = 'cabbage' | 'lettuce' | 'scallion' | 'chili' | 'eggplant' | 'tomato' | 'bean' | 'pumpkin' | 'corn' | 'none';
   const bedX = [-6.2, -5.0, -3.8, -2.6, -1.4, 2.0, 3.2, 4.4, 5.6, 6.8];
+  /** 在不在三个圈里（圈里不种草、不长杂草） */
+  const inPen = (x: number, z: number) => Object.values(L.pens).some((p) => Math.abs(x - p.x) < p.w / 2 + 0.12 && Math.abs(z - p.z) < p.d / 2 + 0.12);
   const bands: { z0: number; z1: number; crops: Crop[] }[] = [
     { z0: -7.5, z1: -3.3, crops: ['bean', 'tomato', 'chili', 'cabbage', 'scallion', 'scallion', 'cabbage', 'eggplant', 'tomato', 'bean'] },
-    { z0: -13.2, z1: -8.9, crops: ['corn', 'lettuce', 'scallion', 'cabbage', 'chili', 'lettuce', 'cabbage', 'pumpkin', 'pumpkin', 'corn'] },
+    // 远处这一片左边第二到四垄、右边两垄让给了猪圈、羊圈、牛棚（L.pens）
+    { z0: -13.2, z1: -8.9, crops: ['corn', 'none', 'none', 'none', 'chili', 'lettuce', 'none', 'none', 'pumpkin', 'corn'] },
   ];
   const GREEN = [0x4f8a3a, 0x5c9a42, 0x437a33, 0x6aa84a];
   type PickKind = 'cabbage' | 'scallion' | 'lettuce';
   const crops: { kind: PickKind; x: number; y: number; z: number; h: number; idx: number; gone: boolean }[] = [];
   const by = gy + 0.12; // 垄面的高度
+  // 辣椒（用户要的「院子里的辣椒也要可以摘过来做成辣的菜肴」）：每棵辣椒秧上的果子记下来，后面合成一个实例化网格；摘一棵就把它的果子藏起来
+  const chiliFruit: { bush: number; p: V3; rot: V3; red: boolean }[] = [];
+  const chiliBush: { x: number; z: number; picked: boolean }[] = [];
   const plant = {
     cabbage(x: number, z: number, s = 1, light = false) {
       const c = light ? [0x6f9a3e, 0x7fa848, 0x5f8c36] : [0x3f6f2e, 0x4d7d36, 0x587f3a];
@@ -154,8 +167,9 @@ export const countryside: SceneObject = ({ scene, tier, bus, pick: pickable }) =
       for (let i = 0; i < (big ? 3 : 6); i++) {
         const a = r() * 6.28, d = 0.07 + r() * 0.07, y = by + 0.12 + r() * 0.18;
         if (big) { put(new THREE.SphereGeometry(0.032, 5, 4), 0x4b2a66, [x + Math.cos(a) * d, y, z + Math.sin(a) * d], [0.3, a, 0], [1, 2.6, 1]); put(new THREE.ConeGeometry(0.02, 0.03, 5), 0x4a7d40, [x + Math.cos(a) * d, y + 0.08, z + Math.sin(a) * d]); }
-        else put(new THREE.ConeGeometry(0.011, 0.075, 5), r() < 0.7 ? 0xc8281e : 0x3f8f3a, [x + Math.cos(a) * d, y, z + Math.sin(a) * d], [Math.PI + (r() - 0.5) * 0.4, 0, (r() - 0.5) * 0.4]);
+        else chiliFruit.push({ bush: chiliBush.length, p: [x + Math.cos(a) * d, y, z + Math.sin(a) * d], rot: [Math.PI + (r() - 0.5) * 0.4, 0, (r() - 0.5) * 0.4], red: r() < 0.7 }); // 辣椒单独一个实例化网格，摘了能藏
       }
+      if (!big) chiliBush.push({ x, z, picked: false });
       shade(x, z, 0.16, 0.3, by + 0.004);
     },
     tomato(x: number, z: number) {
@@ -202,6 +216,7 @@ export const countryside: SceneObject = ({ scene, tier, bus, pick: pickable }) =
     const len = band.z1 - band.z0, zc = (band.z0 + band.z1) / 2;
     bedX.forEach((x, bi) => {
       const crop = band.crops[bi];
+      if (crop === 'none') return;
       put(rbox(0.86, 0.12, len + 0.15, 0.05, 1), 0x5c4630, [x, gy + 0.06, zc], [0, 0, 0], 1, { k: 1.12, tex: 'soil' }); // 垄
       const step = crop === 'scallion' ? 0.16 : crop === 'cabbage' || crop === 'lettuce' ? 0.38 : crop === 'bean' ? 0.6 : crop === 'pumpkin' ? 0.7 : crop === 'corn' ? 0.42 : 0.5;
       const rowsX = crop === 'scallion' ? [-0.2, 0, 0.2] : crop === 'cabbage' || crop === 'lettuce' ? [-0.18, 0.18] : crop === 'corn' ? [-0.17, 0.17] : [0];
@@ -272,6 +287,99 @@ export const countryside: SceneObject = ({ scene, tier, bus, pick: pickable }) =
     }
     put(new THREE.CircleGeometry(0.13, 12), 0x4f7a34, [sx, hy, hz2 - 0.01], [-tilt, yaw, 0], 1, { leaf: true });
     shade(sx, sz, 0.15, 1.4);
+  }
+
+  // ---------- 猪圈、羊圈、牛棚（用户要的「院子里加上猪圈、羊圈、牛圈」；里面的牲口在 animals.ts 的 livestock 里）----------
+  // 全是 put() 进合并批次：石头、瓦、草顶、泥墙用照片贴图，木头用顶点色。正面朝屋子（+z）
+  {
+    const P = L.pens, fy = gy;
+    const WOOD = [0x6e5236, 0x7a5c3c, 0x5f4630, 0x84664a];
+    const box = (w: number, h: number, d: number, hex: number, pos: V3, rot: V3 = [0, 0, 0], o: Opt = {}) => put(new THREE.BoxGeometry(w, h, d), hex, pos, rot, 1, o);
+    const post = (x: number, z: number, h: number, rad = 0.04) => put(new THREE.CylinderGeometry(rad * 0.85, rad, h, 6), pick(WOOD), [x, fy + h / 2, z], [(r() - 0.5) * 0.04, r() * 3, (r() - 0.5) * 0.04]);
+    /** 一根横杆（粗细不匀的树枝）：从 (x0,z0) 到 (x1,z1)、高 y */
+    const rail = (x0: number, z0: number, x1: number, z1: number, y: number, rad = 0.025) => {
+      const len = Math.hypot(x1 - x0, z1 - z0);
+      put(new THREE.CylinderGeometry(rad, rad * 1.15, len, 5).rotateZ(Math.PI / 2), pick(WOOD), [(x0 + x1) / 2, fy + y + (r() - 0.5) * 0.02, (z0 + z1) / 2], [0, -Math.atan2(z1 - z0, x1 - x0), (r() - 0.5) * 0.03]);
+    };
+    /** 单坡屋顶：后檐高 yb（在 zb）、前檐高 yf（在 zf），左右伸出 over */
+    const roof = (x0: number, x1: number, zb: number, zf: number, yb: number, yf: number, tex: TexKind, hex: number, thick: number) => {
+      const len = Math.hypot(zf - zb, yb - yf), a = Math.atan2(yb - yf, zf - zb);
+      box(x1 - x0, thick, len, hex, [(x0 + x1) / 2, fy + (yb + yf) / 2, (zb + zf) / 2], [a, 0, 0], { tex });
+      // 檐下的椽子（看得到的那一头）
+      for (let x = x0 + 0.15; x < x1 - 0.05; x += 0.32) box(0.05, 0.05, len * 0.98, pick(WOOD), [x, fy + (yb + yf) / 2 - thick / 2 - 0.025, (zb + zf) / 2], [a, 0, 0]);
+      shade((x0 + x1) / 2, (zb + zf) / 2 + 0.3, (x1 - x0) * 0.5, (zf - zb) * 0.6, fy + 0.02);
+    };
+    const hay = (x: number, z: number, s: number) => put(lump(s, r() * 9, 1), 0xc9a65a, [x, fy + s * 0.35, z], [0, r() * 6, 0], [1, 0.55, 1], { tex: 'straw' });
+
+    // 猪圈：齐膝的石墙，前墙右边留一道木栅门；后半截一个小瓦棚；靠前一条石槽；地上是踩烂的泥和一窝干草
+    {
+      const { x, z, w, d } = P.pig, x0 = x - w / 2, x1 = x + w / 2, z0 = z - d / 2, z1 = z + d / 2, wh = 0.4, t = 0.14; // 墙矮一点：窗前是平视过去的，高了看不见猪
+      put(new THREE.PlaneGeometry(w - 0.1, d - 0.1).rotateX(-Math.PI / 2), 0x55402c, [x, fy + 0.02, z], [0, 0, 0], 1, { tex: 'soil', k: 0.75 });
+      for (let i = 0; i < 5; i++) shade(x + (r() - 0.5) * (w - 0.5), z + (r() - 0.2) * (d - 0.8) * 0.5, 0.18 + r() * 0.2, 0.15, fy + 0.025); // 湿泥
+      const stone = (len: number, h: number, pos: V3, alongZ: boolean) => {
+        box(alongZ ? t : len, h, alongZ ? len : t, pick([0x8f8a80, 0x9a958b, 0x857f75]), pos, [0, 0, 0], { tex: 'stone' });
+        box(alongZ ? t + 0.05 : len + 0.05, 0.05, alongZ ? len + 0.05 : t + 0.05, 0x7a766e, [pos[0], pos[1] + h / 2 + 0.025, pos[2]], [0, 0, 0], { tex: 'stone' }); // 墙头压一层
+      };
+      stone(d, wh, [x0 + t / 2, fy + wh / 2, z], true);
+      stone(d, wh, [x1 - t / 2, fy + wh / 2, z], true);
+      stone(w, 1.22, [x, fy + 0.61, z0 + t / 2], false);   // 后墙高一截，搭瓦棚
+      const gate = 0.48, gx0 = x1 - t - 0.06 - gate;     // 门洞在前墙右边
+      stone(gx0 - x0, wh, [(x0 + gx0) / 2, fy + wh / 2, z1 - t / 2], false);
+      for (let i = 0; i < 5; i++) box(0.05, 0.42, 0.035, pick(WOOD), [gx0 + 0.06 + i * 0.1, fy + 0.24, z1 - t / 2], [0, 0, (r() - 0.5) * 0.06]); // 木栅门
+      for (const yy of [0.12, 0.36]) box(gate, 0.05, 0.04, pick(WOOD), [gx0 + gate / 2 + 0.02, fy + yy, z1 - t / 2 + 0.03]);
+      // 瓦棚：两根木柱撑着前檐，后檐搭在后墙上
+      const zf = z0 + 1.15;
+      post(x0 + t + 0.06, zf - 0.05, 0.98, 0.045); post(x1 - t - 0.06, zf - 0.05, 0.98, 0.045);
+      roof(x0 - 0.12, x1 + 0.12, z0 - 0.1, zf + 0.12, 1.3, 1.0, 'roof', 0x6f6b64, 0.05);
+      // 石槽：一块凿空的长条石，里面一层泔水
+      box(0.78, 0.17, 0.24, 0x8a857b, [x - 0.18, fy + 0.085, z1 - t - 0.2], [0, 0, 0], { tex: 'stone' });
+      box(0.66, 0.012, 0.14, 0x4a3c28, [x - 0.18, fy + 0.165, z1 - t - 0.2]);
+      for (let i = 0; i < 4; i++) hay(x0 + 0.35 + i * 0.3, z0 + 0.4 + (r() - 0.5) * 0.3, 0.22 + r() * 0.08); // 棚下垫的干草
+    }
+
+    // 羊圈：木桩 + 三道横杆的栅栏，后面一个草顶小棚（后面一面编起来的木板墙），角上一个草料架；地上铺着碎草
+    {
+      const { x, z, w, d } = P.sheep, x0 = x - w / 2, x1 = x + w / 2, z0 = z - d / 2, z1 = z + d / 2;
+      put(new THREE.PlaneGeometry(w - 0.06, d - 0.06).rotateX(-Math.PI / 2), 0xb39a62, [x, fy + 0.018, z], [0, 0, 0], 1, { tex: 'straw', k: 0.7 });
+      const corners: [number, number, number, number][] = [[x0, z1, x1, z1], [x0, z0, x0, z1], [x1, z0, x1, z1]];
+      for (const [ax, az, bx, bz] of corners) {
+        const n = Math.max(2, Math.round(Math.hypot(bx - ax, bz - az) / 0.55));
+        for (let i = 0; i <= n; i++) post(ax + (bx - ax) * (i / n), az + (bz - az) * (i / n), 0.95 + (r() - 0.5) * 0.06, 0.035);
+        for (const yy of [0.3, 0.6, 0.86]) rail(ax, az, bx, bz, yy);
+      }
+      rail(x + 0.15, z1, x1, z1, 0.45); // 门上一道斜撑
+      // 后面的木板墙 + 草顶小棚
+      for (let xx = x0 + 0.06; xx < x1; xx += 0.12) box(0.11, 1.15, 0.035, pick(WOOD), [xx, fy + 0.575, z0], [0, 0, (r() - 0.5) * 0.03]);
+      const zf = z0 + 1.05;
+      post(x0 + 0.04, zf, 0.95, 0.04); post(x1 - 0.04, zf, 0.95, 0.04);
+      roof(x0 - 0.15, x1 + 0.15, z0 - 0.15, zf + 0.15, 1.22, 0.94, 'straw', 0xb5975a, 0.09);
+      // 草料架：两排斜木条夹着一捆干草，靠在左边栅栏里
+      for (let i = 0; i < 6; i++) { const zz = z - 0.35 + i * 0.14; box(0.025, 0.6, 0.025, pick(WOOD), [x0 + 0.17, fy + 0.62, zz], [0, 0, 0.35]); box(0.025, 0.6, 0.025, pick(WOOD), [x0 + 0.33, fy + 0.62, zz], [0, 0, -0.35]); }
+      hay(x0 + 0.25, z, 0.3); put(lump(0.2, 3, 1), 0xd2b06a, [x0 + 0.25, fy + 0.55, z + 0.1], [0, 0, 0], [0.8, 0.9, 2.2], { tex: 'straw' });
+      for (let i = 0; i < 3; i++) hay(x0 + 0.5 + i * 0.4, z0 + 0.35, 0.2 + r() * 0.08);
+    }
+
+    // 牛棚：六根柱子撑一个大草顶（盖住后面三分之二），后面一堵泥墙，两边和前面是两道横杆；前面一条木槽，角上一垛干草
+    {
+      const { x, z, w, d } = P.cow, x0 = x - w / 2, x1 = x + w / 2, z0 = z - d / 2, z1 = z + d / 2;
+      put(new THREE.PlaneGeometry(w - 0.06, d - 0.06).rotateX(-Math.PI / 2), 0x6a5236, [x, fy + 0.018, z], [0, 0, 0], 1, { tex: 'soil', k: 0.85 });
+      for (let i = 0; i < 4; i++) shade(x + (r() - 0.5) * (w - 0.6), z + (r() - 0.5) * (d - 0.6), 0.2 + r() * 0.15, 0.2, fy + 0.025);
+      box(w + 0.1, 1.95, 0.18, 0xb39a7a, [x, fy + 0.975, z0 - 0.04], [0, 0, 0], { tex: 'plaster' }); // 后墙：黄泥墙
+      box(w + 0.16, 0.3, 0.22, 0x8a857b, [x, fy + 0.15, z0 - 0.04], [0, 0, 0], { tex: 'stone' });     // 墙脚一圈石头
+      const zf = z0 + 1.95;
+      for (const xx of [x0, x, x1]) { post(xx, z0 + 0.06, 1.98, 0.055); post(xx, zf, 1.72, 0.055); }
+      for (const xx of [x0, x1]) box(0.07, 0.07, zf - z0, pick(WOOD), [xx, fy + 1.78, (z0 + zf) / 2], [Math.atan2(0.26, zf - z0), 0, 0]); // 顶上的梁
+      roof(x0 - 0.25, x1 + 0.25, z0 - 0.25, zf + 0.35, 2.12, 1.7, 'straw', 0xb08f55, 0.14);
+      for (const [ax, az, bx, bz] of [[x0, z0, x0, z1], [x1, z0, x1, z1], [x0, z1, x1, z1]] as [number, number, number, number][]) {
+        for (const yy of [0.5, 0.98]) rail(ax, az, bx, bz, yy, 0.032);
+        if (az !== bz) post(ax, z1, 1.08, 0.05); // 前面两个角桩
+      }
+      post(x - 0.3, z1, 1.08, 0.05); post(x + 0.3, z1, 1.08, 0.05);
+      // 木槽：长木箱，里面一层草料
+      box(1.3, 0.3, 0.32, 0x6b4e32, [x, fy + 0.15, z1 - 0.35]);
+      put(lump(0.2, 5, 1), 0xc8a85e, [x, fy + 0.3, z1 - 0.35], [0, 0, 0], [3, 0.35, 0.6], { tex: 'straw' });
+      hay(x1 - 0.45, z0 + 0.45, 0.45); hay(x1 - 0.25, z0 + 0.8, 0.32); hay(x0 + 0.35, z0 + 0.35, 0.3);
+    }
   }
 
   // ---------- 菜园里的零碎：踏脚石、水缸、水井和木桶、箩筐、靠在篱笆上的锄头 ----------
@@ -442,7 +550,7 @@ export const countryside: SceneObject = ({ scene, tier, bus, pick: pickable }) =
   // weed_plant_02 的照片是宽扁的一片阔叶，近处放大后发蓝、发怪，杂草也用草丛照片，只是更矮
   const WEEDS = ['grass_medium_01_0', 'grass_medium_01_2', 'grass_medium_01_3'];
   // 菜篮那一圈不种草（草会从筐里穿出来）
-  const nearBasket = (x: number, z: number) => Math.hypot(x - L.gardenBasket.x, z - L.gardenBasket.z) < L.gardenBasket.clear;
+  const nearBasket = (x: number, z: number) => Math.hypot(x - L.gardenBasket.x, z - L.gardenBasket.z) < L.gardenBasket.clear || inPen(x, z);
   const tuft = (x: number, z: number, h: number, list = GRASS) => { if (!skip() && !nearBasket(x, z)) imp.add(pick(list), x, gy, z, h, { flip: r() < 0.5, tint: 1.55 + r() * 0.35 }); }; // 草是逆光渲的，偏暗，提亮一点
   for (let x = -8.5; x < 8.6; x += 0.3) if (x < -0.3 || x > 1.3) tuft(x + (r() - 0.5) * 0.2, -13.72 + (r() - 0.5) * 0.25, 0.35 + r() * 0.35);
   for (const fx of [-8.6, 8.6]) for (let z = -13.8; z < -2; z += 0.32) tuft(fx - Math.sign(fx) * 0.14 + (r() - 0.5) * 0.2, z, 0.3 + r() * 0.35);
@@ -648,8 +756,73 @@ export const countryside: SceneObject = ({ scene, tier, bus, pick: pickable }) =
   // 一天里的色调：不是 outdoorMaterial 建的几样（地影、稻田底色、雾）也乘上（夜里压暗）
   group.traverse((o) => { const m = (o as THREE.Mesh).material as THREE.Material | undefined; if (m && !Array.isArray(m) && o.layers.isEnabled(0)) applyDayTint(m); });
   scene.add(group);
+  // ---------- 辣椒：所有辣椒秧上的果子合成一个实例化网格；每棵秧一个看不见的点击球，站在窗前点它把整棵的辣椒摘了 ----------
+  // 摘下来的一把辣椒打着转飞进窗口，灶台上多一碟辣椒（pantry:add {item: 'chili'}，kitchen 收）。用户要的「院子里的辣椒也要可以摘过来做成辣的菜肴」
+  let atWindow = false;
+  const offs = [on(bus, 'window:focus', () => { atWindow = true; }), on(bus, 'window:blur', () => { atWindow = false; })];
+  const chiliGeo = bin.add(paintUp(new THREE.ConeGeometry(0.011, 0.075, 6, 2).translate(0, -0.0375, 0)));
+  const chiliMat = outdoorMaterial(bin, { vertexColors: true, haze: false, sat: 0.9 });
+  const chilis = new THREE.InstancedMesh(chiliGeo, chiliMat, Math.max(1, chiliFruit.length));
+  {
+    const m = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), c = new THREE.Color();
+    chiliFruit.forEach((f, i) => {
+      e.set(f.rot[0], f.rot[1], f.rot[2], 'YXZ'); q.setFromEuler(e);
+      chilis.setMatrixAt(i, m.compose(new THREE.Vector3(...f.p), q, new THREE.Vector3(1, 1, 1)));
+      chilis.setColorAt(i, c.set(f.red ? 0xd02a1c : 0x3f8f3a));
+    });
+    chilis.count = chiliFruit.length; chilis.frustumCulled = false; group.add(chilis);
+  }
+  const chiliHit = new THREE.InstancedMesh(bin.add(new THREE.SphereGeometry(1, 8, 6)), bin.add(new THREE.MeshBasicMaterial()), Math.max(1, chiliBush.length));
+  {
+    const m = new THREE.Matrix4();
+    chiliBush.forEach((b, i) => chiliHit.setMatrixAt(i, m.makeScale(0.24, 0.3, 0.24).setPosition(b.x, gy + 0.32, b.z)));
+    chiliHit.count = chiliBush.length; chiliHit.layers.set(HIT_LAYER); chiliHit.userData.keepsWindow = true; chiliHit.frustumCulled = false;
+    chiliHit.computeBoundingSphere(); group.add(chiliHit);
+  }
+  type ChiliFly = { obj: THREE.Group; from: THREE.Vector3; t: number };
+  const chiliFlies: ChiliFly[] = [];
+  let chiliPicked = 0;
+  pickable(chiliHit, { click(h) {
+    const i = h.instanceId; if (i === undefined) return;
+    const b = chiliBush[i]; if (!b) return;
+    if (!atWindow) { emit(bus, 'window:focus'); return; }
+    if (b.picked) { emit(bus, 'cup:state', { msg: '这棵已经摘光了 · 换一棵' }); setTimeout(() => emit(bus, 'cup:state', null), 1800); return; }
+    b.picked = true; chiliPicked++;
+    const z0 = new THREE.Matrix4().makeScale(0, 0, 0), grp = new THREE.Group();
+    chiliFruit.forEach((f, k) => {
+      if (f.bush !== i) return;
+      chilis.setMatrixAt(k, z0);
+      const one = new THREE.Mesh(chiliGeo, chiliMat); // 飞的那一把：同样的几何，颜色写在一份小材质里
+      one.material = flyMat(f.red);
+      one.position.set(f.p[0] - b.x, f.p[1] - gy - 0.2, f.p[2] - b.z); one.rotation.set(f.rot[0], f.rot[1], f.rot[2]);
+      grp.add(one);
+    });
+    chilis.instanceMatrix.needsUpdate = true;
+    grp.position.set(b.x, gy + 0.2, b.z); group.add(grp);
+    chiliFlies.push({ obj: grp, from: grp.position.clone(), t: 0 });
+    emit(bus, 'cup:state', { msg: '摘了一把辣椒！' });
+  } });
+  const flyMats: Partial<Record<'r' | 'g', THREE.MeshBasicMaterial>> = {};
+  function flyMat(red: boolean) { const k = red ? 'r' : 'g'; return (flyMats[k] ??= bin.add(new THREE.MeshBasicMaterial({ vertexColors: true, color: red ? 0xd02a1c : 0x3f8f3a }))); }
+  const chiliTo = new THREE.Vector3(0.3, 0.25, L.wallZ - 0.35);
+  const flyChilis = (dt: number) => {
+    for (let i = chiliFlies.length - 1; i >= 0; i--) {
+      const f = chiliFlies[i];
+      f.t = Math.min(1, f.t + dt / 1.2);
+      f.obj.position.lerpVectors(f.from, chiliTo, f.t); f.obj.position.y += Math.sin(f.t * Math.PI) * 1.0;
+      f.obj.rotation.y += dt * 8; f.obj.scale.setScalar(1 - 0.5 * f.t * f.t);
+      if (f.t >= 1) {
+        group.remove(f.obj); chiliFlies.splice(i, 1);
+        emit(bus, 'pantry:add', { item: 'chili' });
+        emit(bus, 'cup:state', { msg: `辣椒进屋了 · 灶台上多了一碟辣椒（底部「做饭」）${chiliPicked >= chiliBush.length ? ' · 园子里的辣椒都摘完了' : ''}` });
+        setTimeout(() => emit(bus, 'cup:state', null), 3000);
+      }
+    }
+  };
+
   return {
     frame(dt, t) {
+      flyChilis(dt);
       rice.rotation.z = Math.sin(t * 0.6) * 0.004;
       puffs.forEach((p, i) => {
         p.life = (p.life + dt * 0.06) % 1;
@@ -661,6 +834,6 @@ export const countryside: SceneObject = ({ scene, tier, bus, pick: pickable }) =
       smoke.instanceMatrix.needsUpdate = true;
       if (smoke.instanceColor) smoke.instanceColor.needsUpdate = true;
     },
-    stop() { stopped = true; scene.remove(group); rice.dispose(); weeds.dispose(); bin.dispose(); },
+    stop() { stopped = true; offs.forEach((f) => f()); scene.remove(group); rice.dispose(); weeds.dispose(); chilis.dispose(); chiliHit.dispose(); bin.dispose(); },
   };
 };

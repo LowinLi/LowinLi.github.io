@@ -23,14 +23,17 @@ const SANS = '"PingFang SC","Hiragino Sans GB","Noto Sans CJK SC","Microsoft YaH
  * 有番茄的菜盘底有一汪红汤汁。
  * 三档：high / mid 一样；low 档没有 3D。
  */
-type Veg = 'tomato' | 'egg' | 'cabbage' | 'scallion' | 'lettuce' | 'chicken';
-type BasketVeg = Exclude<Veg, 'chicken'>;
-const VEG_NAME: Record<Veg, string> = { tomato: '番茄', egg: '鸡蛋', cabbage: '白菜', scallion: '葱', lettuce: '生菜', chicken: '鸡肉' };
-const VEG_COLOR: Record<Veg, number> = { tomato: 0xd8321e, egg: 0xf2c94c, cabbage: 0xd3e2a8, scallion: 0x4f9a3a, lettuce: 0x7cc24a, chicken: 0xeeb4a4 };
+type Veg = 'tomato' | 'egg' | 'cabbage' | 'scallion' | 'lettuce' | 'chicken' | 'pork' | 'mutton' | 'beef' | 'chili';
+/** 不在筐里、要从外面弄来的：抓来的鸡、猪、羊、牛，园子里摘的辣椒（pantry:add 收），一份一碟摆在台面前沿 */
+type Pantry = 'chicken' | 'pork' | 'mutton' | 'beef' | 'chili';
+type BasketVeg = Exclude<Veg, Pantry>;
+const MEATS: Veg[] = ['chicken', 'pork', 'mutton', 'beef'];
+const VEG_NAME: Record<Veg, string> = { tomato: '番茄', egg: '鸡蛋', cabbage: '白菜', scallion: '葱', lettuce: '生菜', chicken: '鸡肉', pork: '猪肉', mutton: '羊肉', beef: '牛肉', chili: '辣椒' };
+const VEG_COLOR: Record<Veg, number> = { tomato: 0xd8321e, egg: 0xf2c94c, cabbage: 0xd3e2a8, scallion: 0x4f9a3a, lettuce: 0x7cc24a, chicken: 0xeeb4a4, pork: 0xe8a090, mutton: 0xb8443e, beef: 0x9a2a24, chili: 0xd02a1c };
 // 一份的块数：用户说「菜放到锅里多一点」，从 8~15 块提到 13~24 块
-const VEG_PORTION: Record<Veg, number> = { tomato: 13, egg: 14, cabbage: 24, scallion: 22, lettuce: 22, chicken: 16 };
-/** 菜谱：放进去的菜（排好序用 + 连起来）→ 菜名、基础喜欢程度（1–5）、一句评价 */
-const RECIPES: Record<string, [string, number, string]> = {
+const VEG_PORTION: Record<Veg, number> = { tomato: 13, egg: 14, cabbage: 24, scallion: 22, lettuce: 22, chicken: 16, pork: 16, mutton: 15, beef: 16, chili: 16 };
+/** 菜谱：放进去的菜（用 + 连起来，顺序随便，下面会排好序）→ 菜名、基础喜欢程度（1–5）、一句评价 */
+const RECIPES_RAW: Record<string, [string, number, string]> = {
   'egg+tomato': ['西红柿炒鸡蛋', 5, '酸甜下饭，家常第一名'],
   'egg+scallion': ['葱花炒鸡蛋', 5, '葱香扑鼻，蛋又嫩又香'],
   'egg': ['炒鸡蛋', 4, '金黄蓬松，简单就好吃'],
@@ -55,12 +58,71 @@ const RECIPES: Record<string, [string, number, string]> = {
   'chicken+egg': ['鸡蛋炒鸡肉', 3, '一锅「亲子」，味道还行'],
   'chicken+scallion+tomato': ['葱香番茄鸡', 5, '有汤有肉有葱香'],
   'cabbage+chicken+scallion': ['葱爆白菜鸡', 5, '农家硬菜'],
+  // 园子里摘的辣椒（用户要的「院子里的辣椒也要可以摘过来做成辣的菜肴」）
+  'chili': ['炒辣椒', 2, '光吃辣椒，辣得直冒汗'],
+  'chili+egg': ['尖椒炒蛋', 5, '辣椒的鲜辣配鸡蛋的香，绝配'],
+  'cabbage+chili': ['辣炒白菜', 4, '脆生生、辣乎乎'],
+  'chili+lettuce': ['辣炒生菜', 3, '生菜一辣就蔫了，味道还行'],
+  'chili+tomato': ['辣味番茄', 3, '酸辣口，有点意思'],
+  'chili+scallion': ['葱椒小炒', 2, '又冲又辣，下饭但吃不多'],
+  'chili+egg+tomato': ['香辣番茄炒蛋', 4, '西红柿炒蛋多了一丝辣，更开胃'],
+  'cabbage+chili+egg': ['尖椒白菜炒蛋', 4, '有菜有蛋有辣味'],
+  'chicken+chili': ['辣子鸡', 5, '满盘红辣椒里找鸡肉，外焦里嫩'],
+  'chicken+chili+scallion': ['宫保鸡丁', 5, '葱段、辣椒、鸡丁，糊辣荔枝口'],
+  'chicken+chili+egg': ['香辣鸡蛋鸡丁', 4, '辣、香、嫩'],
+  // 猪圈里抓的猪（用户要的「圈里养着猪、羊、牛……抓他们做猪肉羊肉牛肉，可以在锅里做菜吃。菜肴可以根据不同组合再丰富一下」）
+  'pork': ['小炒肉片', 4, '肥瘦相间，越嚼越香'],
+  'chili+pork': ['辣椒炒肉', 5, '湘菜下饭王，一口肉一口饭'],
+  'pork+scallion': ['葱爆肉片', 5, '大葱一爆，肉片焦香'],
+  'chili+pork+scallion': ['农家小炒肉', 5, '辣椒、葱、五花肉，满满锅气'],
+  'cabbage+pork': ['白菜炒肉', 4, '肉香都进了白菜里，家常味'],
+  'cabbage+chili+pork': ['手撕白菜炒肉', 5, '白菜脆、肉片香、辣得正好'],
+  'egg+pork': ['木须肉', 5, '肉片滑嫩、鸡蛋金黄，老北京味儿'],
+  'egg+pork+scallion': ['葱香木须肉', 5, '多了葱香，更地道'],
+  'pork+tomato': ['番茄肉片', 4, '酸甜开胃，汤汁拌饭'],
+  'lettuce+pork': ['生菜炒肉', 4, '清脆里带着肉香'],
+  'chili+egg+pork': ['尖椒肉片炒蛋', 4, '三样一锅，香辣下饭'],
+  // 羊圈里的羊
+  'mutton': ['小炒羊肉', 4, '羊肉嫩，带一点点膻香'],
+  'mutton+scallion': ['葱爆羊肉', 5, '北方名菜，大葱压住了膻味'],
+  'chili+mutton': ['香辣羊肉', 5, '辣椒配羊肉，越吃越暖'],
+  'chili+mutton+scallion': ['麻辣葱爆羊肉', 5, '又辣又香，冬天吃最好'],
+  'cabbage+mutton': ['白菜炒羊肉', 4, '白菜吸饱了羊肉的鲜'],
+  'mutton+tomato': ['番茄羊肉', 4, '番茄解腻，汤也好喝'],
+  'lettuce+mutton': ['生菜炒羊肉', 3, '有点怪，但能吃'],
+  'egg+mutton': ['羊肉炒蛋', 3, '味道冲了点'],
+  // 牛棚里的牛
+  'beef': ['小炒牛肉', 4, '牛肉片嫩，有嚼劲'],
+  'beef+chili': ['小炒黄牛肉', 5, '湘菜招牌，鲜辣嫩滑'],
+  'beef+tomato': ['番茄牛肉', 5, '酸甜浓汤，拌饭一绝'],
+  'beef+scallion': ['葱爆牛肉', 5, '葱香牛肉，下饭硬菜'],
+  'beef+chili+scallion': ['葱椒牛肉', 5, '葱香、辣香、肉香'],
+  'beef+scallion+tomato': ['葱香番茄牛肉', 5, '有汤有肉，暖胃'],
+  'beef+egg': ['滑蛋牛肉', 5, '蛋滑肉嫩，一口一个满足'],
+  'beef+cabbage': ['白菜炒牛肉', 4, '清甜的白菜配牛肉'],
+  'beef+lettuce': ['生菜牛肉', 4, '生菜脆，牛肉嫩'],
+  'beef+chili+tomato': ['酸辣番茄牛肉', 5, '酸、辣、鲜，汤汁都想喝光'],
+  // 几样肉一起
+  'beef+pork': ['牛肉猪肉双拼', 3, '两样肉一锅炒，香是香，就是有点腻'],
+  'chicken+pork': ['鸡肉猪肉双拼', 3, '两样肉一锅炒，有点腻'],
+  'mutton+pork': ['羊肉猪肉双拼', 3, '膻香加肉香，有点腻'],
+  'beef+mutton': ['牛羊双拼', 4, '草原风味，配点葱更好'],
+  'beef+mutton+scallion': ['葱爆牛羊肉', 5, '大葱一爆，牛羊肉都香'],
+  'beef+chicken+mutton+pork': ['全肉大餐', 3, '四样肉一锅，过年都没这么丰盛'],
 };
+const RECIPES: Record<string, [string, number, string]> = Object.fromEntries(Object.entries(RECIPES_RAW).map(([k, v]) => [k.split('+').sort().join('+'), v]));
+/** 炒的肉在菜名里叫什么 */
+const MEAT_DISH: Partial<Record<Veg, string>> = { chicken: '鸡', pork: '肉', mutton: '羊肉', beef: '牛肉' };
 const recipeOf = (set: Veg[]): [string, number, string] => {
   const key = [...set].sort().join('+');
   if (RECIPES[key]) return RECIPES[key];
   if (set.length >= 5) return ['乱炖大杂烩', 2, '什么都往里放，味道有点乱'];
-  if (set.includes('chicken')) return ['农家小炒鸡', 4, '有肉有菜，香'];
+  const hot = set.includes('chili'), meats = set.filter((x) => MEATS.includes(x));
+  // 加了辣椒、去掉辣椒以后有现成的菜：名字前加「香辣」
+  if (hot && set.length > 1) { const base = RECIPES[set.filter((x) => x !== 'chili').sort().join('+')]; if (base) return [`香辣${base[0]}`, base[1], `${base[2]}，加了辣椒更下饭`]; }
+  if (meats.length >= 2) return [`${hot ? '香辣' : ''}农家杂肉小炒`, 3, '几样肉一锅出，香是香，有点腻'];
+  if (meats.length === 1) return [`${hot ? '香辣' : ''}农家小炒${MEAT_DISH[meats[0]]}`, 4, '有肉有菜，香'];
+  if (hot) return ['香辣小炒', 3, '辣乎乎的一盘素菜'];
   return set.includes('egg') ? ['农家小炒', 3, '几样菜一锅出，农家味'] : ['什锦素炒', 3, '素素的一盘'];
 };
 
@@ -515,7 +577,7 @@ export const kitchen: SceneObject = ({ scene, camera, tier, bus, pick, audio }) 
     parts.push(paint(new THREE.TorusGeometry(0.013, 0.0013, 5, 18).rotateY(Math.PI / 2).translate(-0.02, 0.003, 0), () => [0.75, 0.1, 0.08]));
     return parts;
   };
-  const vegMeshes: Record<BasketVeg, THREE.Object3D> & { chicken?: THREE.Object3D } = {
+  const vegMeshes: Record<BasketVeg, THREE.Object3D> & Partial<Record<Pantry, THREE.Object3D>> = {
     cabbage: mergeVeg(cabbageGeo()),
     lettuce: mergeVeg(lettuceGeo()),
     tomato: mergeVeg([...tomatoGeo(0.3), ...tomatoGeo(1.7).map((g) => g.rotateZ(0.5).translate(0.065, 0, 0.01))], glossy),
@@ -554,26 +616,67 @@ export const kitchen: SceneObject = ({ scene, camera, tier, bus, pick, audio }) 
     const chicken = paint(reshape(new THREE.BoxGeometry(1.5, 1.1, 1.25, 4, 3, 4), (p) => {
       const sph = p.clone().normalize().multiplyScalar(0.78); p.lerp(sph, 0.35); p.multiplyScalar(1 + 0.12 * vnoise(p.x * 2.5, p.y * 2.5, p.z * 2.5));
     }), (p, n) => n.y > 0.45 ? mul3([0.9, 0.76, 0.52], hash3(p.x * 40, p.y * 40, p.z * 40) > 0.85 ? 0.88 : 1) : mul3([0.8, 0.42, 0.37], 0.92 + 0.08 * Math.sin(p.x * 24 + p.z * 6)));
-    return { tomato, egg, cabbage, lettuce, scallion, chicken };
+    // 猪肉片：五花，一层层的肉皮、肥膘、瘦肉，边上微微卷
+    const pork = paint(reshape(new THREE.BoxGeometry(2, 0.32, 1.3, 8, 1, 5), (p) => { p.y += 0.07 * Math.sin(p.x * 2.4) + 0.04 * vnoise(p.x * 3, 0, p.z * 3); }), (p) => {
+      const z = p.z + 0.04 * Math.sin(p.x * 5), k = 0.95 + hash3(p.x * 30, p.y * 30, p.z * 30) * 0.08;
+      if (z > 0.5) return [0.93, 0.78, 0.6];                       // 肉皮
+      if (z > 0.26 || (z > -0.22 && z < -0.06)) return mul3([0.97, 0.93, 0.86], k); // 肥膘
+      return mul3(z < -0.22 ? [0.8, 0.34, 0.33] : [0.86, 0.42, 0.4], k);         // 瘦肉
+    });
+    // 羊肉片：薄薄的一片，微微卷边，红肉里一道道弯弯的白色油花
+    const mutton = paint(reshape(new THREE.BoxGeometry(1.8, 0.16, 1.3, 8, 1, 6), (p) => { p.y += 0.12 * (p.x * p.x) * 0.5 + 0.04 * vnoise(p.x * 3, 0, p.z * 3); }),
+      (p) => Math.abs(Math.sin(p.x * 3.2 + Math.sin(p.z * 4) * 0.8)) < 0.22 ? [0.96, 0.91, 0.85] : mul3([0.72, 0.24, 0.25], 0.92 + hash3(p.x * 40, p.y * 40, p.z * 40) * 0.1));
+    // 牛肉片：深红色、顺着一道道肌理，偶尔一点白筋
+    const beef = paint(reshape(new THREE.BoxGeometry(1.9, 0.22, 1.25, 8, 1, 5), (p) => { p.y += 0.05 * Math.sin(p.z * 3 + p.x) + 0.03 * vnoise(p.x * 4, 0, p.z * 4); }),
+      (p) => hash3(p.x * 60, p.y * 60, p.z * 60) > 0.95 ? [0.92, 0.86, 0.8] : mul3([0.6, 0.17, 0.16], 0.86 + 0.14 * Math.sin(p.x * 26 + p.z * 4)));
+    // 辣椒段：一截截红亮的空心小管，切口一圈浅色的肉
+    const chili = paint(new THREE.CylinderGeometry(1, 0.9, 1.5, 10, 1, true).rotateZ(Math.PI / 2), (p) => mul3([0.86, 0.1, 0.06], 0.88 + 0.12 * Math.sin(Math.atan2(p.z, p.y) * 5) + (Math.abs(p.x) > 0.68 ? 0.15 : 0)));
+    return { tomato, egg, cabbage, lettuce, scallion, chicken, pork, mutton, beef, chili };
   })();
   Object.values(FOOD_GEO).forEach((g) => bin.add(g));
 
-  // ---------------- 鸡肉：窗外抓回来的鸡，一盘切好的生鸡块 + 一只鸡腿，抓到才出现 ----------------
-  let chickenStock = 0;
-  const meat = new THREE.Group(); meat.position.set(0.3, TOP, 0.2); meat.visible = false; meat.userData.keepsStove = true; root.add(meat);
+  // ---------------- 外面弄来的：鸡肉、猪肉、羊肉、牛肉、辣椒。每样一碟摆在台面前沿（不挡旋钮），有了才出现 ----------------
+  // 鸡是窗外抓的（animals.ts）；猪、羊、牛是圈里抓的（livestock.ts）；辣椒是园子里摘的（countryside.ts）。都走 pantry:add {item}
+  const stock: Record<Pantry, number> = { chicken: 0, pork: 0, mutton: 0, beef: 0, chili: 0 };
+  const pantryMesh = {} as Record<Pantry, THREE.Group>;
+  const dishGeo = (s2: number) => shade(new THREE.LatheGeometry([[0, 0.003], [0.07, 0.003], [0.085, 0.014], [0.088, 0.016], [0, 0.006]].map(([r2, y]) => new THREE.Vector2(r2 * s2, y * Math.min(1, s2 * 1.2))), 28), 0xf3f1ea, 0.01);
+  const pantryDish = (k: Pantry, x: number, z: number, parts: THREE.BufferGeometry[]) => {
+    const g = new THREE.Group(); g.position.set(x, TOP, z); g.visible = false; g.userData.keepsStove = true; root.add(g);
+    g.add(mergeVeg(parts)); pantryMesh[k] = g; vegMeshes[k] = g;
+    pick(g, { click: () => onVeg(k) });
+  };
   {
-    const dish = new THREE.LatheGeometry([[0, 0.003], [0.07, 0.003], [0.085, 0.014], [0.088, 0.016], [0, 0.006]].map(([r2, y]) => new THREE.Vector2(r2, y)), 28);
-    const parts = [shade(dish, 0xf3f1ea, 0.01)];
+    // 鸡肉：一盘切好的生鸡块 + 一只鸡腿
+    const parts = [dishGeo(1)];
     for (let i = 0; i < 7; i++) { const a = i * 2.4, rr = 0.018 + (i % 3) * 0.016, sc = 0.012 + (i % 3) * 0.0015; parts.push(FOOD_GEO.chicken.clone().scale(sc, sc, sc).rotateY(a * 1.7).translate(Math.cos(a) * rr - 0.01, 0.016 + (i % 2) * 0.005, Math.sin(a) * rr)); }
-    // 鸡腿：躺在盘边，一头露着骨头
     const leg = paint(new THREE.LatheGeometry([[0, 0], [0.0045, 0.001], [0.005, 0.012], [0.0045, 0.022], [0.008, 0.032], [0.014, 0.046], [0.016, 0.06], [0.012, 0.072], [0, 0.076]].map(([r2, y]) => new THREE.Vector2(r2, y)), 14),
       (p2) => p2.y < 0.011 ? [0.93, 0.9, 0.82] : mul3([0.88, 0.7, 0.48], hash3(p2.x * 500, p2.y * 500, p2.z * 500) > 0.88 ? 0.9 : 1));
     parts.push(leg.rotateZ(Math.PI / 2 - 0.1).rotateY(0.6).translate(0.035, 0.024, 0.03));
-    meat.add(mergeVeg(parts));
+    pantryDish('chicken', 0.3, 0.2, parts);
+    // 猪肉、羊肉、牛肉：小碟里码着几片生肉
+    const slices = (k: 'pork' | 'mutton' | 'beef', sc: number, n: number) => {
+      const out = [dishGeo(0.66)];
+      for (let i = 0; i < n; i++) { const a = i * 2.1 + 0.4, rr = i ? 0.016 + (i % 2) * 0.008 : 0; out.push(FOOD_GEO[k].clone().scale(sc, sc, sc).rotateY(a).rotateX(k === 'mutton' ? 0 : (i % 2 ? 0.12 : -0.1)).translate(Math.cos(a) * rr, 0.012 + i * 0.0035, Math.sin(a) * rr)); }
+      return out;
+    };
+    pantryDish('pork', -0.5, 0.245, slices('pork', 0.016, 6));
+    pantryDish('mutton', -0.31, 0.25, slices('mutton', 0.013, 6));
+    pantryDish('beef', 0.0, 0.25, slices('beef', 0.016, 6));
+    // 辣椒：小碟里几根整辣椒（弯弯的红椒，青色的蒂）
+    const chilis = [dishGeo(0.6)];
+    for (let i = 0; i < 6; i++) {
+      const body = paint(reshape(new THREE.CylinderGeometry(0.0075, 0.0015, 0.048, 8, 6).translate(0, -0.024, 0), (p) => { const t2 = -p.y / 0.048; p.x += t2 * t2 * 0.008; }), (p) => p.y > -0.004 ? [0.3, 0.52, 0.2] : mul3([0.84, 0.1, 0.06], 0.9 + 0.1 * Math.sin(p.x * 900)));
+      // 顺着一个方向并排躺着，蒂朝一边
+      chilis.push(body.rotateZ(Math.PI / 2).rotateY(0.5 + (i % 2 ? 0.25 : -0.2) + (i - 2.5) * 0.06).translate(-0.018 + (i % 3) * 0.004, 0.011 + (i > 3 ? 0.008 : 0), -0.022 + i * 0.009));
+    }
+    pantryDish('chili', 0.51, 0.245, chilis);
   }
-  vegMeshes.chicken = meat;
-  pick(meat, { click: () => onVeg('chicken') });
-  on(bus, 'pantry:add', (d: { item: string }) => { if (d?.item === 'chicken') { chickenStock++; meat.visible = true; if (focused) refresh(); } });
+  const NEED: Record<Pantry, string> = { chicken: '没有鸡肉了 · 去窗外抓一只鸡', pork: '没有猪肉了 · 去窗外猪圈双击一头猪', mutton: '没有羊肉了 · 去窗外羊圈双击一只羊', beef: '没有牛肉了 · 去窗外牛棚双击一头牛', chili: '没有辣椒了 · 去窗外园子里点辣椒秧摘一把' };
+  on(bus, 'pantry:add', (d: { item: string }) => {
+    const k = d?.item as Pantry;
+    if (!(k in stock)) return;
+    stock[k]++; pantryMesh[k].visible = true; if (focused) refresh();
+  });
 
   // ---------------- 盘子 ----------------
   const PLATE = new THREE.Vector3(-0.47, TOP + 0.004, 0.02);
@@ -598,7 +701,7 @@ export const kitchen: SceneObject = ({ scene, camera, tier, bus, pick, audio }) 
 
   // ---------------- 菜块：锅里、盘里各一组实例化网格（每样菜一个，几何各不相同；顶点色是生的样子，实例颜色乘上去管熟没熟、糊没糊）----------------
   const MAX = 128; // 每样菜的实例上限，也是锅里总块数上限
-  const VEGS: Veg[] = ['tomato', 'egg', 'cabbage', 'lettuce', 'scallion', 'chicken'];
+  const VEGS: Veg[] = ['tomato', 'egg', 'cabbage', 'lettuce', 'scallion', 'chicken', 'pork', 'mutton', 'beef', 'chili'];
   const chunkMat = std({ vertexColors: true, roughness: 0.32, metalness: 0.02, side: THREE.DoubleSide });
   type ChunkSet = Record<Veg, THREE.InstancedMesh>;
   const makeChunks = (parent: THREE.Object3D): ChunkSet => {
@@ -615,10 +718,10 @@ export const kitchen: SceneObject = ({ scene, camera, tier, bus, pick, audio }) 
   /** 一块菜：r（0–1，按锅的半径算）、a 角度、hh 半高；翻炒 / 颠勺时从 (fr, fa) 被抛起、在空中翻个身落到 (r, a)（时间按动作进度 u 算，t0–t1） */
   type Chunk = { veg: Veg; r: number; a: number; s: THREE.Vector3; hh: number; low: number; rot: THREE.Euler; seed: number; eat?: number; fr?: number; fa?: number; t0?: number; t1?: number; hop?: number; spin?: THREE.Euler; frot?: THREE.Euler };
   let pot: Chunk[] = [];
-  const SIZE: Record<Veg, [number, number]> = { tomato: [0.019, 0.014], egg: [0.021, 0.011], cabbage: [0.02, 0.004], lettuce: [0.02, 0.004], scallion: [0.0055, 0.005], chicken: [0.014, 0.009] };
+  const SIZE: Record<Veg, [number, number]> = { tomato: [0.019, 0.014], egg: [0.021, 0.011], cabbage: [0.02, 0.004], lettuce: [0.02, 0.004], scallion: [0.0055, 0.005], chicken: [0.014, 0.009], pork: [0.017, 0.004], mutton: [0.016, 0.003], beef: [0.016, 0.003], chili: [0.0075, 0.0075] };
   let seedN = 1;
   const rnd = () => { seedN = (seedN * 16807) % 2147483647; return seedN / 2147483647; };
-  const FLAT = (v: Veg) => v === 'cabbage' || v === 'lettuce' || v === 'scallion';
+  const FLAT = (v: Veg) => v === 'cabbage' || v === 'lettuce' || v === 'scallion' || v === 'pork' || v === 'mutton' || v === 'beef' || v === 'chili';
   /** 叶子、葱段基本平躺着（随便转个方向，稍微歪一点）；块状的随便滚 */
   const randRot = (v: Veg, out = new THREE.Euler()) => FLAT(v) ? out.set((rnd() - 0.5) * 0.8, rnd() * 6.3, (rnd() - 0.5) * 0.8) : out.set(rnd() * 6.3, rnd() * 6.3, rnd() * 6.3);
   // 每样菜取几十个顶点当样本：块转了个方向以后，算出它最低的那个点在原点下面多深（用户指出过「锅里的蔬菜有点悬空」：
@@ -629,7 +732,7 @@ export const kitchen: SceneObject = ({ scene, camera, tier, bus, pick, audio }) 
   const lowOf = (c: Chunk) => { qL.setFromEuler(c.rot); let lo = 0; for (const p of SAMPLES[c.veg]) { const y = vL.copy(p).multiply(c.s).applyQuaternion(qL).y; if (y < lo) lo = y; } return c.low = -lo; };
   const newChunk = (veg: Veg): Chunk => { const v2 = 0.82 + rnd() * 0.4, [sz, hh] = SIZE[veg]; const c: Chunk = { veg, r: Math.pow(rnd(), 0.8) * 0.82, a: rnd() * Math.PI * 2, s: new THREE.Vector3(sz, sz, sz).multiplyScalar(v2), hh: hh * v2, low: 0, rot: randRot(veg), seed: rnd() * 10 }; lowOf(c); return c; };
   /** 熟了以后的色调（乘在生的顶点色上）：番茄变深变软、蛋金黄、菜叶蔫绿、鸡肉从粉炒到金黄 */
-  const COOKED: Record<Veg, RGB> = { tomato: [0.88, 0.8, 0.78], egg: [1, 0.9, 0.74], cabbage: [0.88, 0.94, 0.72], lettuce: [0.72, 0.84, 0.56], scallion: [0.82, 0.9, 0.7], chicken: [1.02, 0.86, 0.6] };
+  const COOKED: Record<Veg, RGB> = { tomato: [0.88, 0.8, 0.78], egg: [1, 0.9, 0.74], cabbage: [0.88, 0.94, 0.72], lettuce: [0.72, 0.84, 0.56], scallion: [0.82, 0.9, 0.7], chicken: [1.02, 0.86, 0.6], pork: [0.86, 1.12, 1.0], mutton: [0.75, 1.35, 1.05], beef: [0.72, 1.5, 1.3], chili: [0.95, 0.9, 0.85] };
   const BURNT = new THREE.Color(0.11, 0.08, 0.065);
   const chunkColor = (c: Chunk, done: number, burnt: number, out: THREE.Color) => {
     const k = Math.min(1, done / 3), ck = COOKED[c.veg], v2 = 0.92 + (c.seed % 1) * 0.16;
@@ -642,7 +745,7 @@ export const kitchen: SceneObject = ({ scene, camera, tier, bus, pick, audio }) 
   let soyTint = 0;
   const eA = new THREE.Euler(), qA = new THREE.Quaternion(), qB = new THREE.Quaternion(), qS = new THREE.Quaternion(), UP = new THREE.Vector3(0, 1, 0), nS = new THREE.Vector3();
   const mouth = new THREE.Vector3(); // 吃的时候菜飞去的地方（盘子坐标），每帧按镜头算
-  const idx: Record<Veg, number> = { tomato: 0, egg: 0, cabbage: 0, lettuce: 0, scallion: 0, chicken: 0 };
+  const idx = Object.fromEntries(VEGS.map((k) => [k, 0])) as Record<Veg, number>;
   /** 摆菜：surf(r) 是表面高度；u ≥ 0 时按每块的 t0–t1 抛起翻身；slx/slz 是整锅菜被晃到一边的量（锅壁处会顺着往上爬） */
   const layout = (set: ChunkSet, list: Chunk[], surf: (r: number) => number, rMax: number, jump: number, t: number, done: number, burnt: number, u = -1, slx = 0, slz = 0) => {
     for (const k of VEGS) idx[k] = 0;
@@ -755,7 +858,7 @@ export const kitchen: SceneObject = ({ scene, camera, tier, bus, pick, audio }) 
   const wokOff = new THREE.Vector3(), wokQ = new THREE.Quaternion(), qT = new THREE.Quaternion(), X_AX = new THREE.Vector3(1, 0, 0);
   const stirFrom: Pose = { p: new THREE.Vector3(), q: new THREE.Quaternion() };
   const tmpPose: Pose = { p: new THREE.Vector3(), q: new THREE.Quaternion() };
-  let plated: { list: Chunk[]; done: number; burnt: number; tomato: boolean; smoke: number; soy: number; hearts: number } | null = null;
+  let plated: { list: Chunk[]; done: number; burnt: number; tomato: boolean; smoke: number; soy: number; hearts: number; hot: boolean } | null = null;
   // 酱油、陈醋（用户要的「可以放酱油、陈醋，放得合适可以适当提升效果」）：这一锅各倒了几下
   let soy = 0, vin = 0;
   let pourC: { g: THREE.Group; home: THREE.Vector3; t: number; kind: 'soy' | 'vin'; hit: boolean } | null = null;
@@ -786,7 +889,8 @@ export const kitchen: SceneObject = ({ scene, camera, tier, bus, pick, audio }) 
     if (!oil) return '点油壶，往锅里倒油';
     if (!fire) return '锅里有油了 · 拧旋钮点火';
     if (heat < 1) return '油在热……等它冒烟';
-    return `油冒烟了 · 点筐里的菜放进锅（可以放好几样）${chickenStock > 0 ? ` · 还有 ${chickenStock} 盘鸡肉` : ' · 窗外的鸡也能抓来炒'}`;
+    const have = (Object.keys(stock) as Pantry[]).filter((k) => stock[k] > 0).map((k) => `${VEG_NAME[k]}${stock[k] > 1 ? ` ×${stock[k]}` : ''}`);
+    return `油冒烟了 · 点筐里的菜放进锅（可以放好几样）${have.length ? ` · 台面上还有${have.join('、')}` : ' · 窗外的鸡、猪、羊、牛能抓来炒，园子里的辣椒能摘'}`;
   };
   const refresh = () => say(hint());
   const setFire = (on2: boolean) => {
@@ -806,14 +910,14 @@ export const kitchen: SceneObject = ({ scene, camera, tier, bus, pick, audio }) 
   const onVeg = (k: Veg) => {
     if (!focused) { emit(bus, 'stove:focus'); return; } ensureAudio();
     if (phase === 'plating' || pourT >= 0) return;
-    if (k === 'chicken' && chickenStock <= 0) { say('没有鸡肉了 · 去窗外抓一只鸡'); setTimeout(refresh, 1500); return; }
+    if (k in stock && stock[k as Pantry] <= 0) { say(NEED[k as Pantry]); setTimeout(refresh, 1800); return; }
     if (!oil) { say('先倒油'); setTimeout(refresh, 1300); return; }
     if (phase === 'cooking' && stirs > 0) { say('已经开炒了，下一锅再放'); setTimeout(refresh, 1300); return; }
     if (pot.length + VEG_PORTION[k] > MAX) { say('锅满了'); setTimeout(refresh, 1300); return; }
     // 菜从筐里飞进锅
     const src = vegMeshes[k]!;
     const fly = src.clone(); fly.position.copy(src.getWorldPosition(new THREE.Vector3())); fly.rotation.y = Math.PI / 2; world.add(fly);
-    if (k === 'chicken') { chickenStock--; meat.visible = chickenStock > 0; }
+    if (k in stock) { const p2 = k as Pantry; stock[p2]--; pantryMesh[p2].visible = stock[p2] > 0; }
     const to = wok.localToWorld(new THREE.Vector3(0, 0.05, 0));
     flies.push({ obj: fly, from: fly.position.clone(), to, t: 0, done: () => {
       world.remove(fly);
@@ -903,6 +1007,8 @@ export const kitchen: SceneObject = ({ scene, camera, tier, bus, pick, audio }) 
   pick(plate, { click: onPlate });
 
   /** 出锅：锅里的菜飞到盘子上；算菜名和喜欢程度，发 dish:show */
+  /** 点了醋改名：醋溜、酸辣 */
+  const VIN_NAME: Record<string, string> = { '清炒白菜': '醋溜白菜', '清炒生菜': '醋溜生菜', '辣炒白菜': '酸辣白菜', '辣炒生菜': '酸辣生菜', '香辣小炒': '酸辣小炒' };
   const finish = (isBurnt: boolean) => {
     if (phase !== 'cooking') return;
     phase = 'plating'; prompt = false; queued = null; spatGlow.emissiveIntensity = 0;
@@ -918,11 +1024,11 @@ export const kitchen: SceneObject = ({ scene, camera, tier, bus, pick, audio }) 
       else if (avg < 0.7 && !oilCold) notes.push('火候正好');
       if (flips >= 2) { hearts++; notes.push(`颠了 ${flips} 下勺，锅气十足`); }
       // 调料：放一下、放对了菜加一颗心；放多了扣一颗。酱油配鸡肉、白菜、生菜、葱（番茄、光炒蛋不放）；醋配白菜、生菜（醋溜）
-      const soyLover = set.some((x) => x === 'chicken' || x === 'cabbage' || x === 'lettuce' || x === 'scallion') && !set.includes('tomato');
+      const soyLover = set.some((x) => MEATS.includes(x) || x === 'cabbage' || x === 'lettuce' || x === 'scallion') && !set.includes('tomato');
       const vinLover = (set.includes('cabbage') || set.includes('lettuce')) && !set.includes('tomato') && !set.includes('egg');
       if (soy === 1) { if (soyLover) { hearts++; notes.push('一勺酱油提鲜上色'); } else notes.push('这道菜其实不用放酱油'); }
       else if (soy >= 2) { hearts--; notes.push('酱油放多了，齁咸'); }
-      if (vin === 1) { if (vinLover) { hearts++; notes.push('沿锅边点了醋，酸香开胃'); if (name0 === '清炒白菜') name = '醋溜白菜'; else if (name0 === '清炒生菜') name = '醋溜生菜'; } else notes.push('醋放得有点怪'); }
+      if (vin === 1) { if (vinLover) { hearts++; notes.push('沿锅边点了醋，酸香开胃'); name = VIN_NAME[name0] ?? name; } else notes.push('醋放得有点怪'); }
       else if (vin >= 2) { hearts--; notes.push('醋放多了，酸得倒牙'); }
       hearts = Math.max(1, Math.min(5, hearts));
       if (notes.length) comment = `${comment0}。${notes.join('，')}`;
@@ -934,7 +1040,7 @@ export const kitchen: SceneObject = ({ scene, camera, tier, bus, pick, audio }) 
     fly.position.copy(from); world.add(fly);
     flies.push({ obj: fly, from, to, t: 0, done: () => {
       world.remove(fly);
-      plated = { list: list.map((c) => ({ ...c, r: Math.min(1, c.r * 1.05), eat: undefined })), done: 3, burnt: isBurnt ? 1 : 0, tomato: set.includes('tomato') && !isBurnt, smoke: isBurnt ? 1 : 0.6, soy, hearts };
+      plated = { list: list.map((c) => ({ ...c, r: Math.min(1, c.r * 1.05), eat: undefined })), done: 3, burnt: isBurnt ? 1 : 0, tomato: set.includes('tomato') && !isBurnt, smoke: isBurnt ? 1 : 0.6, soy, hearts, hot: set.includes('chili') };
       bites = 0; bite = -1; moreBite = false; chop.visible = false;
       sauce.visible = !isBurnt; (sauce.material as THREE.MeshStandardMaterial).color.setHex(set.includes('tomato') ? 0xc0391e : soy > 0 ? 0x6a3818 : 0xd9a52a);
       (sauce.material as THREE.MeshStandardMaterial).opacity = set.includes('tomato') ? 0.85 : soy > 0 ? 0.75 : 0.45;
@@ -1082,7 +1188,7 @@ export const kitchen: SceneObject = ({ scene, camera, tier, bus, pick, audio }) 
         if (bite < 0.32) chop.position.lerpVectors(above, pickW, THREE.MathUtils.smootherstep(bite, 0, 0.32));
         else chop.position.lerpVectors(pickW, mouthW, Math.min(1, THREE.MathUtils.smootherstep(kE, 0, 1)));
         chop.quaternion.copy(camera.quaternion).multiply(qChop);
-        if (bite >= 0.8 && bite - dt / 1.15 < 0.8) say(eatSound(pl.hearts, !!pl.burnt));
+        if (bite >= 0.8 && bite - dt / 1.15 < 0.8) { const said = eatSound(pl.hearts, !!pl.burnt); if (pl.hot && !pl.burnt) { noise(0.5, 5200, 0.7, 0.1, 'highpass', 1.25); noise(0.4, 4800, 0.7, 0.08, 'highpass', 1.85); } say(pl.hot && !pl.burnt ? `${said} 嘶——好辣！` : said); } // 辣的菜吃完倒吸两口凉气
         if (bite >= 1) {
           bite = -1; chop.visible = false;
           pl.list = pl.list.filter((c) => c.eat === undefined);
