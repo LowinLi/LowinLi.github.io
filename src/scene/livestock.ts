@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
-import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { refineBeast } from './beastMesh';
 import { emit, HIT_LAYER, type MountContext } from './types';
 import { L } from './layout';
 import { asset } from './util';
@@ -45,39 +45,11 @@ export interface LivestockCtx {
   /** 加载好的模型放进这里（animals.ts 据此给它们补一天里的色调、stop 时释放） */
   loaded: THREE.Object3D[];
   stopped: () => boolean;
+  /** 细分几次：high 2、mid 1 */
+  levels: number;
   atWindow: () => boolean;
   /** 在世界坐标 p 处叫一声 */
   voice: (kind: Voice, p: THREE.Vector3, loud: number) => void;
-}
-
-/**
- * 一头牲口的几块蒙皮网格（每种材质一块：身子、蹄子眼睛、鼻子……）合成一块：颜色写进顶点色，一头一次 draw call（原来 2–3 次）。
- * prepare 给的材质是「颜色 × 0.5 + 自发光 × 0.62」，合并后自发光也要乘顶点色，改一行着色器。
- */
-function mergeSkinned(model: THREE.Object3D) {
-  const meshes: THREE.SkinnedMesh[] = [];
-  model.traverse((o) => { if ((o as THREE.SkinnedMesh).isSkinnedMesh) meshes.push(o as THREE.SkinnedMesh); });
-  // SkeletonUtils.clone 给每块网格各克隆了一个 Skeleton，骨头是同一套：按骨头比
-  const sameBones = (m: THREE.SkinnedMesh) => m.skeleton.bones.length === meshes[0].skeleton.bones.length && m.skeleton.bones.every((b, i) => b === meshes[0].skeleton.bones[i]);
-  if (meshes.length < 2 || meshes.some((m) => !sameBones(m) || Array.isArray(m.material) || !m.bindMatrix.equals(meshes[0].bindMatrix))) return;
-  const geos = meshes.map((m) => {
-    let g = m.geometry.clone(); if (g.index) g = g.toNonIndexed();
-    for (const k of Object.keys(g.attributes)) if (!['position', 'normal', 'skinIndex', 'skinWeight'].includes(k)) g.deleteAttribute(k);
-    const mat = m.material as THREE.MeshLambertMaterial, col = mat.emissive.clone().multiplyScalar(1 / 0.62), n = g.getAttribute('position').count, a = new Float32Array(n * 3);
-    for (let i = 0; i < n; i++) a.set([col.r, col.g, col.b], i * 3);
-    g.setAttribute('color', new THREE.Float32BufferAttribute(a, 3));
-    return g;
-  });
-  const merged = mergeGeometries(geos); geos.forEach((g) => g.dispose());
-  if (!merged) return;
-  const mat = new THREE.MeshLambertMaterial({ vertexColors: true, color: new THREE.Color(0.5, 0.5, 0.5), emissive: new THREE.Color(0.62, 0.62, 0.62), flatShading: true });
-  mat.onBeforeCompile = (sh) => { sh.fragmentShader = sh.fragmentShader.replace('vec3 totalEmissiveRadiance = emissive;', 'vec3 totalEmissiveRadiance = emissive * vColor.rgb;'); };
-  mat.customProgramCacheKey = () => 'livestock-vc';
-  const first = meshes[0], one = new THREE.SkinnedMesh(merged, mat);
-  one.position.copy(first.position); one.quaternion.copy(first.quaternion); one.scale.copy(first.scale);
-  one.frustumCulled = false; one.userData.noAO = true;
-  first.parent!.add(one); one.bind(first.skeleton, first.bindMatrix);
-  for (const m of meshes) { m.parent!.remove(m); m.geometry.dispose(); (m.material as THREE.Material).dispose(); }
 }
 
 export function createLivestock(c: LivestockCtx) {
@@ -119,7 +91,7 @@ export function createLivestock(c: LivestockCtx) {
         b.root.updateMatrixWorld(true);
         const box2 = new THREE.Box3().setFromObject(model, true); const cen2 = b.root.worldToLocal(box2.getCenter(new THREE.Vector3()));
         model.position.set(-cen2.x, -b.root.worldToLocal(box2.min.clone()).y, -cen2.z); // 身子正中对准 root，脚踩在地上
-        mergeSkinned(model);
+        refineBeast(model, kind === 'sheep' ? 'wool' : 'hair', c.levels); // 合并、细分磨圆、羊毛、细纹理（用户嫌「太方块」）
         b.model = model; b.head = head; b.neck = model.getObjectByName('Neck') ?? null;
         b.mixer = new THREE.AnimationMixer(model);
         if (idleClip) { const a = b.mixer.clipAction(idleClip); a.play(); a.time = Math.random() * idleClip.duration; a.timeScale = 0.8 + Math.random() * 0.3; }

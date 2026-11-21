@@ -6,6 +6,7 @@ import { addFace, addFur } from '../animalDetail';
 import { Bin, emit, HIT_LAYER, on, type SceneObject } from '../types';
 import { baa, bark, cluck, crow, meow, moo, oink, squeal } from '../animalSounds';
 import { createLivestock } from '../livestock';
+import { refineBeast } from '../beastMesh';
 import { L } from '../layout';
 import { applyDayTint, SKY } from '../daytime';
 
@@ -187,6 +188,7 @@ export const animals: SceneObject = ({ scene, tier, camera, bus, audio, pick }) 
     if (stopped) return;
     const model = prepare(gltf.scene, { White: 0x4a4a54, Black: 0x33333b, Pink: 0x6a5a5e }, 1.45);
     model.position.set(8.5, gy, -30); model.rotation.y = 2.2;
+    refineBeast(model, 'hair', 1); // 磨圆、细纹理（和圈里的牲口一样）
     group.add(model); buffalo = model;
     const mixer = new THREE.AnimationMixer(model); mixers.push(mixer);
     const idle = gltf.animations.find((c) => c.name === 'Idle');
@@ -463,7 +465,7 @@ export const animals: SceneObject = ({ scene, tier, camera, bus, audio, pick }) 
   };
   const tmp = new THREE.Vector3();
   // 猪圈、羊圈、牛棚里的牲口（livestock.ts）：借这里的叫声通道
-  const livestock = createLivestock({ group, loader, camera, bus, pick, prepare, loaded, stopped: () => stopped, atWindow: () => atWindow,
+  const livestock = createLivestock({ group, loader, camera, bus, pick, prepare, loaded, levels: tier === 'high' ? 2 : 1, stopped: () => stopped, atWindow: () => atWindow,
     voice: (kind, p, loud) => { ensureAudio(); emitAt(p, voice(kind), loud); } });
   /** 蛐蛐：白天在窗前时一层循环的底噪，跟着天色淡入淡出（夜里只有猫头鹰和老鼠） */
   const cricketBed = (dt: number) => {
